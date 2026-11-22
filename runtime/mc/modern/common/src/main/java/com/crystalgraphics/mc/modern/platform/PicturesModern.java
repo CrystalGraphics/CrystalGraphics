@@ -143,17 +143,19 @@ import java.util.function.Function;
 *///?}
 
 /**
- * The modern host of {@link CgHostPictures}: a target of Minecraft's own per picture, and its GUI pointed at it.
+ * The modern host of {@link CgHostPictures}: a target of Minecraft's own per page, and its GUI pointed at each cell.
  *
  * <ul>
- *   <li>1.13.2 - 1.21.4: the target bound ({@code bindWrite}), the GUI's orthographic projection over the picture's
- *       units, drawing at once; the main target bound back. Alpha from two clears: the immediate GUI writes it raw.
- *       From 1.21.2 the target is also answered for the main one ({@code GuiTargetHook}): a render type's
- *       {@code MAIN_TARGET} binds whatever {@code getMainRenderTarget} answers.</li>
- *   <li>1.21.5: the same, answered rather than bound.</li>
+ *   <li>1.13.2 - 1.21.4: the page bound once ({@code bindWrite}); per cell its rect cleared, the viewport on it, the
+ *       GUI's orthographic projection over its units, drawing at once; the main target bound back. Alpha from two
+ *       clears: the immediate GUI writes it raw. From 1.21.2 the page is also answered for the main target
+ *       ({@code GuiTargetHook}): a render type's {@code MAIN_TARGET} binds whatever {@code getMainRenderTarget}
+ *       answers.</li>
+ *   <li>1.21.5: a cell cannot be reached by viewport (the encoder binds a target whole): each is drawn into a scratch
+ *       target its size, answered rather than bound, and copied into the page.</li>
  *   <li>1.21.6 on: a {@code GuiRenderer} of the host's own over a {@code GuiRenderState} of its own, as vanilla's GUI,
- *       its main target answered by {@code GuiTargetHook} and its window sized to the picture. One draw: it keeps
- *       alpha.</li>
+ *       into a scratch target the cell's size, its window sized to the cell, then copied into the page. One draw: it
+ *       keeps alpha.</li>
  * </ul>
  */
 public final class PicturesModern implements CgHostPictures.Host {
@@ -180,16 +182,32 @@ public final class PicturesModern implements CgHostPictures.Host {
     *///?}
     //? if >=1.19.3 <1.21.6 {
     private Matrix4f savedProjection;
+    private final Matrix4f cellProjection = new Matrix4f();
     //?}
     //? if >=1.20 <1.21.2 {
     private VertexSorting savedSorting;
     //?} elif >=1.21.2 <1.21.6 {
     /*private ProjectionType savedType;
     *///?}
-    // What was bound as the batch began, put back after each picture: the main target at a HUD, but not always
+    // What was bound as the batch began, put back after each page: the main target at a HUD, but not always
     private int boundBefore = -1;
     private final int[] viewportBefore = new int[4];
     private boolean checking;
+    private final Context context = new Context();
+    // The page's cells while it draws, and the one drawing: what cellDrawer draws
+    @Nullable
+    private CgHostPictures.Cells cells;
+    private int cell;
+    private final CgPictureRenderer cellDrawer = ctx -> cells.draw(cell, ctx);
+    //? if >=1.21.5 {
+    /*// Scratch targets by size, a cell drawn into one its size; given back once unused for SCRATCH_KEPT cell draws
+    private static final int SCRATCH_KEPT = 4096;
+    private final PageCopy copy = new PageCopy();
+    private RenderTarget[] scratchTargets = new RenderTarget[8];
+    private long[] scratchUsed = new long[8];
+    private int scratchCount;
+    private long scratchClock;
+    *///?}
 
     private PicturesModern() {
     }
@@ -290,8 +308,14 @@ public final class PicturesModern implements CgHostPictures.Host {
     }
 
     @Override
-    public Object createTarget(int width, int height) {
+    public Object createTarget(int width, int height, float clear) {
         RenderTarget t = make(width, height);
+        //? if <1.21.6 {
+        clearAndBind(t, clear);
+        drawing = null;
+        //?} else {
+        /*clearRecorded(t, null, 0);
+        *///?}
         rebind();
         return t;
     }
@@ -387,13 +411,13 @@ public final class PicturesModern implements CgHostPictures.Host {
     }
 
     @Override
-    public void draw(Object target, int width, int height, float scale, float clear, CgPictureLighting lighting,
-                     CgPictureRenderer drawer) {
+    public void drawPage(Object target, int width, int height, float clear, CgHostPictures.Cells cells) {
         Minecraft mc = Minecraft.getInstance();
-        RenderTarget t = (RenderTarget) target;
-        Context ctx = new Context(width / scale, height / scale, scale, partialTick());
-        if (twoClears()) immediate(mc, t, clear, null, 0, lighting, drawer, ctx);
-        else recorded(mc, t, null, 0, drawer, ctx);
+        //? if <1.21.5 {
+        immediatePage(mc, (RenderTarget) target, height, clear, cells, partialTick());
+        //?} else {
+        /*scratchPage(mc, (RenderTarget) target, height, clear, cells, partialTick());
+        *///?}
     }
 
     @Override
@@ -401,11 +425,154 @@ public final class PicturesModern implements CgHostPictures.Host {
                           CgPictureLighting lighting, CgPictureRenderer drawer) {
         Minecraft mc = Minecraft.getInstance();
         RenderTarget t = (RenderTarget) target;
-        Context ctx = new Context(width / scale, height / scale, scale, partialTick());
+        Context ctx = context.set(width / scale, height / scale, scale, partialTick());
         int[] kept = clearsRects() ? rects : null;
         if (twoClears()) immediate(mc, t, clear, kept, count, lighting, drawer, ctx);
         else recorded(mc, t, kept, count, drawer, ctx);
     }
+
+    //? if <1.21.5 {
+    // One bind for the page; per cell its rect cleared, the viewport on it, the GUI's projection over its units
+    private void immediatePage(Minecraft mc, RenderTarget page, int height, float clear, CgHostPictures.Cells cells,
+                               float partialTick) {
+        long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.setup");
+        //? if >=1.21.2 {
+        /*drawing = page;
+        *///?}
+        page.bindWrite(false);
+        saveProjection();
+        this.cells = cells;
+        CgTrace.end(zone);
+        try {
+            for (int i = 0; i < cells.count(); i++) {
+                int w = cells.width(i), h = cells.height(i), x = cells.x(i), y = cells.y(i);
+                float scale = cells.scale(i), units = w / scale, unitsHigh = h / scale;
+                zone = CgTrace.begin(CgChannels.PICTURES, "pictures.setup");
+                clearCell(x, height - y - h, w, h, clear);
+                viewport(x, height - y - h, w, h);
+                project(units, unitsHigh);
+                light(cells.lighting(i));
+                answerWindow(w, h, 0, scale, units, unitsHigh);
+                context.set(units, unitsHigh, scale, partialTick);
+                cell = i;
+                CgTrace.end(zone);
+                zone = CgTrace.begin(CgChannels.PICTURES, "pictures.minecraft");
+                try {
+                    drawAtOnce(mc, cellDrawer, context);
+                } finally {
+                    CgTrace.end(zone);
+                    window = false;
+                    unlight();
+                }
+            }
+        } finally {
+            zone = CgTrace.begin(CgChannels.PICTURES, "pictures.restore");
+            this.cells = null;
+            unproject();
+            unbind(mc);
+            CgTrace.end(zone);
+        }
+    }
+
+    // A cell's rect (bottom-up) cleared on the bound page, the binding kept: RenderTarget.clear binds framebuffer 0 after
+    private static void clearCell(int x, int y, int w, int h, float clear) {
+        //? if <1.15 {
+        /*GlStateManager.clearColor(clear, clear, clear, 0f);
+        GlStateManager.clearDepth(1.0);
+        GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        GL11.glScissor(x, y, w, h);
+        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        *///?} elif <1.16.5 {
+        /*GlStateManager._clearColor(clear, clear, clear, 0f);
+        GlStateManager._clearDepth(1.0);
+        GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        GL11.glScissor(x, y, w, h);
+        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        *///?} elif <1.21.2 {
+        GlStateManager._clearColor(clear, clear, clear, 0f);
+        GlStateManager._clearDepth(1.0);
+        RenderSystem.enableScissor(x, y, w, h);
+        GlStateManager._clear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT, Minecraft.ON_OSX);
+        RenderSystem.disableScissor();
+        //?} else {
+        /*GlStateManager._clearColor(clear, clear, clear, 0f);
+        GlStateManager._clearDepth(1.0);
+        RenderSystem.enableScissor(x, y, w, h);
+        GlStateManager._clear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        RenderSystem.disableScissor();
+        *///?}
+    }
+
+    private static void viewport(int x, int y, int w, int h) {
+        //? if <1.15 {
+        /*GlStateManager.viewport(x, y, w, h);
+        *///?} else {
+        GlStateManager._viewport(x, y, w, h);
+        //?}
+    }
+    //?}
+
+    //? if >=1.21.5 {
+    /*// Each cell drawn as a picture of its own into a scratch target its size -- the GUI's window, scissors and
+    // picture-in-picture as vanilla's -- then copied into its rect of the page (the device's rect is bottom-up)
+    private void scratchPage(Minecraft mc, RenderTarget page, int height, float clear, CgHostPictures.Cells cells,
+                             float partialTick) {
+        this.cells = cells;
+        try {
+            for (int i = 0; i < cells.count(); i++) {
+                int w = cells.width(i), h = cells.height(i);
+                float scale = cells.scale(i);
+                RenderTarget scratch = scratch(w, h);
+                context.set(w / scale, h / scale, scale, partialTick);
+                cell = i;
+                //? if <1.21.6 {
+                immediate(mc, scratch, clear, null, 0, cells.lighting(i), cellDrawer, context);
+                //?} else {
+                /^recorded(mc, scratch, null, 0, cellDrawer, context);
+                ^///?}
+                long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.copy");
+                copy.copy(scratch, page, cells.x(i), height - cells.y(i) - h, w, h);
+                CgTrace.end(zone);
+            }
+        } finally {
+            this.cells = null;
+        }
+    }
+
+    // A scratch target w by h: kept from an earlier cell that size, else made; those unused long enough given back
+    private RenderTarget scratch(int w, int h) {
+        long now = ++scratchClock;
+        RenderTarget found = null;
+        for (int i = scratchCount - 1; i >= 0; i--) {
+            RenderTarget t = scratchTargets[i];
+            if (found == null && t.width == w && t.height == h) {
+                found = t;
+                scratchUsed[i] = now;
+            } else if (now - scratchUsed[i] > SCRATCH_KEPT) {
+                t.destroyBuffers();
+                scratchCount--;
+                scratchTargets[i] = scratchTargets[scratchCount];
+                scratchUsed[i] = scratchUsed[scratchCount];
+                scratchTargets[scratchCount] = null;
+            }
+        }
+        if (found != null) return found;
+        if (scratchCount == scratchTargets.length) {
+            RenderTarget[] targets = new RenderTarget[scratchCount * 2];
+            long[] used = new long[scratchCount * 2];
+            System.arraycopy(scratchTargets, 0, targets, 0, scratchCount);
+            System.arraycopy(scratchUsed, 0, used, 0, scratchCount);
+            scratchTargets = targets;
+            scratchUsed = used;
+        }
+        found = make(w, h);
+        scratchTargets[scratchCount] = found;
+        scratchUsed[scratchCount++] = now;
+        return found;
+    }
+    *///?}
 
     // 1.21.5's encoder and 26.3's render passes clear a whole target, never a rect
     @Override
@@ -428,6 +595,7 @@ public final class PicturesModern implements CgHostPictures.Host {
         long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.setup");
         if (rects == null) clearAndBind(t, clear);
         else clearRectsAndBind(t, clear, rects, count);
+        saveProjection();
         project(ctx.width, ctx.height);
         light(lighting);
         answerWindow(Math.round(ctx.width * ctx.scale), Math.round(ctx.height * ctx.scale), 0, ctx.scale, ctx.width,
@@ -542,40 +710,55 @@ public final class PicturesModern implements CgHostPictures.Host {
         *///?}
     }
 
-    // The GUI's own projection, as GameRenderer sets it, over the picture's units instead of the window's
-    private void project(float w, float h) {
+    // The GUI's own projection as the HUD has it, kept once a page for unproject
+    private void saveProjection() {
         //? if <1.15 {
         /*GlStateManager.matrixMode(GL11.GL_PROJECTION);
         GlStateManager.pushMatrix();
+        GlStateManager.matrixMode(GL11.GL_MODELVIEW);
+        GlStateManager.pushMatrix();
+        *///?} elif <1.17 {
+        /*RenderSystem.matrixMode(GL11.GL_PROJECTION);
+        RenderSystem.pushMatrix();
+        RenderSystem.matrixMode(GL11.GL_MODELVIEW);
+        RenderSystem.pushMatrix();
+        *///?} elif <1.19.3 {
+        /*RenderSystem.backupProjectionMatrix();
+        *///?} elif <1.20 {
+        /*savedProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
+        *///?} elif <1.21.2 {
+        savedProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
+        savedSorting = RenderSystem.getVertexSorting();
+        //?} elif <1.21.6 {
+        /*savedProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
+        savedType = RenderSystem.getProjectionType();
+        *///?}
+    }
+
+    // The GUI's own projection, as GameRenderer sets it, over a picture's units instead of the window's
+    private void project(float w, float h) {
+        //? if <1.15 {
+        /*GlStateManager.matrixMode(GL11.GL_PROJECTION);
         GlStateManager.loadIdentity();
         GlStateManager.ortho(0.0, w, h, 0.0, 1000.0, 3000.0);
         GlStateManager.matrixMode(GL11.GL_MODELVIEW);
-        GlStateManager.pushMatrix();
         GlStateManager.loadIdentity();
         GlStateManager.translatef(0f, 0f, -2000f);
         *///?} elif <1.17 {
         /*RenderSystem.matrixMode(GL11.GL_PROJECTION);
-        RenderSystem.pushMatrix();
         RenderSystem.loadIdentity();
         RenderSystem.ortho(0.0, w, h, 0.0, 1000.0, 3000.0);
         RenderSystem.matrixMode(GL11.GL_MODELVIEW);
-        RenderSystem.pushMatrix();
         RenderSystem.loadIdentity();
         RenderSystem.translatef(0f, 0f, -2000f);
         *///?} elif <1.19.3 {
-        /*RenderSystem.backupProjectionMatrix();
-        RenderSystem.setProjectionMatrix(Matrix4f.orthographic(0f, w, 0f, h, 1000f, 3000f));
+        /*RenderSystem.setProjectionMatrix(Matrix4f.orthographic(0f, w, 0f, h, 1000f, 3000f));
         *///?} elif <1.20 {
-        /*savedProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
-        RenderSystem.setProjectionMatrix(guiProjection(savedProjection, w, h));
+        /*RenderSystem.setProjectionMatrix(guiProjection(savedProjection, w, h));
         *///?} elif <1.21.2 {
-        savedProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
-        savedSorting = RenderSystem.getVertexSorting();
         RenderSystem.setProjectionMatrix(guiProjection(savedProjection, w, h), VertexSorting.ORTHOGRAPHIC_Z);
         //?} elif <1.21.6 {
-        /*savedProjection = new Matrix4f(RenderSystem.getProjectionMatrix());
-        savedType = RenderSystem.getProjectionType();
-        RenderSystem.setProjectionMatrix(guiProjection(savedProjection, w, h), ProjectionType.ORTHOGRAPHIC);
+        /*RenderSystem.setProjectionMatrix(guiProjection(savedProjection, w, h), ProjectionType.ORTHOGRAPHIC);
         *///?}
     }
 
@@ -602,9 +785,9 @@ public final class PicturesModern implements CgHostPictures.Host {
     }
 
     //? if >=1.19.3 <1.21.6 {
-    // The GUI's projection as the HUD has it, its depth range kept, over the picture's units
-    private static Matrix4f guiProjection(Matrix4f gui, float w, float h) {
-        return new Matrix4f(gui).m00(2f / w).m11(-2f / h).m30(-1f).m31(1f);
+    // The GUI's projection as the HUD has it, its depth range kept, over the picture's units: one matrix, set per cell
+    private Matrix4f guiProjection(Matrix4f gui, float w, float h) {
+        return cellProjection.set(gui).m00(2f / w).m11(-2f / h).m30(-1f).m31(1f);
     }
     //?}
 
@@ -834,16 +1017,18 @@ public final class PicturesModern implements CgHostPictures.Host {
         //?}
     }
 
-    /** What a renderer draws with: the era's GUI objects, which differ only in which are set. */
+    /** What a renderer draws with: the era's GUI objects, which differ only in which are set. One, set per draw. */
     private static final class Context implements CgHostDrawContext {
-        final float width, height, scale, partialTick;
+        float width, height, scale, partialTick;
         @Nullable Object gui, pose, buffers;
 
-        Context(float width, float height, float scale, float partialTick) {
+        Context set(float width, float height, float scale, float partialTick) {
             this.width = width;
             this.height = height;
             this.scale = scale;
             this.partialTick = partialTick;
+            gui = pose = buffers = null;
+            return this;
         }
 
         @Override public Object gui() { return gui; }

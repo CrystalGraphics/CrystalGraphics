@@ -7,6 +7,7 @@ import java.util.Set;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.canvas.CgCanvas;
+import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.mc.render.custom.CgPictureRenderer;
@@ -15,9 +16,9 @@ import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.render.target.CgRenderTarget;
 
 /**
- * The host of {@link CgHostPictures} where no Minecraft runs (the GL debug harness, a test): each picture a
- * {@link CgRenderTarget} the engine's own canvas draws into, so everything above the draw point (sizes, refresh,
- * budget, failure, the composite) runs as in a game.
+ * The host of {@link CgHostPictures} where no Minecraft runs (the GL debug harness, a test): each page a
+ * {@link CgRenderTarget} the engine's own canvas draws its cells into, so everything above the draw point (pages, sizes,
+ * refresh, budget, failure, the composite) runs as in a game.
  *
  * <pre>{@code
  * CgPlatform.provide(CgHostPictures.HOST, new CgStandInPictures());
@@ -37,6 +38,7 @@ import com.crystalgraphics.render.target.CgRenderTarget;
 public final class CgStandInPictures implements CgHostPictures.Host {
 
     private final CgCanvas canvas = new CgCanvas();
+    private final CellContext context = new CellContext(canvas);
     /** Targets drawn into once: cleared then, kept by a cell draw after. */
     private final Set<Object> started = Collections.newSetFromMap(new IdentityHashMap<>());
     private final boolean twoClears;
@@ -71,8 +73,9 @@ public final class CgStandInPictures implements CgHostPictures.Host {
     }
 
     @Override
-    public Object createTarget(int width, int height) {
-        return CgRenderTarget.create("stand_in_picture", width, height, CgRenderTarget.Format.RGBA8).clearColor(0f, 0f, 0f, 0f);
+    public Object createTarget(int width, int height, float clear) {
+        return CgRenderTarget.create("stand_in_picture", width, height, CgRenderTarget.Format.RGBA8)
+                .clearColor(clear, clear, clear, 0f);
     }
 
     @Override
@@ -87,12 +90,37 @@ public final class CgStandInPictures implements CgHostPictures.Host {
     }
 
     @Override
-    public void draw(Object target, int width, int height, float scale, float clear, CgPictureLighting lighting,
-                     CgPictureRenderer drawer) {
+    public void drawPage(Object target, int width, int height, float clear, CgHostPictures.Cells cells) {
         CgRenderTarget t = ((CgRenderTarget) target).clearColor(clear, clear, clear, 0f);
-        started.add(t);
-        drawInto(t.beginDraw(false), width, height, scale, drawer);
+        try (CgExecutor.Into ignored = CgExecutor.into(started.add(t) ? t.beginDraw(false) : t.beginDrawKept(false))) {
+            canvas.beginNow(width, height);
+            try {
+                for (int i = 0; i < cells.count(); i++) {
+                    float scale = cells.scale(i);
+                    context.set(cells.width(i) / scale, cells.height(i) / scale, scale);
+                    canvas.save().clip(cells.x(i), cells.y(i), cells.width(i), cells.height(i));
+                    clearCell(cells.x(i), cells.y(i), cells.width(i), cells.height(i), clear);
+                    canvas.translate(cells.x(i), cells.y(i)).scale(scale, scale);
+                    try {
+                        cells.draw(i, context);
+                    } finally {
+                        canvas.restore();
+                    }
+                }
+            } finally {
+                canvas.end();
+            }
+        }
         t.drawn();
+    }
+
+    // A cell back to (clear, clear, clear, 0) on a kept page. The canvas has no clear: a MASK by alpha 0 empties it, and
+    // over white an opaque white added then an opaque black taken away leaves white at alpha 0
+    private void clearCell(int x, int y, int w, int h, float clear) {
+        canvas.box(x, y, w, h).fill(0x00000000).blend(CgBlendMode.MASK).draw();
+        if (clear <= 0f) return;
+        canvas.box(x, y, w, h).fill(0xFFFFFFFF).blend(CgBlendMode.ADDITIVE).draw();
+        canvas.box(x, y, w, h).fill(0xFF000000).blend(CgBlendMode.SUBTRACT).draw();
     }
 
     /**
@@ -124,6 +152,30 @@ public final class CgStandInPictures implements CgHostPictures.Host {
     private record Context(CgCanvas gui, float width, float height, float scale) implements CgHostDrawContext {
         @Override public Object poseStack() { return null; }
         @Override public Object buffers() { return null; }
+        @Override public float partialTick() { return 0f; }
+    }
+
+    /** The canvas as the GUI object for one cell after another: one, reset per cell. */
+    private static final class CellContext implements CgHostDrawContext {
+        private final CgCanvas canvas;
+        private float width, height, scale;
+
+        CellContext(CgCanvas canvas) {
+            this.canvas = canvas;
+        }
+
+        void set(float width, float height, float scale) {
+            this.width = width;
+            this.height = height;
+            this.scale = scale;
+        }
+
+        @Override public Object gui() { return canvas; }
+        @Override public Object poseStack() { return null; }
+        @Override public Object buffers() { return null; }
+        @Override public float width() { return width; }
+        @Override public float height() { return height; }
+        @Override public float scale() { return scale; }
         @Override public float partialTick() { return 0f; }
     }
 }

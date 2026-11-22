@@ -19,20 +19,26 @@ import java.nio.IntBuffer;
 import javax.annotation.Nullable;
 
 /**
- * The 1.7.10 host of {@link CgHostPictures}: a {@code Framebuffer} of Minecraft's own per picture, bound, with the
- * GUI's projection over the picture's units in raw GL, as 1.7.10's GUI sets it (it keeps no state cache); the main
- * framebuffer bound back. Its GUI writes alpha raw, so pictures draw twice, over black and white.
+ * The 1.7.10 host of {@link CgHostPictures}: a {@code Framebuffer} of Minecraft's own per page, bound once; per cell its
+ * rect cleared and the viewport on it, with the GUI's projection over the cell's units in raw GL, as 1.7.10's GUI sets
+ * it (it keeps no state cache); the main framebuffer bound back. Its GUI writes alpha raw, so pages draw twice, over
+ * black and white.
  */
 final class Pictures1710 implements CgHostPictures.Host {
 
     /** The frame's partial tick, as the GUI event that fires the draw point carries it. */
     static float partialTick;
 
-    // What was bound as the batch began, put back after each picture
+    /** What a cell's draw may change and the next must not see. */
+    private static final int CELL_STATE = GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_CURRENT_BIT
+            | GL11.GL_LIGHTING_BIT;
+
+    // What was bound as the batch began, put back after each page
     private static final IntBuffer VIEWPORT = BufferUtils.createIntBuffer(16);
     private int boundBefore = -1;
     private final int[] viewportBefore = new int[4];
     private boolean checking;
+    private final Context context = new Context();
 
     @Override
     @Nullable
@@ -51,8 +57,10 @@ final class Pictures1710 implements CgHostPictures.Host {
     }
 
     @Override
-    public Object createTarget(int width, int height) {
+    public Object createTarget(int width, int height, float clear) {
         Framebuffer f = new Framebuffer(width, height, true);
+        f.setFramebufferColor(clear, clear, clear, 0f);
+        f.framebufferClear();
         rebind();
         return f;
     }
@@ -85,39 +93,79 @@ final class Pictures1710 implements CgHostPictures.Host {
         return now == boundBefore ? null : "the draw framebuffer was " + boundBefore + ", now " + now;
     }
 
+    // Each cell starts from the same state, the hotbar's for its slots: otherwise a cell starts from what the one before
+    // it left, and the white pass's from the black's, and the matte between them is wrong where they differ
     @Override
-    public void draw(Object target, int width, int height, float scale, float clear, CgPictureLighting lighting,
-                     CgPictureRenderer drawer) {
-        draw((Framebuffer) target, width, height, scale, clear, null, 0, drawer);
+    public void drawPage(Object target, int width, int height, float clear, CgHostPictures.Cells cells) {
+        Framebuffer f = (Framebuffer) target;
+        f.bindFramebuffer(false);
+        GL11.glClearColor(clear, clear, clear, 0f);
+        GL11.glClearDepth(1.0);
+        GL11.glMatrixMode(GL11.GL_PROJECTION);
+        GL11.glPushMatrix();
+        GL11.glMatrixMode(GL11.GL_MODELVIEW);
+        GL11.glPushMatrix();
+        GL11.glPushAttrib(CELL_STATE);
+        try {
+            for (int i = 0; i < cells.count(); i++) {
+                int w = cells.width(i), h = cells.height(i), x = cells.x(i), y = height - cells.y(i) - h;
+                float scale = cells.scale(i), units = w / scale, unitsHigh = h / scale;
+                GL11.glEnable(GL11.GL_SCISSOR_TEST);
+                GL11.glScissor(x, y, w, h);
+                GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+                GL11.glDisable(GL11.GL_SCISSOR_TEST);
+                GL11.glViewport(x, y, w, h);
+                // The GUI's own projection and model-view, as setupOverlayRendering sets them, over the cell's units
+                GL11.glMatrixMode(GL11.GL_PROJECTION);
+                GL11.glLoadIdentity();
+                GL11.glOrtho(0.0, units, unitsHigh, 0.0, 1000.0, 3000.0);
+                GL11.glMatrixMode(GL11.GL_MODELVIEW);
+                GL11.glLoadIdentity();
+                GL11.glTranslatef(0f, 0f, -2000f);
+                GL11.glColor4f(1f, 1f, 1f, 1f);
+                GL11.glEnable(GL11.GL_BLEND);
+                OpenGlHelper.glBlendFunc(770, 771, 1, 0);
+                GL11.glEnable(GL12.GL_RESCALE_NORMAL);
+                RenderHelper.enableGUIStandardItemLighting();
+                context.set(units, unitsHigh, scale, partialTick);
+                try {
+                    cells.draw(i, context);
+                } finally {
+                    RenderHelper.disableStandardItemLighting();
+                    GL11.glPopAttrib();
+                    GL11.glPushAttrib(CELL_STATE);
+                }
+            }
+        } finally {
+            GL11.glPopAttrib();
+            GL11.glMatrixMode(GL11.GL_PROJECTION);
+            GL11.glPopMatrix();
+            GL11.glMatrixMode(GL11.GL_MODELVIEW);
+            GL11.glPopMatrix();
+            rebind();
+        }
     }
 
     @Override
     public void drawCells(Object target, int width, int height, float scale, float clear, int[] rects, int count,
                           CgPictureLighting lighting, CgPictureRenderer drawer) {
-        draw((Framebuffer) target, width, height, scale, clear, rects, count, drawer);
+        drawCells((Framebuffer) target, width, height, scale, clear, rects, count, drawer);
     }
 
-    // The whole framebuffer cleared, or each rect (pixels from the top-left; GL's scissor is bottom-up), the rest kept
-    private void draw(Framebuffer f, int width, int height, float scale, float clear, @Nullable int[] rects, int count,
-                      CgPictureRenderer drawer) {
-        Minecraft mc = Minecraft.getMinecraft();
+    // Each rect cleared (pixels from the top-left; GL's scissor is bottom-up), the rest kept, one drawer over the whole
+    private void drawCells(Framebuffer f, int width, int height, float scale, float clear, int[] rects, int count,
+                           CgPictureRenderer drawer) {
         float w = width / scale, h = height / scale;
-        if (rects == null) {
-            f.setFramebufferColor(clear, clear, clear, 0f);
-            f.framebufferClear();
-            f.bindFramebuffer(true);
-        } else {
-            f.bindFramebuffer(true);
-            GL11.glClearColor(clear, clear, clear, 0f);
-            GL11.glClearDepth(1.0);
-            GL11.glEnable(GL11.GL_SCISSOR_TEST);
-            for (int i = 0; i < count; i++) {
-                int k = i * 4;
-                GL11.glScissor(rects[k], height - rects[k + 1] - rects[k + 3], rects[k + 2], rects[k + 3]);
-                GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
-            }
-            GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        f.bindFramebuffer(true);
+        GL11.glClearColor(clear, clear, clear, 0f);
+        GL11.glClearDepth(1.0);
+        GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        for (int i = 0; i < count; i++) {
+            int k = i * 4;
+            GL11.glScissor(rects[k], height - rects[k + 1] - rects[k + 3], rects[k + 2], rects[k + 3]);
+            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
         }
+        GL11.glDisable(GL11.GL_SCISSOR_TEST);
         // The GUI's own projection and model-view, as setupOverlayRendering sets them, over the picture's units
         GL11.glMatrixMode(GL11.GL_PROJECTION);
         GL11.glPushMatrix();
@@ -127,16 +175,16 @@ final class Pictures1710 implements CgHostPictures.Host {
         GL11.glPushMatrix();
         GL11.glLoadIdentity();
         GL11.glTranslatef(0f, 0f, -2000f);
-        // Each clear's draw starts from the same state, the hotbar's for its slots: otherwise the white draw starts from
-        // what the black one left, and the matte between them is wrong where they differ. 1.7.10 caches no GL state
-        GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_CURRENT_BIT | GL11.GL_LIGHTING_BIT);
+        // Each clear's draw starts from the same state (see drawPage). 1.7.10 caches no GL state
+        GL11.glPushAttrib(CELL_STATE);
         GL11.glColor4f(1f, 1f, 1f, 1f);
         GL11.glEnable(GL11.GL_BLEND);
         OpenGlHelper.glBlendFunc(770, 771, 1, 0);
         GL11.glEnable(GL12.GL_RESCALE_NORMAL);
         RenderHelper.enableGUIStandardItemLighting();
         try {
-            drawer.draw(new Context(w, h, scale, partialTick));
+            context.set(w, h, scale, partialTick);
+            drawer.draw(context);
         } finally {
             RenderHelper.disableStandardItemLighting();
             GL11.glPopAttrib();
@@ -160,11 +208,11 @@ final class Pictures1710 implements CgHostPictures.Host {
         }
     }
 
-    /** 1.7.10's GUI code draws in raw GL at once: no GUI object to hand over. */
+    /** 1.7.10's GUI code draws in raw GL at once: no GUI object to hand over. One, set per cell. */
     private static final class Context implements CgHostDrawContext {
-        private final float width, height, scale, partialTick;
+        private float width, height, scale, partialTick;
 
-        Context(float width, float height, float scale, float partialTick) {
+        void set(float width, float height, float scale, float partialTick) {
             this.width = width;
             this.height = height;
             this.scale = scale;

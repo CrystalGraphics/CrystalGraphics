@@ -19,17 +19,19 @@ import java.nio.IntBuffer;
 import javax.annotation.Nullable;
 
 /**
- * The legacy host of {@link CgHostPictures} (Forge 1.8.9 - 1.12.2): a {@code Framebuffer} of Minecraft's own per
- * picture, bound, with the GUI's projection over the picture's units, through {@code GlStateManager} so its cache stays
- * true; the main framebuffer bound back. Legacy GUI code writes alpha raw, so pictures draw twice, over black and white.
+ * The legacy host of {@link CgHostPictures} (Forge 1.8.9 - 1.12.2): a {@code Framebuffer} of Minecraft's own per page,
+ * bound once; per cell its rect cleared and the viewport on it, with the GUI's projection over the cell's units, through
+ * {@code GlStateManager} so its cache stays true; the main framebuffer bound back. Legacy GUI code writes alpha raw, so
+ * pages draw twice, over black and white.
  */
 final class PicturesLegacy implements CgHostPictures.Host {
 
-    // What was bound as the batch began, put back after each picture
+    // What was bound as the batch began, put back after each page
     private static final IntBuffer VIEWPORT = BufferUtils.createIntBuffer(16);
     private int boundBefore = -1;
     private final int[] viewportBefore = new int[4];
     private boolean checking;
+    private final Context context = new Context();
 
     @Override
     @Nullable
@@ -48,8 +50,10 @@ final class PicturesLegacy implements CgHostPictures.Host {
     }
 
     @Override
-    public Object createTarget(int width, int height) {
+    public Object createTarget(int width, int height, float clear) {
         Framebuffer f = new Framebuffer(width, height, true);
+        f.setFramebufferColor(clear, clear, clear, 0f);
+        f.framebufferClear();
         rebind();
         return f;
     }
@@ -83,68 +87,93 @@ final class PicturesLegacy implements CgHostPictures.Host {
     }
 
     @Override
-    public void draw(Object target, int width, int height, float scale, float clear, CgPictureLighting lighting,
-                     CgPictureRenderer drawer) {
-        draw((Framebuffer) target, width, height, scale, clear, null, 0, drawer);
+    public void drawPage(Object target, int width, int height, float clear, CgHostPictures.Cells cells) {
+        float partialTick = partialTick(Minecraft.getMinecraft());
+        ((Framebuffer) target).bindFramebuffer(false);
+        GlStateManager.clearColor(clear, clear, clear, 0f);
+        GlStateManager.clearDepth(1.0);
+        pushProjection();
+        try {
+            for (int i = 0; i < cells.count(); i++) {
+                int w = cells.width(i), h = cells.height(i), x = cells.x(i), y = height - cells.y(i) - h;
+                float scale = cells.scale(i);
+                GL11.glEnable(GL11.GL_SCISSOR_TEST);
+                GL11.glScissor(x, y, w, h);
+                GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+                GL11.glDisable(GL11.GL_SCISSOR_TEST);
+                GlStateManager.viewport(x, y, w, h);
+                project(w / scale, h / scale);
+                context.set(w / scale, h / scale, scale, partialTick);
+                try {
+                    cells.draw(i, context);
+                } finally {
+                    RenderHelper.disableStandardItemLighting();
+                }
+            }
+        } finally {
+            popProjection();
+            rebind();
+        }
     }
 
     @Override
     public void drawCells(Object target, int width, int height, float scale, float clear, int[] rects, int count,
                           CgPictureLighting lighting, CgPictureRenderer drawer) {
-        draw((Framebuffer) target, width, height, scale, clear, rects, count, drawer);
+        ((Framebuffer) target).bindFramebuffer(true);
+        GlStateManager.clearColor(clear, clear, clear, 0f);
+        GlStateManager.clearDepth(1.0);
+        GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        for (int i = 0; i < count; i++) {
+            int k = i * 4;
+            GL11.glScissor(rects[k], height - rects[k + 1] - rects[k + 3], rects[k + 2], rects[k + 3]);
+            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        }
+        GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        pushProjection();
+        try {
+            project(width / scale, height / scale);
+            context.set(width / scale, height / scale, scale, partialTick(Minecraft.getMinecraft()));
+            drawer.draw(context);
+        } finally {
+            RenderHelper.disableStandardItemLighting();
+            popProjection();
+            rebind();
+        }
     }
 
-    // The whole framebuffer cleared, or each rect (pixels from the top-left; GL's scissor is bottom-up), the rest kept
-    private void draw(Framebuffer f, int width, int height, float scale, float clear, @Nullable int[] rects, int count,
-                      CgPictureRenderer drawer) {
-        Minecraft mc = Minecraft.getMinecraft();
-        float w = width / scale, h = height / scale;
-        if (rects == null) {
-            f.setFramebufferColor(clear, clear, clear, 0f);
-            f.framebufferClear();
-            f.bindFramebuffer(true);
-        } else {
-            f.bindFramebuffer(true);
-            GlStateManager.clearColor(clear, clear, clear, 0f);
-            GlStateManager.clearDepth(1.0);
-            GL11.glEnable(GL11.GL_SCISSOR_TEST);
-            for (int i = 0; i < count; i++) {
-                int k = i * 4;
-                GL11.glScissor(rects[k], height - rects[k + 1] - rects[k + 3], rects[k + 2], rects[k + 3]);
-                GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
-            }
-            GL11.glDisable(GL11.GL_SCISSOR_TEST);
-        }
-        // The GUI's own projection and model-view, as setupOverlayRendering sets them, over the picture's units
+    private static void pushProjection() {
         GlStateManager.matrixMode(GL11.GL_PROJECTION);
         GlStateManager.pushMatrix();
+        GlStateManager.matrixMode(GL11.GL_MODELVIEW);
+        GlStateManager.pushMatrix();
+    }
+
+    private static void popProjection() {
+        GlStateManager.matrixMode(GL11.GL_PROJECTION);
+        GlStateManager.popMatrix();
+        GlStateManager.matrixMode(GL11.GL_MODELVIEW);
+        GlStateManager.popMatrix();
+    }
+
+    // The GUI's own projection and model-view, as setupOverlayRendering sets them, over the units; a slot's light and
+    // state, whatever the last cell's code left: a tooltip mod leaving depth off draws a glint over the whole cell and a
+    // shield's back over its front
+    private static void project(float w, float h) {
+        GlStateManager.matrixMode(GL11.GL_PROJECTION);
         GlStateManager.loadIdentity();
         GlStateManager.ortho(0.0, w, h, 0.0, 1000.0, 3000.0);
         GlStateManager.matrixMode(GL11.GL_MODELVIEW);
-        GlStateManager.pushMatrix();
         GlStateManager.loadIdentity();
         GlStateManager.translate(0f, 0f, -2000f);
         RenderHelper.enableGUIStandardItemLighting();
-        // A slot's state, whatever the last picture's code left: a tooltip mod leaving depth off draws a glint over the
-        // whole cell and a shield's back over its front
         GlStateManager.enableDepth();
         GlStateManager.depthFunc(GL11.GL_LEQUAL);
         GlStateManager.depthMask(true);
         GlStateManager.enableAlpha();
         GlStateManager.color(1f, 1f, 1f, 1f);
-        try {
-            drawer.draw(new Context(w, h, scale, partialTick(mc)));
-        } finally {
-            RenderHelper.disableStandardItemLighting();
-            GlStateManager.matrixMode(GL11.GL_PROJECTION);
-            GlStateManager.popMatrix();
-            GlStateManager.matrixMode(GL11.GL_MODELVIEW);
-            GlStateManager.popMatrix();
-            rebind();
-        }
     }
 
-    // What the batch found bound, back: after a picture, and after making or freeing a target, which binds 0
+    // What the batch found bound, back: after a page, and after making or freeing a target, which binds 0
     private void rebind() {
         if (boundBefore < 0) return;
         Framebuffer main = Minecraft.getMinecraft().getFramebuffer();
@@ -164,11 +193,11 @@ final class PicturesLegacy implements CgHostPictures.Host {
         //?}
     }
 
-    /** Legacy GUI code draws through {@code GlStateManager} at once: no GUI object to hand over. */
+    /** Legacy GUI code draws through {@code GlStateManager} at once: no GUI object to hand over. One, set per cell. */
     private static final class Context implements CgHostDrawContext {
-        private final float width, height, scale, partialTick;
+        private float width, height, scale, partialTick;
 
-        Context(float width, float height, float scale, float partialTick) {
+        void set(float width, float height, float scale, float partialTick) {
             this.width = width;
             this.height = height;
             this.scale = scale;

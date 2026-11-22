@@ -2,6 +2,7 @@ package com.crystalgraphics.probe;
 
 import com.crystalgraphics.api.canvas.CgCanvas;
 import com.crystalgraphics.api.canvas.CgPicture;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.gauntlet.CgGauntletCapture;
 import com.crystalgraphics.gauntlet.CgGauntletController;
@@ -915,7 +916,7 @@ public final class CgPicturesProbe {
         return out;
     }
 
-    /** The picture's own texture, read back: how many of its pixels Minecraft drew on. */
+    /** The picture's own region of its page, read back: how many of its pixels Minecraft drew on. */
     private static void readPicture(float s) {
         int w = Math.round(W * s), h = Math.round(H * s);
         CgPicture.Image image = PICTURE.image(w, h, s);
@@ -923,7 +924,10 @@ public final class CgPicturesProbe {
             pictureRead = "no picture yet at " + w + " x " + h;
             return;
         }
-        CgReadback.texture(image.texture(), 0, 0, 0, w, h, new CgReadback.Sink() {
+        CgTexture page = image.texture();
+        int x = Math.round(Math.min(image.u0(), image.u1()) * page.getWidth());
+        int y = Math.round(Math.min(image.v0(), image.v1()) * page.getHeight());
+        CgReadback.texture(page, 0, x, y, w, h, new CgReadback.Sink() {
             @Override
             public void accept(ByteBuffer px) {
                 int drawn = 0;
@@ -1120,16 +1124,22 @@ public final class CgPicturesProbe {
             slack.add(own);
             int[] d = diff(image, r[0], r[1], r[2], r[3], s, false, List.of(own));
             test.stated("pictures.parity." + prefix + cell.name(), d[0] == 0, d[0] + " of " + d[2] + " pixels differ by more than "
-                    + cell.slack() + "; max " + d[1] + (d[1] > 1 && d[0] == 0 ? " (" + cell.slackReason() + ")" : ""));
+                    + cell.slack() + "; max " + d[1] + (d[1] > 1 && d[0] == 0 ? " (" + cell.slackReason() + ")" : "") + where(d));
         }
         int[] whole = diff(image, 0, 0, W, H, s, false, slack);
         test.stated(prefix.isEmpty() ? "pictures.parity" : "pictures.parity." + prefix + "panel", whole[0] == 0,
                 "the whole panel: " + whole[0] + " of " + whole[2]
                 + " pixels differ by more than their cell allows (1; " + GLINT_SLACK + " glinted; " + LAYER_SLACK
-                + " under a tooltip's layers); max " + whole[1] + "; scale " + s);
+                + " under a tooltip's layers); max " + whole[1] + "; scale " + s + where(whole));
         if (!prefix.isEmpty()) return;
         int[] blank = diff(image, 0, 0, W, H, s, true, List.of());
         test.stated("pictures.drawn", blank[0] > 0, blank[0] + " of the reference panel's pixels are not the background");
+    }
+
+    // Where a diff's failing pixels lie in its rect: an edge row or column is sampling, a band is placement
+    private static String where(int[] d) {
+        return d[0] == 0 ? "" : "; differing within x " + d[3] + "-" + d[5] + ", y " + d[4] + "-" + d[6] + " of " + d[7] + " x "
+                + d[8];
     }
 
     /** Pixels of the missing texture's magenta where the failing picture shows. */
@@ -1145,14 +1155,15 @@ public final class CgPicturesProbe {
     }
 
     /**
-     * {pixels differing by more than allowed, the largest difference, pixels compared} of a rect in GUI units: 1 allowed,
+     * {pixels differing by more than allowed, the largest difference, pixels compared, then the differing pixels' box in
+     * the rect -- left, top, right, bottom -- and the rect's pixels across and down} of a rect in GUI units: 1 allowed,
      * or the most of {@code slack}'s rects ({x, y, w, h, allowed}) a pixel lies in.
      */
     private static int[] diff(BufferedImage image, int gx, int gy, int gw, int gh, float s, boolean againstBackground,
                               List<int[]> slack) {
         int x0 = Math.round(Math.max(0, gx) * s), y0 = Math.round(Math.max(0, gy) * s);
         int x1 = Math.round(Math.min(W, gx + gw) * s), y1 = Math.round(Math.min(H, gy + gh) * s);
-        int over = 0, max = 0, n = 0;
+        int over = 0, max = 0, n = 0, left = Integer.MAX_VALUE, top = Integer.MAX_VALUE, right = -1, bottom = -1;
         // Vanilla's crosshair, 15 units square at the screen's centre, falls on a panel in a small window: not compared
         int cx = image.getWidth() / 2, cy = image.getHeight() / 2, ch = Math.round(8 * s);
         for (int y = y0; y < y1; y++) {
@@ -1167,11 +1178,17 @@ public final class CgPicturesProbe {
                 int d = Math.max(Math.abs((a >> 16 & 255) - (b >> 16 & 255)),
                         Math.max(Math.abs((a >> 8 & 255) - (b >> 8 & 255)), Math.abs((a & 255) - (b & 255))));
                 n++;
-                if (d > allowed(slack, x / s, y / s)) over++;
+                if (d > allowed(slack, x / s, y / s)) {
+                    over++;
+                    left = Math.min(left, x - x0);
+                    top = Math.min(top, y - y0);
+                    right = Math.max(right, x - x0);
+                    bottom = Math.max(bottom, y - y0);
+                }
                 max = Math.max(max, d);
             }
         }
-        return new int[]{over, max, n};
+        return new int[]{over, max, n, left, top, right, bottom, x1 - x0, y1 - y0};
     }
 
     private static int allowed(List<int[]> rects, float gx, float gy) {

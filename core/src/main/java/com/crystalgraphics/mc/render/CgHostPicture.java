@@ -5,7 +5,6 @@ import java.util.Objects;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.canvas.CgPicture;
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.mc.render.custom.CgPictureRenderer;
 import com.crystalgraphics.render.CgFrameClock;
@@ -175,6 +174,16 @@ public abstract class CgHostPicture implements CgPicture {
         };
     }
 
+    /** Its padded cell's pixels. */
+    static int cellWidth(Size s) {
+        return s.width + 2 * s.pad;
+    }
+
+    /** @see #cellWidth */
+    static int cellHeight(Size s) {
+        return s.height + 2 * s.pad;
+    }
+
     /** Size {@code s} was drawn at {@code frame}, showing {@code image}. Guarded by this. */
     void drawn(Size s, long frame, CgPicture.Image image) {
         s.drawnFrame = frame;
@@ -210,7 +219,7 @@ public abstract class CgHostPicture implements CgPicture {
             CgHostPictures.release(sizes[oldest]);
             sizes[oldest] = sizes[--sizeCount];
         }
-        Size s = new Size(w, h, scale, Math.round(bleed() * scale));
+        Size s = new Size(this, w, h, scale, Math.round(bleed() * scale));
         sizes[sizeCount++] = s;
         return s;
     }
@@ -230,19 +239,25 @@ public abstract class CgHostPicture implements CgPicture {
         return getClass().getSimpleName() + "[" + name + ", " + state + "]";
     }
 
-    /** One size it is shown at: the host's targets, and what they show. */
+    /** One size it is shown at: its cell on a page of the draw point's, and what the cell shows. */
     static final class Size {
+        final CgHostPicture owner;
         /** The rect's pixels; {@code pad} more on each side for the bleed. */
         final int width, height, pad;
         final float scale;
         long shownFrame = Long.MIN_VALUE, drawnFrame = Long.MIN_VALUE, drawnStamp, drawnInvalidated = -1L;
-        /** The host's targets: over black, and over white where the host's GUI writes alpha raw. */
-        @Nullable Object target, white;
-        /** What the graph reads of each, asked of the host once. */
-        @Nullable CgTexture targetTexture, whiteTexture;
+        /** Render thread: the page it is placed on (null until its first draw), its cell's top-left there in pixels. */
+        @Nullable CgHostPictures.Page page;
+        int x, y;
+        /** Render thread: its page repacked it elsewhere, so it draws this batch whether due or not. */
+        boolean moved;
+        /** Render thread: the page and place {@link #image} was made for, so a redraw in place keeps it. */
+        @Nullable CgHostPictures.Page imagePage;
+        int imageX, imageY;
         @Nullable volatile CgPicture.Image image;
 
-        Size(int width, int height, float scale, int pad) {
+        Size(CgHostPicture owner, int width, int height, float scale, int pad) {
+            this.owner = owner;
             this.width = width;
             this.height = height;
             this.scale = scale;

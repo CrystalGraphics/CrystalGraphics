@@ -197,34 +197,43 @@ own state. A host calls it; a mod never does.
 
 - First draws of a frame stop at `-Dcrystalgraphics.pictures.firstDrawMs` (2 ms); the rest land next frame. Redraws are
   not budgeted: vanilla redraws its own every frame.
-- `CgHostPictures.stats()` is the last batch's numbers (held, drawn, first draws, deferred, failed, CPU time); the same go
-  to the trace on `crystalgraphics.pictures`.
+- `CgHostPictures.stats()` is the last batch's numbers (held, drawn, first draws, deferred, failed, CPU time), published
+  while something reads them; the same go to the trace on `crystalgraphics.pictures`.
 - A dev run refuses a draw point inside a device section, by name (`-Dcrystalgraphics.pictures.check=throw|log|off`); in
   a checked run the host also reports state a batch left changed. `-Dcrystalgraphics.host.verify=true` adds a GL
   census entry `pictures` on modern GL.
 
 ## 7. Hosts
 
-Each era fills `CgHostPictures.HOST`: a target of Minecraft's own per picture, and its GUI pointed at it.
+Pictures are cells on shared **pages**: each size a rect packed on a page (`MaxRectsPacker`, as the font atlas packs
+glyphs), 2048 pixels square where the host allows (a larger cell gets a page of its own). Each page is **one host
+call**, `Host.drawPage`, with every cell due on it: a framebuffer switch costs a GL driver its next draw, so a target
+per picture cost more than Minecraft's draw itself (`plan/crystalgraphics/renderer/steps/NR11.md`). A size given back
+leaves its rect; one that does not fit repacks its page, and every cell that moved draws again in that batch.
 
-| Era | Target | Redirect | Alpha |
+Each era fills `CgHostPictures.HOST`: a target of Minecraft's own per page, and its GUI pointed at each cell.
+
+| Era | Page | A cell | Alpha |
 |---|---|---|---|
-| 1.7.10, legacy 1.8.9 - 1.12.2 | `Framebuffer` | bound; the GUI's matrices in GL or `GlStateManager` | two clears |
-| 1.13.2 - 1.21.1 | `RenderTarget`, `TextureTarget` | bound (`bindWrite`); the GUI's projection over the picture's units | two clears |
-| 1.21.2 - 1.21.4 | `TextureTarget` | bound, and answered for the main target (`GuiTargetHook`): a render type's `MAIN_TARGET` binds it | two clears |
-| 1.21.5 | `TextureTarget` | answered for the main target (`GuiTargetHook`) | two clears |
-| 1.21.6 on | `TextureTarget` | a `GuiRenderer` of its own, the main target and window answered for it | one draw |
+| 1.7.10, legacy 1.8.9 - 1.12.2 | `Framebuffer`, bound once | its rect cleared, the viewport on it, the GUI's matrices in GL or `GlStateManager` | two clears |
+| 1.13.2 - 1.21.1 | `RenderTarget`, `TextureTarget`, bound once (`bindWrite`) | its rect cleared, the viewport on it, the GUI's projection over its units | two clears |
+| 1.21.2 - 1.21.4 | `TextureTarget`, bound once, and answered for the main target (`GuiTargetHook`): a render type's `MAIN_TARGET` binds it | as 1.13.2 | two clears |
+| 1.21.5 | `TextureTarget` | drawn into a scratch target its size, answered for the main target, then copied into the page (`copyTextureToTexture`) | two clears |
+| 1.21.6 on | `TextureTarget` | a `GuiRenderer` of its own into a scratch target its size, the main target and window answered for it, then copied into the page | one draw |
 
-While a picture draws, Minecraft's window is the picture's: `Window`'s size, GUI scale and scaled size answer the
-picture's pixels, scale and units (`GuiWindowHook`; from 26.1 the window render state). A scissor, a tooltip's screen
-clamp or a mod's own window maths therefore land in the picture. Forge 1.13.2 loads no Mixin, so there the window
-stays the game's. After each picture the host binds back the framebuffer and viewport that were bound before.
+While a cell draws, Minecraft's window is the cell's: `Window`'s size, GUI scale and scaled size answer the cell's
+pixels, scale and units (`GuiWindowHook`; from 26.1 the window render state). A scissor, a tooltip's screen clamp or a
+mod's own window maths therefore land in the cell. Forge 1.13.2 loads no Mixin, so there the window stays the game's.
+After each page the host binds back the framebuffer and viewport that were bound before. From 1.21.5 a cell cannot be
+reached by viewport -- the encoder binds a target whole, and `GuiRenderer` opens its own passes -- hence the scratch
+target and the copy.
 
 "Two clears": where the GUI writes alpha raw, each picture draws over black and over white, and a ui material
 (`shaders/ui/picture_matte.shader`) takes alpha from the two as the canvas composites it (`CgPicture.Image.matted`).
 
-Where no Minecraft runs, `CgStandInPictures` draws each picture with the engine's own canvas into a `CgRenderTarget`,
-handing the canvas as `ctx.gui()`: the harness runs everything above the draw point as in game.
+Where no Minecraft runs, `CgStandInPictures` draws each page with the engine's own canvas into a `CgRenderTarget`,
+each cell clipped and translated, handing the canvas as `ctx.gui()`: the harness runs everything above the draw point
+as in game; it keeps a page, emptying a cell with the canvas's own blends before drawing it.
 
 A picture may draw past the rect it is shown in: an image's `outset` (each side a fraction of the rect) widens the quad
 and what a kept layer damages. A `CgHostPicture` kind asks for it with `bleed()`, units its targets hold around the

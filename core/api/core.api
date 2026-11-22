@@ -2726,6 +2726,10 @@ com/crystalgraphics/api/canvas/CgPicture$Image
   field public,static,final MISSING Lcom/crystalgraphics/api/canvas/CgPicture$Image;
   method public outset (FFFF)Lcom/crystalgraphics/api/canvas/CgPicture$Image;
   method public texture ()Lcom/crystalgraphics/api/texture/CgTexture;
+  method public u0 ()F
+  method public u1 ()F
+  method public v0 ()F
+  method public v1 ()F
   method public,static matted (Lcom/crystalgraphics/api/texture/CgTexture;Lcom/crystalgraphics/api/texture/CgTexture;FFFF)Lcom/crystalgraphics/api/canvas/CgPicture$Image;
   method public,static of (Lcom/crystalgraphics/api/texture/CgTexture;FFFF)Lcom/crystalgraphics/api/canvas/CgPicture$Image;
 com/crystalgraphics/api/canvas/CgUiMaterials

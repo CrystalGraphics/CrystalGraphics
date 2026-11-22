@@ -145,6 +145,13 @@ fires on every loader, Forge's new `executeOit` hooks included.
 
 ---
 
+### Blaze3D's own calls (1.21.5 on, 2026-11-23)
+
+| # | Convention | Vanilla | Where | Ours | Status |
+|---|---|---|---|---|---|
+| 50 | **`copyTextureToTexture` is wrong at an offset, on GL** | `GlCommandEncoder` hands `glBlitFramebuffer` `width, height` where it takes the far corners: a copy to a nonzero destination lands stretched (1.21.5 through 26.3's `renderpearl` GL backend); Vulkan's is right | `GlCommandEncoder.copyTextureToTexture` | `PageCopy` blits on GL itself through `GlStateManager` (`_glBindFramebuffer`, `_glBlitFrameBuffer`, `getFrameBuffer`), whose binding and scissor caches stay true; Mojang's copy on Vulkan alone | adapted |
+| 51 | **`RenderTarget.clear()` binds framebuffer 0 after** | `bindWrite`, clear, `unbindWrite` (1.14.3-1.21.4) | `RenderTarget.clear` | a picture page's cells clear by scissor on the page as bound: through `clear()` each cell cost two framebuffer switches | adapted |
+
 ### The camera a hold takes (every version, 2026-10-29)
 
 What a held camera (`CgCameraManager.hold`) has to work around, found holding one on every era:

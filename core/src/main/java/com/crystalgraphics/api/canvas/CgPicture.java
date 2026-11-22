@@ -148,5 +148,28 @@ public interface CgPicture {
         public CgTexture texture() {
             return texture;
         }
+
+        /**
+         * The region of {@link #texture} shown, as texture coordinates: a picture on a shared page is a rect of it.
+         * {@code v0} is the top edge as shown, so it is the larger where the texture's rows run bottom-up.
+         */
+        public float u0() {
+            return u0;
+        }
+
+        /** @see #u0 */
+        public float v0() {
+            return v0;
+        }
+
+        /** @see #u0 */
+        public float u1() {
+            return u1;
+        }
+
+        /** @see #u0 */
+        public float v1() {
+            return v1;
+        }
     }
 }
