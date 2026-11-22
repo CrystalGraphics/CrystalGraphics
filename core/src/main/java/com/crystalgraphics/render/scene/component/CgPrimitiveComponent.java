@@ -213,6 +213,24 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
         return world().m32();
     }
 
+    /** Its rotation as set by {@link #rotation(Quaternionfc)}: read it, never change it. */
+    public Quaternionfc rotation() {
+        return rotation;
+    }
+
+    /** Its scale on x, as set. */
+    public float scaleX() {
+        return scaleX;
+    }
+
+    public float scaleY() {
+        return scaleY;
+    }
+
+    public float scaleZ() {
+        return scaleZ;
+    }
+
     // -- Attachment -------------------------------------------------------
 
     /**

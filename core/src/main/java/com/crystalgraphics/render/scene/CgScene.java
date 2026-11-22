@@ -130,7 +130,7 @@ public final class CgScene {
     private final CgSceneRenderer renderer;
     private final CgSceneClock clock;
     private final CgHostEnvironment environment = new CgHostEnvironment();
-    @Nullable private CgHostLevel hostLevel;
+    @Nullable private volatile CgHostLevel hostLevel;
 
     public CgScene() {
         this("crystalgraphics.scene", null);

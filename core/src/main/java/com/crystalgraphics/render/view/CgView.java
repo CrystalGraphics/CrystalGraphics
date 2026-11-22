@@ -82,7 +82,7 @@ public final class CgView {
     /** How far behind an orthographic eye a pick starts, in blocks. */
     private static final float PICK_REACH = 10_000f;
     @Nullable
-    private CgViewPicture picture;
+    private CgViewPictureTarget picture;
     private final Matrix4f pickInverse = new Matrix4f();
     private final Vector3f pickPoint = new Vector3f();
 
@@ -663,7 +663,7 @@ public final class CgView {
             }
             return drawn.colour();
         }
-        if (picture == null) picture = new CgViewPicture("cg_view." + name);
+        if (picture == null) picture = new CgViewPictureTarget("cg_view." + name);
         CgRenderTarget target = picture.at(width, height, argb);
         renderInto(target.beginDraw(true));
         return target.texture();

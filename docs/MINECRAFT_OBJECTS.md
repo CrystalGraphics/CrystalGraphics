@@ -319,7 +319,11 @@ level.visibleRange(0, 4);       // only blocks with 0 <= y <= 4 exist; level.vis
 level.ticking(true);            // the client tickers run: an enchanting table's book turns, a furnace flickers
 ```
 
-- Client only. `create` throws on a dedicated server and where no Minecraft runs.
+- Client only. `create` runs on any thread and throws where pocket levels cannot exist, with the reason; Minecraft's
+  copy is made at the next draw point, a client world open. The harness's host is `CgStandInPocketLevels`: each block
+  its shaded faces, so everything above the host runs as in game.
+- A CrystalGUI UI shows one through `SceneView` (CrystalGUI's `docs/CGUI_WIDGETS.md` § 12h): navigation, picking,
+  markers, tools and undo over this API.
 - A pocket level is never a world: no server ticks it and nothing is sent anywhere. Its light is full and its biome
   plains; Minecraft's own world neither lights nor shadows it, and the scene's lights do.
 - Changes are applied at the next draw point, on the render thread; a section is meshed again only where a block in

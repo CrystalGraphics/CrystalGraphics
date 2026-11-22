@@ -417,8 +417,18 @@ canvas.view(lab, 20, 40, 320, 200);                        // its scene drawn no
 canvas.photograph(320, (w, h, rgb) -> thumbnail = rgb);    // what the canvas drew so far, read back later
 ```
 
+A UI that records off the render thread (a CrystalGUI document) shows a view as a picture instead: drawn at the draw
+point, at the size it was last shown, from a camera copied in.
+
+```java
+CgViewPicture viewport = CgViewPicture.of(CgView.of(scene)).background(0xFF3D3D3D);
+viewport.camera(camera);                                    // copied; give it again to move it
+canvas.picture(viewport, 20, 40, 320, 200);                 // any thread; the latest drawing, from the next frame
+```
+
 - **A view** is an editor's viewport, a preview or a minimap. Its picture is kept on the view and remade only when
   the rect's size changes. Its corners are square: for rounded ones, draw it in a layer masked by a path.
+- **`canvas.view` draws now**, so it is the render thread's; **`CgViewPicture`** is any thread's, a frame behind.
 - **A photograph never waits.** Its sink runs on the render thread about three frames later, rows top first, RGB. At
   most three are on their way; a fourth returns `false`.
 

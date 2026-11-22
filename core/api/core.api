@@ -14613,9 +14613,13 @@ com/crystalgraphics/render/scene/component/CgPrimitiveComponent
   method public noCustomDepth ()Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public remove ()V
   method public removed ()Z
+  method public rotation ()Lorg/joml/Quaternionfc;
   method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public scale (F)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public scale (FFF)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
+  method public scaleX ()F
+  method public scaleY ()F
+  method public scaleZ ()F
   method public skyLight ()F
   method public sortPriority (I)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public spawn ()Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
@@ -14694,6 +14698,7 @@ com/crystalgraphics/render/scene/component/CgScenePrimitives
   access public,final
   extends java/lang/Object
   method public <init> (Lcom/crystalgraphics/render/scene/gpu/CgGpuScene;Lcom/crystalgraphics/render/scene/component/CgScenePrimitives$Driver;)V
+  method public all ()Ljava/util/List;
   method public blendPostVolumes (Lcom/crystalgraphics/camera/CgCamera;Lcom/crystalgraphics/render/post/settings/CgPostSettings;)V
   method public capture (Lcom/crystalgraphics/render/scene/CgScene;)Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent;
   method public clear ()V
@@ -16420,6 +16425,18 @@ com/crystalgraphics/render/view/CgViewKey
   extends java/lang/Object
   method public <init> (Ljava/lang/String;)V
   method public toString ()Ljava/lang/String;
+com/crystalgraphics/render/view/CgViewPicture
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/api/canvas/CgPicture
+  method public background (I)Lcom/crystalgraphics/render/view/CgViewPicture;
+  method public beforeDraw (Ljava/lang/Runnable;)Lcom/crystalgraphics/render/view/CgViewPicture;
+  method public camera (Lcom/crystalgraphics/camera/CgCamera;)Lcom/crystalgraphics/render/view/CgViewPicture;
+  method public image (IIF)Lcom/crystalgraphics/api/canvas/CgPicture$Image;
+  method public version ()J
+  method public view ()Lcom/crystalgraphics/render/view/CgView;
+  method public,static drawPoint ()V
+  method public,static of (Lcom/crystalgraphics/render/view/CgView;)Lcom/crystalgraphics/render/view/CgViewPicture;
 com/crystalgraphics/render/view/CgViewRenderTarget
   access public,final
   extends java/lang/Object

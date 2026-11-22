@@ -60,6 +60,7 @@ public final class CgScenePrimitives {
     @Nullable
     private final Driver driver;
     private final List<CgPrimitiveComponent<?>> primitives = new ArrayList<>();
+    private final List<CgPrimitiveComponent<?>> primitivesView = Collections.unmodifiableList(primitives);
     /** Every live primitive riding another, spawned or not, parents first after each {@link #update}. */
     private final List<CgPrimitiveComponent<?>> attached = new ArrayList<>();
     private final List<CgSkeletalMeshComponent> skeletal = new ArrayList<>();
@@ -314,6 +315,11 @@ public final class CgScenePrimitives {
     /** Spawned primitives. */
     public int size() {
         return primitives.size();
+    }
+
+    /** Its spawned primitives, in the order spawned: read on the render thread, as the scene. */
+    public List<CgPrimitiveComponent<?>> all() {
+        return primitivesView;
     }
 
     /** Its spawned skeletal mesh components, in no order: what a renderer draws skinned. */

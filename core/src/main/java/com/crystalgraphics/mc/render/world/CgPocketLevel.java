@@ -30,6 +30,7 @@ import com.crystalgraphics.platform.CgService;
 import com.crystalgraphics.render.CgDepthConvention;
 import com.crystalgraphics.render.host.CgHostLevel;
 import com.crystalgraphics.render.view.CgView;
+import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 
 /**
@@ -38,7 +39,7 @@ import com.crystalgraphics.shape.bounds.CgAABBc;
  * the scene's meshes, grid and gizmos draw beside its depth and its lights light it (Lyra's {@code UPocketLevel}).
  *
  * <pre>{@code
- * CgPocketLevel level = CgPocketLevel.create();             // client thread, a world open
+ * CgPocketLevel level = CgPocketLevel.create();             // any thread; Minecraft's copy made at the next draw point
  * level.place(CgStructure.load("mymod:tower"), 0, 0, 0);    // its blocks, block entities' data with them
  * level.setBlock(2, 5, 1, CgBlockState.parse("minecraft:torch"));
  *
@@ -65,8 +66,9 @@ import com.crystalgraphics.shape.bounds.CgAABBc;
  *
  * <ul>
  *   <li>Changed on any thread; Minecraft's copy takes the changes at the next draw point, on the render thread.</li>
- *   <li>A client world must be open: its registries and dimension shape the level, as Ponder's do. Without one, or on a
- *       dedicated server, {@code create} throws.</li>
+ *   <li>A client world must be open when Minecraft's copy is made, at the next draw point: its registries and dimension
+ *       shape the level, as Ponder's do. Without one the level is closed, with a warning; where pocket levels cannot
+ *       exist (a dedicated server, 1.7.10), {@code create} throws with the reason.</li>
  *   <li>Never ticked by a server, never sent anywhere: a client's picture of blocks, not a world.</li>
  *   <li>A view's first frame, and its first at a new size, shows the scene without the level: the level is drawn
  *       before the canvas asks for it, from the next frame on.</li>
@@ -215,7 +217,7 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
     private volatile long changeCount;
     private final Matrix4f projection = new Matrix4f();
     @Nullable private Object level;
-    private boolean closed;
+    private volatile boolean closed;
     private volatile int minY = Integer.MIN_VALUE, maxY = Integer.MAX_VALUE;
     private volatile boolean rangeChanged;
     private volatile boolean ticking;
@@ -224,13 +226,14 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
     private CgPocketLevel() {
     }
 
-    /** An empty level of the client world's dimension. Client thread, a world open. */
+    /**
+     * An empty level of the client world's dimension. Any thread: Minecraft's copy is made at the next draw point, on the
+     * render thread, a client world open. Throws where pocket levels cannot exist, with the reason.
+     */
     public static CgPocketLevel create() {
-        Host host = CgPlatform.get(HOST);
-        String absent = host.absent();
+        String absent = CgPlatform.get(HOST).absent();
         if (absent != null) throw new IllegalStateException(absent);
         CgPocketLevel level = new CgPocketLevel();
-        level.level = host.create();
         OPEN.add(level);
         return level;
     }
@@ -304,6 +307,49 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
         return visibleRange(Integer.MIN_VALUE, Integer.MAX_VALUE);
     }
 
+    /** The box holding every block set, whether shown or not; null while it holds none. */
+    @Nullable
+    public CgAABBc bounds() {
+        synchronized (blocks) {
+            if (blocks.isEmpty()) return null;
+            int minX = Integer.MAX_VALUE, minY = Integer.MAX_VALUE, minZ = Integer.MAX_VALUE;
+            int maxX = Integer.MIN_VALUE, maxY = Integer.MIN_VALUE, maxZ = Integer.MIN_VALUE;
+            for (long k : blocks.keySet()) {
+                int x = (int) (k >> 38), z = (int) (k << 26 >> 38), y = (int) (k << 52 >> 52);
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                minZ = Math.min(minZ, z);
+                maxX = Math.max(maxX, x);
+                maxY = Math.max(maxY, y);
+                maxZ = Math.max(maxZ, z);
+            }
+            return CgAABB.of(minX, minY, minZ, maxX + 1, maxY + 1, maxZ + 1);
+        }
+    }
+
+    /**
+     * Its blocks as a structure, its corner at the blocks' least corner: what an editor saves. Blocks only: entities are
+     * the scene's components. An empty level answers an empty 1 x 1 x 1 structure.
+     *
+     * <pre>{@code
+     * CgNbtCompound saved = level.copy().toNbt();          // vanilla's structure file
+     * level.place(CgStructure.fromNbt(saved), 0, 0, 0);    // and back
+     * }</pre>
+     */
+    public CgStructure copy() {
+        CgAABBc box = bounds();
+        if (box == null) return CgStructure.builder(1, 1, 1).build();
+        int x0 = (int) box.minX(), y0 = (int) box.minY(), z0 = (int) box.minZ();
+        CgStructure.Builder b = CgStructure.builder((int) box.maxX() - x0, (int) box.maxY() - y0, (int) box.maxZ() - z0);
+        synchronized (blocks) {
+            for (Map.Entry<Long, CgBlockState> e : blocks.entrySet()) {
+                long k = e.getKey();
+                b.block((int) (k >> 38) - x0, (int) (k << 52 >> 52) - y0, (int) (k << 26 >> 38) - z0, e.getValue());
+            }
+        }
+        return b.build();
+    }
+
     /** What is at {@code (x, y, z)}: air where nothing was set. */
     public CgBlockState block(int x, int y, int z) {
         synchronized (blocks) {
@@ -320,8 +366,15 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
     public Hit pick(double ox, double oy, double oz, double dx, double dy, double dz, double reach) {
         check();
         Host host = CgPlatform.get(HOST);
-        applyChanges(host);
-        return host.pick(level, ox, oy, oz, dx, dy, dz, reach);
+        synchronized (this) {
+            applyChanges(host);
+            return host.pick(level, ox, oy, oz, dx, dy, dz, reach);
+        }
+    }
+
+    /** Whether {@link #close} has run: a closed level takes no changes, draws nothing and picks nothing. */
+    public boolean closed() {
+        return closed;
     }
 
     /** Frees Minecraft's copy and every view's target. Render thread. */
@@ -331,9 +384,11 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
         closed = true;
         OPEN.remove(this);
         Host host = CgPlatform.get(HOST);
-        for (Object key : asks.keySet()) host.forget(level, key);
+        if (level != null) {
+            for (Object key : asks.keySet()) host.forget(level, key);
+            host.close(level);
+        }
         asks.clear();
-        if (level != null) host.close(level);
         level = null;
     }
 
@@ -442,6 +497,7 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
     }
 
     private void applyChanges(Host host) {
+        if (level == null) level = host.create();
         if (rangeChanged) {
             rangeChanged = false;
             host.visibleRange(level, minY, maxY);

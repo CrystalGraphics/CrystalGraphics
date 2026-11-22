@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.render;
 
+import com.crystalgraphics.render.view.CgViewPicture;
 import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.mc.render.world.CgPocketLevel;
 import java.util.ArrayDeque;
@@ -267,8 +268,11 @@ public final class CgHostPictures {
      * firing, before {@code CgDeviceSection.begin}. Nothing is due most frames, and then it costs a queue poll.
      */
     public static void drawPoint() {
-        // Pocket levels first: what views of their scenes composite later in this firing
-        if (!CgDeviceSection.open()) CgPocketLevel.drawPoint(CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick());
+        // Pocket levels first, then the view pictures drawn over them: what a UI composites later in this firing
+        if (!CgDeviceSection.open()) {
+            CgPocketLevel.drawPoint(CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick());
+            CgViewPicture.drawPoint();
+        }
         for (CgHostPicture p; (p = ASKED.poll()) != null; ) HELD.add(p);
         if (HELD.isEmpty() && RELEASED.isEmpty() && RELEASING.isEmpty() && !batchDue()) return;
         if (CgDeviceSection.open()) {
