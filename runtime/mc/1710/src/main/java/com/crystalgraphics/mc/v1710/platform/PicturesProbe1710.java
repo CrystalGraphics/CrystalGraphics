@@ -112,4 +112,9 @@ final class PicturesProbe1710 implements CgPicturesProbe.Host {
         }
         return stack;
     }
+
+    @Override
+    public CgHostDrawContext hudContext(Object gui) {
+        return CgPicturesProbe.GL_STATE;
+    }
 }

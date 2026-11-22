@@ -11968,6 +11968,7 @@ com/crystalgraphics/probe/CgPicturesProbe
   extends java/lang/Object
   field public,static,final COOLING Ljava/lang/String;
   field public,static,final DECORATED_BY_PROBE Ljava/lang/String;
+  field public,static,final GL_STATE Lcom/crystalgraphics/mc/render/custom/CgHostDrawContext;
   field public,static,final H I
   field public,static,final LOOK_X I
   field public,static,final LOOK_Y I
@@ -12011,6 +12012,7 @@ com/crystalgraphics/probe/CgPicturesProbe$Host
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   method public cooldown (Ljava/lang/String;)V
   method public draws (Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;)Z
+  method public hudContext (Ljava/lang/Object;)Lcom/crystalgraphics/mc/render/custom/CgHostDrawContext;
   method public,abstract absent ()Ljava/lang/String;
   method public,abstract cells (Lcom/crystalgraphics/mc/render/custom/CgHostDrawContext;Ljava/util/List;Lcom/crystalgraphics/probe/CgPicturesProbe$Drawn;)V
   method public,abstract knows (Ljava/lang/String;)Z
@@ -12018,7 +12020,9 @@ com/crystalgraphics/probe/CgPicturesProbe$Host
 com/crystalgraphics/probe/CgPicturesProbe$Kind
   access public,final,enum
   extends java/lang/Enum
+  field public,static,final BLOCK Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
   field public,static,final DECORATED Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
+  field public,static,final ENTITY Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
   field public,static,final ITEM Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
   field public,static,final PLAYER Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
   field public,static,final TOOLTIP Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;

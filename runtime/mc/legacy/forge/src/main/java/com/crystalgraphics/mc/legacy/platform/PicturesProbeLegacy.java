@@ -145,6 +145,11 @@ public final class PicturesProbeLegacy {
             }
             return stack;
         }
+
+        @Override
+        public CgHostDrawContext hudContext(Object gui) {
+            return CgPicturesProbe.GL_STATE;
+        }
     }
     //?}
 }

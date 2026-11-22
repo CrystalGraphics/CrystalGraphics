@@ -3,8 +3,7 @@
 Minecraft draws its own objects (items, entities, blocks, tooltips, anything a mod draws with Minecraft's API) into
 **pictures** that your canvas shows. Nothing is captured or imitated: the game's own code draws them, so a mod's item
 renderer, a resource pack and a tooltip mod show exactly as in vanilla. This guide covers what exists today: the
-picture, the draw point, custom pictures, item icons with their overlays, and tooltips. Entities and blocks arrive as
-their own kinds on the same base.
+picture, the draw point, custom pictures, item icons with their overlays, tooltips, entities and blocks.
 
 ## If you have drawn Minecraft's objects in a UI before
 
@@ -23,9 +22,10 @@ their own kinds on the same base.
 2. [Pictures](#2-pictures)
 3. [Custom pictures](#3-custom-pictures)
 4. [Item icons](#4-item-icons)
-5. [The draw point](#5-the-draw-point)
-6. [Hosts](#6-hosts)
-7. [Testing and the Game Gallery](#7-testing-and-the-game-gallery)
+5. [Entities and blocks](#5-entities-and-blocks)
+6. [The draw point](#6-the-draw-point)
+7. [Hosts](#7-hosts)
+8. [Testing and the Game Gallery](#8-testing-and-the-game-gallery)
 
 ---
 
@@ -145,7 +145,46 @@ for (CgPicture image : data.images()) canvas.picture(image, x, y);   // a bundle
 - Before 1.20 a tooltip is drawn by a screen that is never shown, sized as the game's GUI: a tooltip wraps only where
   vanilla's would, never to the picture it is drawn into.
 
-## 5. The draw point
+## 5. Entities and blocks
+
+```java
+CgEntityPicture me = CgEntityPicture.of(CgEntityRef.player());
+me.pose(CgEntityPose.followingPointer(pointerX - midX, pointerY - midY));   // each frame, as the inventory does
+canvas.picture(me, x, y, 50, 70);                                          // centred in the rect, fitted to its height
+
+CgEntityPicture sheep = CgEntityPicture.of(CgEntityRef.of(CgEntityData.parse("sheep{Color:2b}")))
+        .pose(CgEntityPose.facing(-30, 0)).scale(20);                      // 20 units a block
+
+CgBlockPicture chest = CgBlockPicture.of(CgBlockState.parse("chest[facing=south]{Items:[...]}"));
+canvas.picture(chest, x, y, 32, 32);
+```
+
+- **`CgEntityPicture`** draws what a `CgEntityRef` names: the local player, a live entity by UUID (nothing once it
+  leaves the level), a profile's mannequin (the default skin), or an entity made from `CgEntityData`, client-side and
+  never added to the level. Minecraft's own renderers draw it, so a mod's mob and every layer show as in the game.
+  Drawn every frame it shows; any thread may set its pose.
+- **`CgEntityPose`** is the inventory's angles: `followingPointer(dx, dy)` (the pointer from the middle of the box,
+  right and down positive) ports vanilla's `atan(d / 40)`; `facing(yaw, pitch)` and `of(body, head, pitch)` set them
+  outright. Positive yaw turns the entity to the viewer's left; positive pitch looks down. From 1.19.4 any pose draws;
+  before it (and on legacy and 1.7.10) Minecraft turns a model only toward a pointer, so a yaw past about 60 degrees is
+  the furthest a pointer turns it.
+- A picture clips to its rect, as Minecraft clips the inventory's player from 1.21.6: a model reaching past its bounding
+  box (a plant's leaves, wings) needs a rect with room or a smaller `scale`.
+- **`CgBlockPicture`** is a block as a slot shows a block item, turned the same way: its model, then its block entity's
+  renderer with the state's data (a chest's lid, a banner's pattern). Drawn once, or every frame where the state has
+  block entity data. From 1.21.6, and on legacy, Minecraft's GUI draws it by its item: a chest still looks like one,
+  without the state's data. 1.7.10 has no block states and draws none.
+
+| Era | Entities | Blocks |
+|---|---|---|
+| 1.7.10 | `GuiInventory.func_147046_a` (pointer form) | none |
+| legacy 1.8.9 - 1.12.2 | `GuiInventory.drawEntityOnScreen` (pointer form) | by item |
+| 1.13.2 - 1.14.4 | none | none |
+| 1.15.2 - 1.19.3 | `renderEntityInInventory` (pointer form) | model and block entity |
+| 1.19.4 - 1.21.10 | the rotation form of `renderEntityInInventory` | model and block entity to 1.21.5; by item from 1.21.6 |
+| 1.21.11 - 26.x | the entity's render state, submitted as vanilla does | by item |
+
+## 6. The draw point
 
 `mc.render.CgHostPictures.drawPoint()` draws every picture due in one batch, at the head of each GUI firing (the HUD and
 a screen), **before** the engine's device section opens: Minecraft's code runs where Minecraft runs GUI code, with its
@@ -159,7 +198,7 @@ own state. A host calls it; a mod never does.
   a checked run the host also reports state a batch left changed. `-Dcrystalgraphics.host.verify=true` adds a GL
   census entry `pictures` on modern GL.
 
-## 6. Hosts
+## 7. Hosts
 
 Each era fills `CgHostPictures.HOST`: a target of Minecraft's own per picture, and its GUI pointed at it.
 
@@ -187,7 +226,7 @@ and what a kept layer damages. A `CgHostPicture` kind asks for it with `bleed()`
 rect. A picture with a size of its own answers `naturalWidth`/`naturalHeight`, and `canvas.picture(p, x, y)` shows it at
 that size.
 
-## 7. Testing and the Game Gallery
+## 8. Testing and the Game Gallery
 
 - `crystalgraphics:pictures` (gauntlet): the draw point's parity test. The host draws the same objects with vanilla's
   own GUI code beside pictures and icons of them; the capture is compared pixel for pixel, within 1 level (8 on a glint, which
@@ -196,6 +235,9 @@ that size.
   Its 100-slot grid checks `icons.static` (a still grid draws nothing once drawn) and `icons.glint` (a glinted one
   draws its looks every frame). Decorated cells are icon and overlay (an ender pearl kept cooling down, a stick marked by
   the probe's decorator on Forge and NeoForge); tooltips are `CgTooltipPicture`s, and a second capture compares a book's
-  and a bundle's (from 1.20.5, where items carry components) under `pictures.parity.tooltips.*`.
+  and a bundle's (from 1.20.5, where items carry components) under `pictures.parity.tooltips.*`. Entity and block cells
+  (the player following the pointer, a sheep from its data, a chest) are drawn by their host slots straight into the HUD
+  and as pictures; `-Dcrystalgraphics.pictures.entity=<data>` puts a mod's mob in the sheep's cell, and
+  `pictures.made.<cell>` fails where the game makes none.
 - CrystalGUI's Game Gallery (`crystalgui:game-gallery`, the `game-gallery` harness scene) shows every kind on a page
   with its checks.

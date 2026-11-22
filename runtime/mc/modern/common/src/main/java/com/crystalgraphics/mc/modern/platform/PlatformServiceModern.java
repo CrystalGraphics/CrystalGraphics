@@ -73,6 +73,8 @@ import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.item.CgItemIcons;
+import com.crystalgraphics.mc.render.block.CgBlockPictures;
+import com.crystalgraphics.mc.render.entity.CgEntityPictures;
 import com.crystalgraphics.mc.render.tooltip.CgTooltips;
 import com.crystalgraphics.probe.CgPicturesProbe;
 import com.crystalgraphics.probe.CgValuesProbe;
@@ -156,6 +158,8 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgHostPictures.HOST, PicturesModern.create());
         CgPlatform.provide(CgItemIcons.HOST, new ItemIconsModern());
         CgPlatform.provide(CgTooltips.HOST, new TooltipsModern());
+        CgPlatform.provide(CgEntityPictures.HOST, new EntityPicturesModern());
+        CgPlatform.provide(CgBlockPictures.HOST, new BlockPicturesModern());
         CgPlatform.provide(CgPicturesProbe.Host.SERVICE, PicturesProbeModern.create());
         CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsModern.INSTANCE);
         CgKeyBindings.hostProvided();

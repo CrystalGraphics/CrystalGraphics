@@ -7,14 +7,22 @@ import com.crystalgraphics.gauntlet.CgGauntletCapture;
 import com.crystalgraphics.gauntlet.CgGauntletController;
 import com.crystalgraphics.gauntlet.CgGauntletState;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
+import com.crystalgraphics.mc.block.CgBlockState;
+import com.crystalgraphics.mc.entity.CgEntityData;
+import com.crystalgraphics.mc.entity.CgEntityRef;
 import com.crystalgraphics.mc.item.CgItemStack;
 import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.mc.render.CgHostPicture;
 import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.CgPictureRefresh;
+import com.crystalgraphics.mc.render.block.CgBlockPicture;
+import com.crystalgraphics.mc.render.block.CgBlockPictures;
 import com.crystalgraphics.mc.render.custom.CgCustomPicture;
 import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.mc.render.custom.CgPictureRenderer;
+import com.crystalgraphics.mc.render.entity.CgEntityPicture;
+import com.crystalgraphics.mc.render.entity.CgEntityPictures;
+import com.crystalgraphics.mc.render.entity.CgEntityPose;
 import com.crystalgraphics.mc.render.item.CgItemIcon;
 import com.crystalgraphics.mc.render.item.CgItemIcons;
 import com.crystalgraphics.mc.render.tooltip.CgTooltipPicture;
@@ -31,6 +39,7 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -76,6 +85,8 @@ public final class CgPicturesProbe {
                 case ITEM, DECORATED -> new int[]{x - 1, y - 1, 18, 18};
                 case PLAYER -> new int[]{x - 26, y - 66, 52, 70};
                 case TOOLTIP -> new int[]{x, y - 16, W - x, H - (y - 16)};
+                case ENTITY -> new int[]{x, y, 52, 70};
+                case BLOCK -> new int[]{x, y, 16, 16};
             };
         }
 
@@ -100,6 +111,8 @@ public final class CgPicturesProbe {
                 case DECORATED -> item + "+decorations";
                 case PLAYER -> "player";
                 case TOOLTIP -> item + "+tooltip";
+                case ENTITY -> "entity:" + item;
+                case BLOCK -> "block:" + item;
             };
         }
     }
@@ -107,9 +120,11 @@ public final class CgPicturesProbe {
     /**
      * {@code ITEM}: {@code GuiGraphics.renderItem}'s; {@code DECORATED}: that and its count, bar and cooldown;
      * {@code PLAYER}: the local player, as the inventory draws it, {@code count} its scale, the pointer {@value #LOOK_X},
-     * {@value #LOOK_Y} GUI units from it; {@code TOOLTIP}: the item's tooltip, the pointer at its cell.
+     * {@value #LOOK_Y} GUI units from it; {@code TOOLTIP}: the item's tooltip, the pointer at its cell; {@code ENTITY}: a
+     * {@link CgEntityPicture} of {@code item} ({@code player}, or entity data), {@code count} units a block; {@code BLOCK}:
+     * a {@link CgBlockPicture} of the block state {@code item}. The last two are drawn by their host slots in both panels.
      */
-    public enum Kind { ITEM, DECORATED, PLAYER, TOOLTIP }
+    public enum Kind { ITEM, DECORATED, PLAYER, TOOLTIP, ENTITY, BLOCK }
 
     /** What a host measured as it drew. */
     public static final class Drawn {
@@ -165,13 +180,25 @@ public final class CgPicturesProbe {
         /** Draws {@code cells} with {@code ctx}'s GUI objects into the picture the draw point points them at. */
         void cells(CgHostDrawContext ctx, List<Cell> cells, Drawn out);
 
+        /**
+         * A draw context over the HUD hook's GUI objects ({@code gui}, or the host's own), at the screen's origin, for the
+         * entity and block slots to draw the reference with. Asked only where {@link #draws} says the host draws
+         * {@code ENTITY} or {@code BLOCK} cells; null where this frame's hook gives none.
+         */
+        @Nullable
+        default CgHostDrawContext hudContext(@Nullable Object gui) {
+            return null;
+        }
+
         /** Keeps {@code item} cooling down for the player, as using it would. Client tick. Nothing where it cannot. */
         default void cooldown(String item) {
         }
     }
 
     /** The panels, in GUI units: the reference at the left, the picture beside it, below it. */
-    public static final int W = 200, H = 90, REF_X = 4, REF_Y = 4, PIC_X = 4, PIC_Y = REF_Y + H + 4;
+    public static final int W = 332, H = 90, REF_X = 4, REF_Y = 4, PIC_X = 4, PIC_Y = REF_Y + H + 4;
+    /** The item row's width: the entity and block cells sit past it. */
+    private static final int ROW_W = 200;
     /** Where the failing picture shows, in GUI units: right of the panels. */
     private static final int FAIL_X = W + 12, FAIL_Y = REF_Y, FAIL_SIZE = 32;
     static final int BACKGROUND = 0xFF3A5F7F;
@@ -222,6 +249,12 @@ public final class CgPicturesProbe {
     private static CgGauntletCapture.Shot shot;
     /** The cells' icons, kept: a cell asks the same handle each frame. */
     private static final Map<Cell, CgItemIcon> ICONS = new ConcurrentHashMap<>();
+    private static final Map<Cell, CgEntityPicture> ENTITIES = new ConcurrentHashMap<>();
+    private static final Map<Cell, CgBlockPicture> BLOCKS = new ConcurrentHashMap<>();
+    /** The reference's own game objects, render thread: never the pictures'. */
+    private static final Map<Cell, Object> REFERENCE_ENTITIES = new HashMap<>(), REFERENCE_BLOCKS = new HashMap<>();
+    /** Cells whose reference threw, noted once each. */
+    private static final Set<String> slotThrown = new TreeSet<>(), slotMade = new TreeSet<>();
     /** Frames a cost grid's icons take to draw for the first time, the budget spreading them, before they are counted. */
     private static final int ICONS_SETTLE = 10;
     private static long iconFrame = Long.MIN_VALUE;
@@ -279,7 +312,18 @@ public final class CgPicturesProbe {
         if (active == null || !drawing()) return;
         Host host = CgPlatform.get(Host.SERVICE);
         reference.clear();
-        host.reference(gui, cells, REF_X, REF_Y, panelW(), panelH(), PIC_X, PIC_Y, BACKGROUND, reference);
+        host.reference(gui, hostKinds(cells), REF_X, REF_Y, panelW(), panelH(), PIC_X, PIC_Y, BACKGROUND, reference);
+        CgHostDrawContext ctx = slotCells(cells) ? host.hudContext(gui) : null;
+        if (ctx != null) {
+            for (Cell c : cells) {
+                try {
+                    slotReference(ctx, c);
+                } catch (RuntimeException e) {
+                    // The picture shows the missing texture for the same throw: its parity check fails, the game carries on
+                    if (slotThrown.add(c.name()) && active != null) active.noted("pictures.reference.threw." + c.name(), e.toString());
+                }
+            }
+        }
         referenceNanos += reference.nanos;
         referenceFrames++;
         if (reference.drew) referenceDrew = true;
@@ -301,10 +345,77 @@ public final class CgPicturesProbe {
         List<Cell> out = new ArrayList<>(all.size());
         for (Cell c : all) {
             boolean item = c.kind() == Kind.ITEM || c.kind() == Kind.DECORATED;
-            if (item && icons || c.kind() == Kind.TOOLTIP && tips) continue;
+            if (item && icons || c.kind() == Kind.TOOLTIP && tips || slotKind(c.kind())) continue;
             out.add(c);
         }
         return out;
+    }
+
+    private static boolean slotKind(Kind kind) {
+        return kind == Kind.ENTITY || kind == Kind.BLOCK;
+    }
+
+    private static boolean slotCells(List<Cell> all) {
+        for (Cell c : all) {
+            if (slotKind(c.kind())) return true;
+        }
+        return false;
+    }
+
+    /** What the host's own code draws: every cell but those its entity and block slots do. */
+    private static List<Cell> hostKinds(List<Cell> all) {
+        List<Cell> out = new ArrayList<>(all.size());
+        for (Cell c : all) {
+            if (!slotKind(c.kind())) out.add(c);
+        }
+        return out;
+    }
+
+    /** The HUD context of a host drawing with GL state alone (legacy Forge, 1.7.10): no GUI objects, no size. */
+    public static final CgHostDrawContext GL_STATE = new CgHostDrawContext() {
+        @Override public Object gui() { return null; }
+        @Override public Object poseStack() { return null; }
+        @Override public Object buffers() { return null; }
+        @Override public float width() { return 0; }
+        @Override public float height() { return 0; }
+        @Override public float scale() { return 1; }
+        @Override public float partialTick() { return 1; }
+    };
+
+    /** A cell's pose: the player looking at the pointer as the {@code PLAYER} cell's does; anything else turned 30 degrees. */
+    private static CgEntityPose pose(Cell c) {
+        return c.item().equals("player") ? CgEntityPose.followingPointer(-LOOK_X, -LOOK_Y) : CgEntityPose.facing(-30, 0);
+    }
+
+    private static CgEntityRef ref(Cell c) {
+        return c.item().equals("player") ? CgEntityRef.player() : CgEntityRef.of(CgEntityData.parse(c.item()));
+    }
+
+    private static CgEntityPicture entityPicture(Cell c) {
+        return ENTITIES.computeIfAbsent(c, k -> CgEntityPicture.of(ref(k)).pose(pose(k)).scale(k.count()));
+    }
+
+    private static CgBlockPicture blockPicture(Cell c) {
+        return BLOCKS.computeIfAbsent(c, k -> CgBlockPicture.of(CgBlockState.parse(k.item())));
+    }
+
+    /** The reference of an entity or block cell: its slot drawing straight into the HUD, in the cell's box. */
+    private static void slotReference(CgHostDrawContext ctx, Cell c) {
+        int[] r = c.rect();
+        float x = REF_X + r[0], y = REF_Y + r[1];
+        if (c.kind() == Kind.ENTITY) {
+            CgEntityPictures.Host host = CgPlatform.get(CgEntityPictures.HOST);
+            Object e = REFERENCE_ENTITIES.compute(c, (k, before) -> host.entity(ref(k), before));
+            // Both panels would be empty for an entity the game cannot make: that is a failure, not parity
+            if (slotMade.add(c.name()) && active != null) {
+                active.stated("pictures.made." + c.name(), e != null, e == null ? "the game made no entity from it" : "made");
+            }
+            if (e != null) host.draw(ctx, e, pose(c), c.count(), x, y, r[2], r[3]);
+        } else if (c.kind() == Kind.BLOCK) {
+            CgBlockPictures.Host host = CgPlatform.get(CgBlockPictures.HOST);
+            Object b = REFERENCE_BLOCKS.compute(c, (k, before) -> host.prepare(CgBlockState.parse(k.item()), before));
+            host.draw(ctx, b, x, y, r[2]);
+        }
     }
 
     /** A cell's icon: its item, count, durability and, glinted, sharpness by the era's own name for it. */
@@ -374,6 +485,8 @@ public final class CgPicturesProbe {
             phase = Phase.WAITING;
             ticks = 0;
             retargetNoted = false;
+            slotThrown.clear();
+            slotMade.clear();
             refused = null;
             pictureAsked = referenceDrew = false;
             pictureRead = "never asked";
@@ -402,6 +515,11 @@ public final class CgPicturesProbe {
                         if (c.kind() == Kind.DECORATED) canvas.picture(icon.overlay(), PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
                     } else if (tooltipsHere() && c.kind() == Kind.TOOLTIP) {
                         canvas.picture(CgTooltipPicture.of(stackOf(c)), PIC_X + c.x() + 8, PIC_Y + c.y() - 16);
+                    } else if (c.kind() == Kind.ENTITY) {
+                        int[] r = c.rect();
+                        canvas.picture(entityPicture(c), PIC_X + r[0], PIC_Y + r[1], r[2], r[3]);
+                    } else if (c.kind() == Kind.BLOCK) {
+                        canvas.picture(blockPicture(c), PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
                     }
                 }
                 if (parity()) canvas.picture(FAILING, FAIL_X, FAIL_Y, FAIL_SIZE, FAIL_SIZE);
@@ -570,7 +688,11 @@ public final class CgPicturesProbe {
         for (Kind kind : Kind.values()) {
             if (!host.draws(kind)) test.noted("pictures.kind." + kind.name().toLowerCase(Locale.ROOT), "not drawn by this node's probe host");
         }
-        out.removeIf(c -> !host.draws(c.kind()));
+        String entities = CgPlatform.get(CgEntityPictures.HOST).absent(), blocks = CgPlatform.get(CgBlockPictures.HOST).absent();
+        if (entities != null) test.noted("pictures.kind.entity", entities);
+        if (blocks != null) test.noted("pictures.kind.block", blocks);
+        String e = entities, b = blocks;
+        out.removeIf(c -> !host.draws(c.kind()) || c.kind() == Kind.ENTITY && e != null || c.kind() == Kind.BLOCK && b != null);
         return out;
     }
 
@@ -579,7 +701,7 @@ public final class CgPicturesProbe {
         List<Cell> out = new ArrayList<>();
         int x = 4;
         for (String id : items) {
-            if (x + 18 > W) break;
+            if (x + 18 > ROW_W) break;
             out.add(new Cell(Kind.ITEM, id, x, 4, 1, 0, false));
             x += 18;
         }
@@ -593,6 +715,13 @@ public final class CgPicturesProbe {
         out.add(new Cell(Kind.PLAYER, "", 170, 84, 30, 0, false));
         // A short tooltip, whole inside the panel: one running past it shows through the other panel
         out.add(new Cell(Kind.TOOLTIP, "minecraft:book", 4, 60, 1, 0, true));
+        // Beside the PLAYER cell: the same player as an entity picture, a mob from its data (a mod's, given
+        // crystalgraphics.pictures.entity), small enough that a mod's model reaching past its box stays in the cell (the
+        // reference is not clipped; the picture is), a chest with its block entity
+        out.add(new Cell(Kind.ENTITY, "player", 200, 18, 30, 0, false));
+        out.add(new Cell(Kind.ENTITY, System.getProperty("crystalgraphics.pictures.entity", "minecraft:sheep{Color:2b}"), 256, 18,
+                14, 0, false));
+        out.add(new Cell(Kind.BLOCK, "minecraft:chest[facing=south]", 312, 24, 1, 0, false));
         return out;
     }
 

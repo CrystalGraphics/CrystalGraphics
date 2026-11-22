@@ -30,7 +30,8 @@ import net.minecraft.client.gui.GuiComponent;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 *///?} elif <1.16 {
-/*import net.minecraft.client.gui.GuiComponent;
+/*import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.gui.GuiComponent;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 *///?} elif <1.20 {
@@ -97,7 +98,7 @@ public final class PicturesProbeModern implements CgPicturesProbe.Host {
     @Override
     public boolean draws(Kind kind) {
         //? if <1.20 {
-        /*return kind == Kind.ITEM || kind == Kind.DECORATED;
+        /*return kind != Kind.PLAYER && kind != Kind.TOOLTIP;
         *///?} else {
         return true;
         //?}
@@ -347,4 +348,38 @@ public final class PicturesProbeModern implements CgPicturesProbe.Host {
         VANILLA.put("minecraft:book", Items.BOOK);
     }
     *///?}
+
+    @Override
+    public CgHostDrawContext hudContext(@Nullable Object gui) {
+        Minecraft mc = Minecraft.getInstance();
+        //? if <1.15 {
+        /*return null;
+        *///?} elif <1.20 {
+        /*return new Hud(null, new PoseStack(), mc.renderBuffers().bufferSource());
+        *///?} elif <1.21.6 {
+        GuiGraphics g = gui instanceof GuiGraphics given ? given : new GuiGraphics(mc, mc.renderBuffers().bufferSource());
+        return new Hud(g, g.pose(), mc.renderBuffers().bufferSource());
+        //?} else {
+        /*return gui == null ? null : new Hud(gui, null, null);
+        *///?}
+    }
+
+    /** The HUD's GUI objects at the screen's origin; the slots draw in boxes of their own, so it has no size. */
+    private static final class Hud implements CgHostDrawContext {
+        @Nullable private final Object gui, pose, buffers;
+
+        Hud(@Nullable Object gui, @Nullable Object pose, @Nullable Object buffers) {
+            this.gui = gui;
+            this.pose = pose;
+            this.buffers = buffers;
+        }
+
+        @Override public Object gui() { return gui; }
+        @Override public Object poseStack() { return pose; }
+        @Override public Object buffers() { return buffers; }
+        @Override public float width() { return 0; }
+        @Override public float height() { return 0; }
+        @Override public float scale() { return 1; }
+        @Override public float partialTick() { return 1; }
+    }
 }
