@@ -245,6 +245,9 @@ public final class CgPicturesProbe {
     /** Client ticks a cost phase lasts; the render frames inside it, each side's own. */
     private static int costFrames, pictureFrames, referenceFrames;
     private static boolean retargetNoted, pictureAsked, referenceDrew;
+    /** The parity rounds and the one shown; {@link #rounds}. */
+    private static List<List<Cell>> rounds = List.of();
+    private static int round;
     /** Pictures of the panel not drawn yet, last frame: a slow client's budget spreads first draws over many. */
     private static volatile int unreadyPictures = -1;
     private static volatile String pictureRead = "never asked";
@@ -524,7 +527,7 @@ public final class CgPicturesProbe {
                 float s = frame.scale();
                 canvas.save().scale(s, s);
                 int unready = 0;
-                // The probe's own picture draws once its read is asked: not waited for, or neither happens
+                // The probe's own picture: its read waits for it below, so the panel's count leaves it out
                 canvas.picture(PICTURE, PIC_X, PIC_Y, panelW(), panelH());
                 // Items as their icons and overlays, drawn by Minecraft into the atlas; tooltips as Minecraft draws them,
                 // its box where a screen puts it for a pointer at the cell (8 right, 16 up)
@@ -532,14 +535,19 @@ public final class CgPicturesProbe {
                     if (iconsHere() && (c.kind() == Kind.ITEM || c.kind() == Kind.DECORATED)) {
                         CgItemIcon icon = icon(c);
                         unready += show(canvas, icon, PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
-                        if (c.kind() == Kind.DECORATED) unready += show(canvas, icon.overlay(), PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
+                        // An overlay draws where there is something on it, a count or a bar; one with nothing never does
+                        if (c.kind() == Kind.DECORATED) {
+                            int notDrawn = show(canvas, icon.overlay(), PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
+                            if (c.count() != 1 || c.damage() != 0) unready += notDrawn;
+                        }
                     } else if (tooltipsHere() && c.kind() == Kind.TOOLTIP) {
                         unready += show(canvas, CgTooltipPicture.of(stackOf(c)), PIC_X + c.x() + 8, PIC_Y + c.y() - 16);
                     } else if (c.kind() == Kind.ENTITY) {
                         int[] r = c.rect();
                         unready += show(canvas, entityPicture(c), PIC_X + r[0], PIC_Y + r[1], r[2], r[3]);
                     } else if (c.kind() == Kind.BLOCK) {
-                        unready += show(canvas, blockPicture(c), PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
+                        int notDrawn = show(canvas, blockPicture(c), PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
+                        if (CgPlatform.get(CgBlockPictures.HOST).absent() == null) unready += notDrawn;
                     }
                 }
                 unreadyPictures = unready;
@@ -547,7 +555,7 @@ public final class CgPicturesProbe {
                 canvas.restore();
                 countIcons();
                 if (phase == Phase.PARITY && refused == null) refused = refusal();
-                if (phase == Phase.PARITY && !pictureAsked && ticks > WARM / 2 && unready == 0) {
+                if (phase == Phase.PARITY && !pictureAsked && ticks > WARM / 2 && PICTURE.version() > 0) {
                     pictureAsked = true;
                     readPicture(s);
                 }
@@ -644,7 +652,9 @@ public final class CgPicturesProbe {
             }
             case SETTLING -> {
                 if (ticks < SETTLE) return;
-                cells = parityCells(test, CgPlatform.get(Host.SERVICE));
+                rounds = rounds(parityCells(test, CgPlatform.get(Host.SERVICE)));
+                round = 0;
+                cells = rounds.get(0);
                 composite = true;
                 next(Phase.PARITY);
             }
@@ -655,7 +665,16 @@ public final class CgPicturesProbe {
             }
             case SHOT -> {
                 if (!shot.done()) return;
-                compare(test);
+                if (round == 0) compare(test);
+                else if (referenceDrew) {
+                    BufferedImage image = read(test, "pictures.parity.round" + round + ".panel");
+                    if (image != null) parity(test, image, scale, "round" + round + ".");
+                }
+                if (++round < rounds.size()) {
+                    cells = rounds.get(round);
+                    next(Phase.PARITY);
+                    return;
+                }
                 cells = tipCells(test, CgPlatform.get(Host.SERVICE));
                 next(Phase.TIPS);
             }
@@ -671,7 +690,7 @@ public final class CgPicturesProbe {
                 } else if (cells.isEmpty()) {
                     test.skipped("pictures.parity.tooltips.panel", "no tooltips drawn by this node's probe host");
                 } else {
-                    BufferedImage image = read(test);
+                    BufferedImage image = read(test, "pictures.parity.tooltips.panel");
                     if (image != null) parity(test, image, scale, "tooltips.");
                 }
                 startCost(false);
@@ -695,6 +714,29 @@ public final class CgPicturesProbe {
     }
 
     /** Vanilla's items, a glint, a clock and a compass, block-entity items, decorations, the player, a tooltip. */
+    /**
+     * The parity cells in rounds, each its own shot: the rest with the first entity, then one entity a round. From 1.21.6 a
+     * GUI frame draws its entities through one picture-in-picture renderer per kind of state, so a reference of several
+     * shows the last prepared in every slot.
+     */
+    private static List<List<Cell>> rounds(List<Cell> all) {
+        List<List<Cell>> out = new ArrayList<>();
+        List<Cell> first = new ArrayList<>();
+        out.add(first);
+        boolean entityTaken = false;
+        for (Cell c : all) {
+            boolean entity = c.kind() == Kind.PLAYER || c.kind() == Kind.ENTITY;
+            if (!entity) first.add(c);
+            else if (!entityTaken) {
+                first.add(c);
+                entityTaken = true;
+            } else {
+                out.add(List.of(c));
+            }
+        }
+        return out;
+    }
+
     private static List<Cell> parityCells(Test test, Host host) {
         List<String> items = new ArrayList<>();
         String wanted = VANILLA + "," + System.getProperty("crystalgraphics.pictures.items", "");
@@ -860,15 +902,15 @@ public final class CgPicturesProbe {
     /** The capture: the picture's panel against the reference's, per cell and whole; the failing picture; the refusal. */
     /** The tooltip panels' capture; null, stated failed, where it was not written or cannot be read. */
     @Nullable
-    private static BufferedImage read(Test test) {
+    private static BufferedImage read(Test test, String check) {
         if (!shot.written()) {
-            test.stated("pictures.parity.tooltips.panel", false, "the capture was never written: " + shot.failure());
+            test.stated(check, false, "the capture was never written: " + shot.failure());
             return null;
         }
         try {
             return ImageIO.read(shot.file().toFile());
         } catch (IOException e) {
-            test.stated("pictures.parity.tooltips.panel", false, "the capture could not be read: " + e);
+            test.stated(check, false, "the capture could not be read: " + e);
             return null;
         }
     }
@@ -992,7 +1034,7 @@ public final class CgPicturesProbe {
     private static boolean ready(Test test, String shot) {
         if (ticks < WARM) return false;
         int unready = unreadyPictures;
-        // The parity shot also waits for the picture's own read, asked on the frame its panel is whole
+        // The parity shot also waits for the picture's own read, asked once it has drawn
         boolean waiting = unready != 0 || "parity".equals(shot) && !pictureAsked;
         if (waiting && ticks < WARM + HOLD) return false;
         if (unready != 0) test.noted("pictures.wait." + shot, unready + " pictures still undrawn after " + ticks + " ticks");

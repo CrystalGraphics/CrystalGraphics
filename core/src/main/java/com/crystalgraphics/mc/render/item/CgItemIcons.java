@@ -161,12 +161,13 @@ public final class CgItemIcons {
      * @param firstDraws cells drawn for the first time this frame
      * @param redraws    cells drawn again this frame, as animated
      * @param deferred   first draws left for the next frame by the budget
-     * @param firstDrawsTotal cells drawn for the first time since the game started: a reader a frame apart sees every one
+     * @param laidTotal  cells drawn into a slot new to them since the game started, first draws and cells laid again
+     *                   after their slot was reclaimed or the page grew: a reader a frame apart sees every one
      * @param redrawn    one icon drawn again this frame and why ({@code "minecraft:clock (animated sprite)"}); null
      *                   when none was
      */
     public record Stats(long frame, int icons, int cells, int pages, int firstDraws, int redraws, int deferred,
-                        long firstDrawsTotal, @Nullable String redrawn) {
+                        long laidTotal, @Nullable String redrawn) {
         static final Stats NONE = new Stats(-1L, 0, 0, 0, 0, 0, 0, 0L, null);
     }
 
@@ -189,7 +190,7 @@ public final class CgItemIcons {
     private static final ArrayDeque<Release> RELEASING = new ArrayDeque<>();
     private static final Set<Object> LOGGED = new HashSet<>();
     private static volatile Stats stats = Stats.NONE;
-    private static long firstDrawsTotal;
+    private static long laidTotal;
     private static volatile boolean retry;
     /** An icon drawn again this frame as animated, for the hint: its item, and why. */
     private static volatile String redrawnExample;
@@ -277,6 +278,7 @@ public final class CgItemIcons {
                 long every = hz <= 0f ? 0L : (long) (1e9f / hz);
                 if (atlas.place(frame, pictures.maxTargetSize(), System.nanoTime(), every, DUE)) remake(pictures, atlas, frame);
                 if (DUE.isEmpty()) continue;
+                for (CgIconAtlas.Cell c : DUE) if (c.image() == null) laidTotal++;
                 if (!pictures.clearsRects()) {
                     // The host clears the page whole: every cell it shows draws with what is due, in one call
                     int first = 0;
@@ -333,8 +335,7 @@ public final class CgItemIcons {
             cells += a.cells();
             if (a.page() != null) pages++;
         }
-        firstDrawsTotal += firstDraws;
-        stats = new Stats(frame, HELD.size(), cells, pages, firstDraws, redraws, deferred, firstDrawsTotal,
+        stats = new Stats(frame, HELD.size(), cells, pages, firstDraws, redraws, deferred, laidTotal,
                 redraws == 0 ? null : redrawnExample);
         CgTrace.counter(CgChannels.PICTURES, "icons-cells", cells);
         CgTrace.counter(CgChannels.PICTURES, "icons-pages", pages);
