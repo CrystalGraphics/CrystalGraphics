@@ -126,9 +126,11 @@ public final class CgViewPicture implements CgPicture {
         if (SHOWN.isEmpty()) return;
         long frame = CgFrameRing.frame();
         long zone = CgTrace.begin(CgChannels.PICTURES, "viewPicture.drawPoint");
+        long mark = CgTrace.allocationBegin(CgChannels.PICTURES);
         try {
             drawShown(frame);
         } finally {
+            CgTrace.allocationEnd(CgChannels.PICTURES, "viewPicture.drawPoint", mark);
             CgTrace.end(zone);
         }
     }

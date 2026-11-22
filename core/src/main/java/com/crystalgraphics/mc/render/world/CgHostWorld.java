@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.render.world;
 
+import com.crystalgraphics.mc.render.CgHostAllocation;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.trace.CgTrace;
 import java.util.List;
@@ -85,12 +86,18 @@ public final class CgHostWorld {
     public static final CgService<Host> HOST = CgService.of("crystalgraphics:host_world", Host.NONE);
 
     private static final Logger LOGGER = LogManager.getLogger("CgHostWorld");
+    private static final CgHostAllocation ALLOCATION = new CgHostAllocation(CgChannels.PICTURES, "host-world-our-bytes");
     private static final Matrix4d relative = new Matrix4d();
     private static final Matrix4f model = new Matrix4f();
     private static boolean absentSaid;
     private static volatile int drawn;
 
     private CgHostWorld() {
+    }
+
+    /** What the last draw point allocated of its own, Minecraft's draws left out; -1 where unmeasured. Any thread. */
+    public static long ourBytes() {
+        return ALLOCATION.last();
     }
 
     /** How many components the last draw point drew. */
@@ -129,7 +136,10 @@ public final class CgHostWorld {
             absentSaid = true;
             return 0;
         }
+        ALLOCATION.begin();
+        long hostMark = ALLOCATION.hostBegin();
         host.begin(view, camX, camY, camZ, partialTick, fullLight);
+        ALLOCATION.hostEnd(hostMark);
         long zone = CgTrace.begin(CgChannels.PICTURES, "hostWorld.draw");
         try {
             for (int i = 0; i < all.size(); i++) {
@@ -139,6 +149,7 @@ public final class CgHostWorld {
                 relative.set(c.worldTransform());
                 relative.m30(relative.m30() - camX).m31(relative.m31() - camY).m32(relative.m32() - camZ);
                 model.set(relative);
+                long drawMark = ALLOCATION.hostBegin();
                 try {
                     c.drawHosted(model);
                     drew++;
@@ -146,11 +157,16 @@ public final class CgHostWorld {
                     // One object's renderer failing leaves the rest drawn, as a picture's does
                     LOGGER.warn("[cg] {} failed to draw, hidden: {}", c.getClass().getSimpleName(), e.toString());
                     c.visible(false);
+                } finally {
+                    ALLOCATION.hostEnd(drawMark);
                 }
             }
         } finally {
+            long endMark = ALLOCATION.hostBegin();
             host.end();
+            ALLOCATION.hostEnd(endMark);
             CgTrace.end(zone);
+            ALLOCATION.end();
         }
         CgTrace.add(CgChannels.PICTURES, "host-drawn-components", drew);
         return drew;

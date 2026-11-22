@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.render.world;
 
+import com.crystalgraphics.mc.render.CgHostAllocation;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.trace.CgTrace;
 import java.util.ArrayList;
@@ -186,6 +187,7 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
     }
 
     private static final Logger LOGGER = LogManager.getLogger("CgPocketLevel");
+    private static final CgHostAllocation ALLOCATION = new CgHostAllocation(CgChannels.PICTURES, "pocket-our-bytes");
     /** Frames a view may go unasked before its target is freed. */
     private static final int FORGET_FRAMES = 4;
     private static final List<CgPocketLevel> OPEN = new CopyOnWriteArrayList<>();
@@ -422,6 +424,11 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
         return ask;
     }
 
+    /** What the last draw point allocated of its own, Minecraft's draws left out; -1 where unmeasured. Any thread. */
+    public static long ourBytes() {
+        return ALLOCATION.last();
+    }
+
     /**
      * Host side, at the draw point, before the device section: every open level takes its changes and draws each view
      * that asked of it, from the view's camera as now set. Once a frame, however often the draw point runs.
@@ -434,6 +441,7 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
         boolean before = CgDepthConvention.hostReversed();
         CgDepthConvention.host(CgDepthConvention.worldReversed());
         long zone = CgTrace.begin(CgChannels.PICTURES, "pocket.drawPoint");
+        ALLOCATION.begin();
         try {
             for (CgPocketLevel level : OPEN) {
                 try {
@@ -444,6 +452,7 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
                 }
             }
         } finally {
+            ALLOCATION.end();
             CgTrace.end(zone);
             CgDepthConvention.host(before);
         }
@@ -472,10 +481,12 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
             Runnable components = view == null ? () -> { }
                     : () -> CgHostWorld.drawScene(view.scene(), ox, oy, oz, cameraView, partialTick, true);
             long zone = CgTrace.begin(CgChannels.PICTURES, "pocket.draw");
+            long hostMark = ALLOCATION.hostBegin();
             try {
                 ask.drawn = host.draw(level, e.getKey(), ask.width, ask.height, cameraView, ox, oy, oz, projection,
                         partialTick, components);
             } finally {
+                ALLOCATION.hostEnd(hostMark);
                 CgTrace.end(zone);
             }
             CgTrace.add(CgChannels.PICTURES, "pocket-draws", 1);

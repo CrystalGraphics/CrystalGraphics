@@ -11963,6 +11963,10 @@ com/crystalgraphics/probe/CgContainersProbe
   access public,final
   extends java/lang/Object
   method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
+com/crystalgraphics/probe/CgCostProbe
+  access public,final
+  extends java/lang/Object
+  method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
 com/crystalgraphics/probe/CgPicturesProbe
   access public,final
   extends java/lang/Object

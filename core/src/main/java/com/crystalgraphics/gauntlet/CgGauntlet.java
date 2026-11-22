@@ -32,6 +32,7 @@ import com.crystalgraphics.probe.CgCollisionProbe;
 import com.crystalgraphics.probe.CgContainersProbe;
 import com.crystalgraphics.probe.CgPicturesProbe;
 import com.crystalgraphics.probe.CgValuesProbe;
+import com.crystalgraphics.probe.CgCostProbe;
 import com.crystalgraphics.probe.CgPocketLevelProbe;
 import com.crystalgraphics.probe.CgWorldObjectsProbe;
 import com.crystalgraphics.probe.CgServerSmoke;
@@ -122,6 +123,7 @@ public final class CgGauntlet {
         register("crystalgraphics:values", CgValuesProbe::test);
         register("crystalgraphics:world_objects", CgWorldObjectsProbe::test);
         register("crystalgraphics:pocket_level", CgPocketLevelProbe::test);
+        register("crystalgraphics:cost", CgCostProbe::test);
         register("crystalgraphics:net", CgNetProbe::test);
         register("crystalgraphics:player-saves", CgPlayerSavesProbe::test);
         register("crystalgraphics:entity-saves", CgEntitySavesProbe::test);

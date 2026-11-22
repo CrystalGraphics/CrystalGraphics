@@ -286,7 +286,7 @@ public final class CgItemIcons {
                     DUE.clear();
                     atlas.placedShown(frame, DUE);
                     long t = System.nanoTime();
-                    draw(pictures, host, atlas, DUE, frame);
+                    draw(pictures, host, atlas, DUE, frame, budget);
                     budget.firstDrawn(System.nanoTime() - t, first);
                     budget.redrawn(DUE.size() - first);
                     firstDraws += first;
@@ -301,7 +301,7 @@ public final class CgItemIcons {
                 }
                 // Redraws first, unbudgeted; then first draws in groups while the budget lasts, prewarmed ones regardless
                 if (!DRAW.isEmpty()) {
-                    draw(pictures, host, atlas, DRAW, frame);
+                    draw(pictures, host, atlas, DRAW, frame, budget);
                     budget.redrawn(DRAW.size());
                     redraws += DRAW.size();
                     CgIconAtlas.Cell example = DRAW.get(0);
@@ -318,7 +318,7 @@ public final class CgItemIcons {
                     }
                     long t = System.nanoTime();
                     List<CgIconAtlas.Cell> group = FIRST.subList(from, to);
-                    draw(pictures, host, atlas, group, frame);
+                    draw(pictures, host, atlas, group, frame, budget);
                     budget.firstDrawn(System.nanoTime() - t, group.size());
                     firstDraws += group.size();
                     from = to;
@@ -442,12 +442,13 @@ public final class CgItemIcons {
 
     // One host call per clear: every cell of the group drawn into its slot, over black and, on two-clear eras, white
     private static void draw(CgHostPictures.Host pictures, Host host, CgIconAtlas atlas, List<CgIconAtlas.Cell> cells,
-                             long frame) {
+                             long frame, CgHostPictures.Budget budget) {
         int n = cells.size();
         if (rects.length < n * 4) rects = new int[Math.max(n * 4, rects.length * 2)];
         for (int i = 0; i < n; i++) atlas.rect(cells.get(i), rects, i * 4);
         float scale = atlas.scale;
         int side = atlas.side();
+        long hostMark = budget.hostBegin();
         try {
             pictures.drawCells(atlas.page(), side, side, scale, 0f, rects, n, CgPictureLighting.ITEMS_3D,
                     ctx -> drawCells(host, atlas, cells, ctx));
@@ -462,6 +463,8 @@ public final class CgItemIcons {
             for (CgIconAtlas.Cell c : cells) c.fail();
             if (LOGGED.add("host")) LOGGER.error("[cg] item icons failed to draw: they show the missing texture until a resource reload", t);
             return;
+        } finally {
+            budget.hostEnd(hostMark);
         }
         boolean bottomUp = pictures.bottomUp();
         for (CgIconAtlas.Cell c : cells) if (!c.failed()) atlas.drawn(c, frame, bottomUp);

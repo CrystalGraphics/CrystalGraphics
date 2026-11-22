@@ -208,6 +208,16 @@ public final class CgHostPictures {
             deferred += count;
         }
 
+        /** Before a host call inside the batch: its allocation is Minecraft's, not the batch's. */
+        public long hostBegin() {
+            return ALLOCATION.hostBegin();
+        }
+
+        /** After the host call {@link #hostBegin} marked. */
+        public void hostEnd(long mark) {
+            ALLOCATION.hostEnd(mark);
+        }
+
         /** A draw that threw: counted with the batch's failures. */
         public void failed() {
             failedTotal++;
@@ -228,9 +238,12 @@ public final class CgHostPictures {
      * @param deferred   first draws left for the next frame by the budget
      * @param failed     pictures failed so far, all told
      * @param nanos      the batch's CPU time
+     * @param ourBytes   what the draw point allocated, Minecraft's host calls left out; -1 where unmeasured (its
+     *                   channel, {@code crystalgraphics.pictures}, off)
      */
-    public record Stats(long frame, int held, int drawn, int firstDraws, int deferred, int failed, long nanos) {
-        static final Stats NONE = new Stats(-1L, 0, 0, 0, 0, 0, 0L);
+    public record Stats(long frame, int held, int drawn, int firstDraws, int deferred, int failed, long nanos,
+                        long ourBytes) {
+        static final Stats NONE = new Stats(-1L, 0, 0, 0, 0, 0, 0L, -1L);
     }
 
     private static final CgVar.Num FIRST_DRAW_MS = CgVar.number("crystalgraphics.pictures.firstDrawMs", 2f, 0f, 1000f,
@@ -250,6 +263,7 @@ public final class CgHostPictures {
     private static final CgHostPicture.Size[] DUE = new CgHostPicture.Size[CgHostPicture.MAX_SIZES];
     private static final List<Batch> BATCHES = new CopyOnWriteArrayList<>();
     private static final Budget BUDGET = new Budget();
+    private static final CgHostAllocation ALLOCATION = new CgHostAllocation(CgChannels.PICTURES, "pictures-our-bytes");
     private static volatile Stats stats = Stats.NONE;
     private static int failedTotal;
     private static boolean leakLogged;
@@ -268,10 +282,28 @@ public final class CgHostPictures {
      * firing, before {@code CgDeviceSection.begin}. Nothing is due most frames, and then it costs a queue poll.
      */
     public static void drawPoint() {
+        long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.drawPoint");
+        ALLOCATION.begin();
+        try {
+            drawPointInside();
+        } finally {
+            long ours = ALLOCATION.end();
+            CgTrace.end(zone);
+            if (ours >= 0L) {
+                Stats s = stats;
+                stats = new Stats(s.frame(), s.held(), s.drawn(), s.firstDraws(), s.deferred(), s.failed(), s.nanos(), ours);
+            }
+        }
+    }
+
+    private static void drawPointInside() {
         // Pocket levels first, then the view pictures drawn over them: what a UI composites later in this firing
         if (!CgDeviceSection.open()) {
+            // Each keeps its own allocation measure: left out of this one's
+            long mark = ALLOCATION.hostBegin();
             CgPocketLevel.drawPoint(CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick());
             CgViewPicture.drawPoint();
+            ALLOCATION.hostEnd(mark);
         }
         for (CgHostPicture p; (p = ASKED.poll()) != null; ) HELD.add(p);
         if (HELD.isEmpty() && RELEASED.isEmpty() && RELEASING.isEmpty() && !batchDue()) return;
@@ -296,7 +328,7 @@ public final class CgHostPictures {
         Budget budget = BUDGET;
         budget.begin((long) (FIRST_DRAW_MS.get() * 1_000_000L));
         boolean check = check() != 0;
-        long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.drawPoint");
+        long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.batch");
         host.beginBatch(check);
         try {
             for (int i = HELD.size() - 1; i >= 0; i--) {
@@ -347,7 +379,7 @@ public final class CgHostPictures {
             if (leak != null) leaked(leak);
         }
         long nanos = System.nanoTime() - start;
-        stats = new Stats(frame, HELD.size(), budget.drawn, budget.firstDraws, budget.deferred, failedTotal, nanos);
+        stats = new Stats(frame, HELD.size(), budget.drawn, budget.firstDraws, budget.deferred, failedTotal, nanos, -1L);
         CgTrace.counter(CgChannels.PICTURES, "pictures-drawn", budget.drawn);
         CgTrace.counter(CgChannels.PICTURES, "pictures-first-draws", budget.firstDraws);
         CgTrace.counter(CgChannels.PICTURES, "pictures-deferred", budget.deferred);
@@ -391,8 +423,13 @@ public final class CgHostPictures {
             if (s.target == null) s.target = host.createTarget(w, h);
             if (two && s.white == null) s.white = host.createTarget(w, h);
             CgPictureLighting lighting = p.lighting();
-            host.draw(s.target, w, h, s.scale, 0f, lighting, p.drawer);
-            if (two) host.draw(s.white, w, h, s.scale, 1f, lighting, p.drawer);
+            long hostMark = ALLOCATION.hostBegin();
+            try {
+                host.draw(s.target, w, h, s.scale, 0f, lighting, p.drawer);
+                if (two) host.draw(s.white, w, h, s.scale, 1f, lighting, p.drawer);
+            } finally {
+                ALLOCATION.hostEnd(hostMark);
+            }
         } catch (VirtualMachineError e) {
             throw e;
         } catch (Throwable t) {
