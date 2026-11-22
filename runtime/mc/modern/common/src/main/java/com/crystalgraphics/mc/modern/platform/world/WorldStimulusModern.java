@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
+import com.crystalgraphics.mc.modern.platform.CgMinecraftClient;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -8,6 +9,7 @@ import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.commands.CommandSourceStack;
 //?}
 //? if >=1.14.3 {
+import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
@@ -27,7 +29,12 @@ public final class WorldStimulusModern implements CgWorldStimulus {
 
     @Override
     public void keepRunning() {
-        Minecraft.getInstance().options.pauseOnLostFocus = false;
+        Minecraft mc = Minecraft.getInstance();
+        mc.options.pauseOnLostFocus = false;
+        // A focus lost before this already paused it
+        //? if >=1.14.3 {
+        if (CgMinecraftClient.screen(mc) instanceof PauseScreen) CgMinecraftClient.setScreen(mc, null);
+        //?}
     }
 
     @Override

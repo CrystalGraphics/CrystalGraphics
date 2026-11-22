@@ -5,6 +5,7 @@ import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiIngameMenu;
 import net.minecraft.entity.passive.EntityVillager;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
@@ -52,7 +53,10 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
 
     @Override
     public void keepRunning() {
-        Minecraft.getMinecraft().gameSettings.pauseOnLostFocus = false;
+        Minecraft mc = Minecraft.getMinecraft();
+        mc.gameSettings.pauseOnLostFocus = false;
+        // A focus lost before this already paused it
+        if (mc.currentScreen instanceof GuiIngameMenu) mc.displayGuiScreen(null);
     }
 
     @Override

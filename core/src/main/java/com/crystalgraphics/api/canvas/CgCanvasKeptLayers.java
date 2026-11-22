@@ -182,7 +182,7 @@ final class CgCanvasKeptLayers {
         kept.revision = walk.revision;
         CgKeptLayer.Shown shown = kept.shown;
         if (shown == null || shown.texture() != kept.texture || shown.width() != l.w || shown.height() != l.h) {
-            kept.shown = new CgKeptLayer.Shown(kept.texture, l.w, l.h);
+            kept.shown = CgKeptLayer.Shown.of(kept.texture, l.w, l.h);
         }
         kept.drawCount++;
         composite(walk);

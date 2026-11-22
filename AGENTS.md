@@ -183,6 +183,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Write a codec, save to a file (binary, JSON, TOML, YAML) or NBT, or decode into a live object | [`docs/SERIALIZATION.md`](docs/SERIALIZATION.md) | `serialization/CLAUDE.md` |
 | Build, read, parse or edit NBT tags, read a `level.dat`, or move tags in and out of the game's | [`docs/NBT.md`](docs/NBT.md) | `serialization/CLAUDE.md` |
 | Read an item stack's name, lore, enchantments or your own NBT, edit one, or copy stacks to and from the game's, on every version | [`docs/ITEMS.md`](docs/ITEMS.md) | `mc/CLAUDE.md` |
+| Show something Minecraft draws (a custom picture with Minecraft's own API; items, entities and blocks as they land) in a canvas, on every version | [`docs/MINECRAFT_OBJECTS.md`](docs/MINECRAFT_OBJECTS.md) | `mc/CLAUDE.md` |
 | Ask what a shape hits, give something a hitbox, test shapes against each other | [`docs/COLLISION.md`](docs/COLLISION.md) | `collision/CLAUDE.md`, `shape/CLAUDE.md` |
 | Load, make, sample, draw into or read back a texture; a texture's settings file | [`docs/TEXTURES.md`](docs/TEXTURES.md) | `api/texture/CLAUDE.md`, `gpu/resource/CLAUDE.md` |
 | Load anything (files, textures, meshes, shaders, a kit), behind the loading screen or during play | **[`docs/LOADING.md`](docs/LOADING.md)** | `loading/CLAUDE.md`, `lifecycle/CLAUDE.md` |

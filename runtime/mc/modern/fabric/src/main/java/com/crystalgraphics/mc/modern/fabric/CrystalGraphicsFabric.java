@@ -155,9 +155,9 @@ public final class CrystalGraphicsFabric implements VariantEntry {
             // The HUD once a frame: Fabric API for 26.1 replaced the callback with HUD elements (one, added last, so on
             // top); 1.15's callback has the tick delta alone; 1.14's API has none, and mixin/HudHook fires it there.
             //? if >=26.1 {
-            /*HudElementRegistry.addLast(ResourceIds.of(MODID, "hud"), (graphics, delta) -> LifecycleModern.hud());
+            /*HudElementRegistry.addLast(ResourceIds.of(MODID, "hud"), (graphics, delta) -> LifecycleModern.hud(graphics));
             *///?} elif >=1.16 {
-            HudRenderCallback.EVENT.register((graphics, tickDelta) -> LifecycleModern.hud());
+            HudRenderCallback.EVENT.register((graphics, tickDelta) -> LifecycleModern.hud(graphics));
             //?} elif >=1.15 {
             /*HudRenderCallback.EVENT.register(tickDelta -> LifecycleModern.hud());
             *///?}

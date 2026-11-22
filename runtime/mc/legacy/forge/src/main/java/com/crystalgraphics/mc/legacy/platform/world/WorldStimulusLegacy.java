@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.legacy.platform.world;
 
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiIngameMenu;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.server.integrated.IntegratedServer;
@@ -33,7 +34,10 @@ public final class WorldStimulusLegacy implements CgWorldStimulus {
 
     @Override
     public void keepRunning() {
-        Minecraft.getMinecraft().gameSettings.pauseOnLostFocus = false;
+        Minecraft mc = Minecraft.getMinecraft();
+        mc.gameSettings.pauseOnLostFocus = false;
+        // A focus lost before this already paused it
+        if (mc.currentScreen instanceof GuiIngameMenu) mc.displayGuiScreen(null);
     }
 
     @Override

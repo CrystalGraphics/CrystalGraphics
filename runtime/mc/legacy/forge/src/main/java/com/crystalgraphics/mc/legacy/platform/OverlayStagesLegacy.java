@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.legacy.platform;
 
+import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.probe.CgPicturesProbe;
 import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -35,11 +36,9 @@ public final class OverlayStagesLegacy {
 
     private static void fire(CgRenderStage stage) {
         Minecraft mc = Minecraft.getMinecraft();
-        if (stage == CgRenderStage.HUD) {
-            CgPicturesProbe.hud(null);
-            // The draw point: Minecraft draws its objects into targets of its own here, before our section opens
-            CgPicturesProbe.drawPoint();
-        }
+        if (stage == CgRenderStage.HUD) CgPicturesProbe.hud(null);
+        // The draw point: Minecraft draws its objects into targets of its own here, before our section opens
+        CgHostPictures.drawPoint();
         try {
             CgStageHost.fireOverlay(stage, mc.displayWidth, mc.displayHeight, new ScaledResolution(mc).getScaleFactor(),
                     OpenGlHelper.isFramebufferEnabled() ? mc.getFramebuffer().framebufferObject : 0);

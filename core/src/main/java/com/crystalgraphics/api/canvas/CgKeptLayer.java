@@ -35,9 +35,11 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
  *       {@link #delete} at a context's teardown.</li>
  *   <li>One canvas walks it at a time. Another may composite it meanwhile, on any thread: it draws the last finished
  *       picture.</li>
+ *   <li>It is a {@link CgPicture}: its last finished picture, whatever size it is asked at; {@link #version} moves with
+ *       each walk that draws.</li>
  * </ul>
  */
-public final class CgKeptLayer {
+public final class CgKeptLayer implements CgPicture {
 
     /**
      * A piece of drawing kept in a layer, told when a walk no longer reaches it, so it can damage where it was.
@@ -169,7 +171,12 @@ public final class CgKeptLayer {
     boolean keep;
 
     /** A finished picture: what any canvas composites, while the next is drawn into the same texture. */
-    record Shown(CgGraphTexture texture, int width, int height) {
+    record Shown(CgGraphTexture texture, int width, int height, CgPicture.Image image) {
+        /** The picture in the texture's top-left corner, row 0 the bottom. */
+        static Shown of(CgGraphTexture texture, int width, int height) {
+            float tw = texture.getWidth(), th = texture.getHeight();
+            return new Shown(texture, width, height, CgPicture.Image.of(texture, 0f, 1f, width / tw, 1f - height / th));
+        }
     }
 
     // The picture: the texture walks draw into, what it holds, and the last picture a walk finished
@@ -245,6 +252,20 @@ public final class CgKeptLayer {
     public int pictureHeight() {
         Shown s = shown;
         return s == null ? 0 : s.height;
+    }
+
+    /** Its last finished picture, at its own size whatever is asked; null when it holds none. */
+    @Override
+    @Nullable
+    public CgPicture.Image image(int deviceWidth, int deviceHeight, float scale) {
+        Shown s = shown;
+        return s == null ? null : s.image();
+    }
+
+    /** Moves with each walk that draws. */
+    @Override
+    public long version() {
+        return drawCount;
     }
 
     /** Whether its kept thumbnail trails the picture: draw it again soon. */

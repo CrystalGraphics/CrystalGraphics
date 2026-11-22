@@ -566,14 +566,14 @@ public final class CrystalGraphicsForge implements VariantEntry {
         //? if >=1.21.8 {
         /*private static void onAddGuiLayers(AddGuiOverlayLayersEvent event) {
             event.getLayeredDraw().add(ResourceIds.of(CrystalGraphics.MODID, "hud"),
-                    (graphics, partialTick) -> LifecycleModern.hud());
+                    (graphics, partialTick) -> LifecycleModern.hud(graphics));
         }
         *///?} elif >=1.21.6 {
         /*// Forge 56-57: the HudHook node mixin
         *///?} elif >=1.20.6 {
         /*private static void onAddGuiLayers(AddGuiOverlayLayersEvent event) {
             event.getLayeredDraw().add(ResourceIds.of(CrystalGraphics.MODID, "hud"),
-                    (graphics, partialTick) -> LifecycleModern.hud());
+                    (graphics, partialTick) -> LifecycleModern.hud(graphics));
         }
         *///?} elif >=1.19 {
         private static void onRenderGui(RenderGuiEvent.Post event) {

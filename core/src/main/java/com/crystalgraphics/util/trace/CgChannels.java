@@ -73,6 +73,9 @@ public final class CgChannels {
      */
     public static final CgTraceChannel SHADERGRAPH = CgTrace.channel("crystalgraphics.shadergraph");
 
+    /** Minecraft drawing its own objects into pictures at the draw point ({@code CgHostPictures}). */
+    public static final CgTraceChannel PICTURES = CgTrace.channel("crystalgraphics.pictures");
+
     /** Everything else, and anything a harness or a test records. */
     public static final CgTraceChannel MISC = CgTrace.channel("crystalgraphics.misc");
 }

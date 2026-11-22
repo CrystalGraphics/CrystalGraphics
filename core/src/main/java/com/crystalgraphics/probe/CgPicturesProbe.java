@@ -1,16 +1,21 @@
 package com.crystalgraphics.probe;
 
-import com.crystalgraphics.api.canvas.CgCanvasBox;
+import com.crystalgraphics.api.canvas.CgCanvas;
+import com.crystalgraphics.api.canvas.CgPicture;
+import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.gauntlet.CgGauntletCapture;
 import com.crystalgraphics.gauntlet.CgGauntletController;
 import com.crystalgraphics.gauntlet.CgGauntletState;
-import com.crystalgraphics.gpu.resource.CgReadback;
-import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
+import com.crystalgraphics.mc.render.CgHostPicture;
+import com.crystalgraphics.mc.render.CgHostPictures;
+import com.crystalgraphics.mc.render.CgPictureRefresh;
+import com.crystalgraphics.mc.render.custom.CgCustomPicture;
+import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
+import com.crystalgraphics.mc.render.custom.CgPictureRenderer;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgService;
-import com.crystalgraphics.platform.rhi.CgHostImports;
-import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import com.crystalgraphics.render.stage.CgRenderStage;
 
@@ -18,7 +23,6 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
@@ -26,8 +30,8 @@ import javax.annotation.Nullable;
 import javax.imageio.ImageIO;
 
 /**
- * NR0's proof (renderer § 19.7, § 19.14): Minecraft draws its own objects into a target the host made, the graph imports
- * that target and a canvas composites it, and the result is what vanilla's own GUI code draws in a slot. The gauntlet's
+ * The draw point's parity test (renderer § 19.7): Minecraft draws its own objects into a {@link CgCustomPicture} at the
+ * draw point, a canvas composites it, and the result is what vanilla's own GUI code draws in a slot. The gauntlet's
  * test {@code crystalgraphics:pictures}; it enters a world itself.
  *
  * <pre>{@code
@@ -35,19 +39,18 @@ import javax.imageio.ImageIO;
  * -Dcrystalgraphics.pictures.items=create:potato_cannon+mowziesmobs:earthrend_gauntlet   // mods' items, where installed
  * // what it logs, and writes in the run's report:
  * crystalgraphics:pictures pictures.parity.minecraft:clock: true (0 of 1024 pixels differ by more than 1; max 0)
- * crystalgraphics:pictures pictures.alpha is 412 partial pixels, 0 brighter than their alpha (premultiplied)
- * crystalgraphics:pictures pictures.cost.static100 is 1.84 ms cpu a frame (picture), 1.79 ms (vanilla)
+ * crystalgraphics:pictures pictures.cost.static100 is 1.84 ms cpu a frame into the picture, 1.79 ms drawn by vanilla
  * }</pre>
  *
  * <ul>
  *   <li>Each frame of the parity phase, the host's HUD hook fills two panels with one opaque colour and draws the cells
- *       in the left one with vanilla's own GUI code ({@link Host#reference}); at the draw point, the head of the HUD
- *       firing before our device section, it draws the same cells into its picture target ({@link Host#picture}); this
- *       probe's HUD renderer composites that target, premultiplied, over the right panel. The frame's capture is
- *       compared panel against panel, cell by cell: pass is no pixel differing by more than one step a channel.</li>
- *   <li>Where it is measured: the target the host had bound after each cell (a renderer restoring the main target,
- *       § 19.14 1), the picture's alpha read back (4), a 100-slot grid's draw time static and glinted (5).</li>
- *   <li>Hosts provide {@link Host#SERVICE} on the nodes NR0 proves; everywhere else the test skips, saying so.</li>
+ *       in the left one with vanilla's own GUI code ({@link Host#reference}); the draw point draws the same cells into
+ *       {@link #PICTURE} ({@link Host#cells}), and this probe's HUD renderer composites it over the right panel. The
+ *       frame's capture is compared panel against panel, cell by cell: pass is no pixel differing by more than one step
+ *       a channel.</li>
+ *   <li>Beside them: a picture whose renderer throws shows the missing texture and is marked failed; in a dev run, a
+ *       draw point inside a device section is refused; a 100-slot grid's draw time, static and glinted.</li>
+ *   <li>Hosts provide {@link Host#SERVICE}; where none does, the test skips, saying so.</li>
  * </ul>
  */
 public final class CgPicturesProbe {
@@ -67,6 +70,16 @@ public final class CgPicturesProbe {
         /** Whether a glint is drawn: an enchanted stack's icon, not its tooltip. */
         boolean glinted() {
             return glint && (kind == Kind.ITEM || kind == Kind.DECORATED);
+        }
+
+        /** The most a pixel of it may differ, and why when more than 1. */
+        int slack() {
+            return glinted() ? GLINT_SLACK : kind == Kind.TOOLTIP ? LAYER_SLACK : 1;
+        }
+
+        String slackReason() {
+            return glinted() ? "the glint's clock moved between the draws"
+                    : "its translucent layers round once more each in the picture's own target";
         }
 
         String name() {
@@ -90,39 +103,44 @@ public final class CgPicturesProbe {
     public static final class Drawn {
         /** CPU time of the draw. */
         public long nanos;
+        /** Whether the reference drew: a hook with no GUI object on a recorded GUI, or a node without a fill, cannot. */
+        public boolean drew;
         /** Whether the host checks its bound target after each cell: a GL read, which a cost phase must not pay. */
         public boolean checkTarget;
         /** Names of cells after which the host's bound target was no longer the one it drew into. */
         public final List<String> retargeted = new ArrayList<>();
-        /** The host's GL state as it began, for a diagnosis: bound target, viewport, masks; empty where not read. */
-        public String state = "";
 
         void clear() {
             nanos = 0;
+            drew = false;
             retargeted.clear();
-            state = "";
         }
     }
 
-    /** NR0's host code: vanilla's own GUI calls, into the main target or a picture target of the host's. */
+    /** The host's half: vanilla's own GUI calls, into the main target or a picture the draw point points them at. */
     public interface Host {
 
         Host NONE = new Host() {
-            @Override public String absent() { return "no picture host code on this node (NR0 proves 1.20.1, 1.12.2, 26.2)"; }
+            @Override public String absent() { return "no pictures probe host code on this node"; }
             @Override public boolean knows(String item) { return false; }
             @Override public void reference(Object gui, List<Cell> cells, int x, int y, int w, int h, int bx, int by,
                                             int background, Drawn out) { }
-            @Override public Object picture(List<Cell> cells, int w, int h, Drawn out) { return null; }
-            @Override public boolean bottomUp() { return true; }
+            @Override public void cells(CgHostDrawContext ctx, List<Cell> cells, Drawn out) { }
         };
 
         CgService<Host> SERVICE = CgService.of("crystalgraphics:pictures_probe", NONE);
 
-        /** Why this node has no picture host code; null where it has. */
+        /** Why this node has no probe host code; null where it has. */
         @Nullable String absent();
 
         /** Whether the game has an item of this id. */
         boolean knows(String item);
+
+        /** Whether this node's host code draws {@code kind}; the probe asks only for those. */
+        default boolean draws(Kind kind) {
+            return true;
+        }
+
 
         /**
          * From the host's HUD hook: fills {@code w x h} at ({@code x}, {@code y}) and at ({@code bx}, {@code by}) with the
@@ -132,25 +150,28 @@ public final class CgPicturesProbe {
         void reference(@Nullable Object gui, List<Cell> cells, int x, int y, int w, int h, int bx, int by, int background,
                        Drawn out);
 
-        /**
-         * At the draw point: draws {@code cells} into the host's picture target of {@code w x h} GUI units at the GUI's
-         * scale, cleared to transparent, every change through the host's own API put back. The handle
-         * {@link CgHostImports#texture} takes; null when it could not draw.
-         */
-        @Nullable Object picture(List<Cell> cells, int w, int h, Drawn out);
-
-        /** Whether the picture's row 0 is its bottom (a GL framebuffer's). */
-        boolean bottomUp();
+        /** Draws {@code cells} with {@code ctx}'s GUI objects into the picture the draw point points them at. */
+        void cells(CgHostDrawContext ctx, List<Cell> cells, Drawn out);
     }
 
     /** The panels, in GUI units: the reference at the left, the picture beside it, below it. */
     public static final int W = 200, H = 90, REF_X = 4, REF_Y = 4, PIC_X = 4, PIC_Y = REF_Y + H + 4;
+    /** Where the failing picture shows, in GUI units: right of the panels. */
+    private static final int FAIL_X = W + 12, FAIL_Y = REF_Y, FAIL_SIZE = 32;
     static final int BACKGROUND = 0xFF3A5F7F;
     /** The pointer's offset from the player, as the inventory's: where it looks. */
     public static final int LOOK_X = 20, LOOK_Y = -30;
     private static final int GRID = 10;
-    /** The most a glinted pixel may differ: the glint's offset moving by one millisecond between the two draws. */
-    private static final int GLINT_SLACK = 3;
+    /**
+     * The most a glinted pixel may differ: the glint scrolls with the millisecond clock, and the picture draws up to a
+     * frame after the reference under load (4 measured with three clients at once; a wrong draw is dozens).
+     */
+    private static final int GLINT_SLACK = 8;
+    /**
+     * The most a pixel under stacked translucent layers may differ: the picture blends them over transparent in an 8-bit
+     * target and is composited after, a rounding a layer more than vanilla's straight blend (a tooltip's fill and border).
+     */
+    private static final int LAYER_SLACK = 2;
     /** Client ticks: in the world before drawing; parity frames before the shot; frames a cost is measured over. */
     private static final int SETTLE = 60, WARM = 20, COST = 60;
     private static final String VANILLA = "minecraft:diamond_sword,minecraft:clock,minecraft:compass,minecraft:chest,"
@@ -167,16 +188,35 @@ public final class CgPicturesProbe {
     /** The item ids this game has, of those the probe asks for. */
     private static List<String> known = List.of("minecraft:diamond_sword");
     private static volatile boolean composite;
-    @Nullable private static volatile Object handle;
-    private static CgTexture2D texture;
-    private static boolean bottomUp = true;
     /** The GUI scale the HUD fired at. */
     private static volatile float scale = 1f;
     private static final Drawn picture = new Drawn(), reference = new Drawn();
-    private static long pictureNanos, referenceNanos;
+    private static long pictureNanos, referenceNanos, statsFrame = -1L;
     private static int costFrames;
-    private static boolean alphaAsked, stateNoted, pictureStateNoted, retargetNoted;
+    private static boolean retargetNoted, pictureAsked, referenceDrew;
+    private static volatile String pictureRead = "never asked";
+    private static volatile int pictureDrawn;
+    @Nullable private static volatile String refused;
     private static CgGauntletCapture.Shot shot;
+
+    /** What the draw point draws: the cells, with Minecraft's code, every frame. */
+    static final CgCustomPicture PICTURE = CgCustomPicture.of("crystalgraphics:pictures_probe")
+            .refresh(CgPictureRefresh.REALTIME)
+            .renderer(ctx -> {
+                picture.checkTarget = parity();
+                CgPlatform.get(Host.SERVICE).cells(ctx, cells, picture);
+                if (parity() && !picture.retargeted.isEmpty() && !retargetNoted && active != null) {
+                    retargetNoted = true;
+                    active.noted("pictures.retargeted", picture.retargeted.toString());
+                }
+                picture.clear();
+            });
+
+    /** A renderer that throws: its picture shows the missing texture, and the draw point carries on. */
+    static final CgCustomPicture FAILING = CgCustomPicture.of("crystalgraphics:pictures_probe.throws")
+            .renderer(ctx -> {
+                throw new IllegalStateException("thrown on purpose by the pictures probe");
+            });
 
     private CgPicturesProbe() {
     }
@@ -186,7 +226,20 @@ public final class CgPicturesProbe {
         return new Test();
     }
 
-    // ── the host's two calls ─────────────────────────────────────────────────────
+    /**
+     * A renderer drawing {@code cells} with this node's probe host code: a custom picture of Minecraft's own objects for
+     * a showcase (the Game Gallery). Draws nothing where no host provides the probe.
+     */
+    public static CgPictureRenderer renderer(List<Cell> cells) {
+        List<Cell> copy = List.copyOf(cells);
+        Drawn out = new Drawn();
+        return ctx -> {
+            CgPlatform.get(Host.SERVICE).cells(ctx, copy, out);
+            out.clear();
+        };
+    }
+
+    // ── the host's call ──────────────────────────────────────────────────────────
 
     /** Host side: its HUD hook, with the hook's GUI object (null where it makes its own). Render thread. */
     public static void hud(@Nullable Object gui) {
@@ -195,29 +248,7 @@ public final class CgPicturesProbe {
         reference.clear();
         host.reference(gui, cells, REF_X, REF_Y, panelW(), panelH(), PIC_X, PIC_Y, BACKGROUND, reference);
         referenceNanos += reference.nanos;
-        if (phase == Phase.PARITY && !reference.state.isEmpty() && !stateNoted) {
-            stateNoted = true;
-            active.noted("pictures.reference.state", reference.state);
-        }
-    }
-
-    /** Host side: the draw point, at the head of the HUD firing, before its device section. Render thread. */
-    public static void drawPoint() {
-        if (active == null || !drawing()) return;
-        Host host = CgPlatform.get(Host.SERVICE);
-        picture.clear();
-        picture.checkTarget = parity();
-        handle = host.picture(cells, panelW(), panelH(), picture);
-        bottomUp = host.bottomUp();
-        pictureNanos += picture.nanos;
-        if (phase == Phase.PARITY && !picture.state.isEmpty() && !pictureStateNoted) {
-            pictureStateNoted = true;
-            active.noted("pictures.picture.state", picture.state);
-        }
-        if (phase == Phase.PARITY && !picture.retargeted.isEmpty() && !retargetNoted) {
-            retargetNoted = true;
-            active.noted("pictures.retargeted", picture.retargeted.toString());
-        }
+        if (reference.drew) referenceDrew = true;
     }
 
     private static boolean drawing() {
@@ -247,24 +278,31 @@ public final class CgPicturesProbe {
         protected void onInit() {
             phase = Phase.WAITING;
             ticks = 0;
-            alphaAsked = stateNoted = pictureStateNoted = retargetNoted = false;
+            retargetNoted = false;
+            refused = null;
+            pictureAsked = referenceDrew = false;
+            pictureRead = "never asked";
+            pictureDrawn = 0;
             active = this;
             hud = CgRenderStage.HUD.register(Integer.MAX_VALUE - 1, frame -> {
                 scale = frame.scale();
-                Object h = handle;
-                if (!composite || h == null) return;
-                CgGpuTexture t = CgHostImports.get().texture(h);
-                if (texture == null || texture.rhiTexture() != t) {
-                    if (texture != null) texture.delete();
-                    texture = CgTexture2D.borrowed(t);
+                if (!drawing()) return;
+                CgHostPictures.Stats stats = CgHostPictures.stats();
+                if (stats.frame() != statsFrame) {
+                    statsFrame = stats.frame();
+                    pictureNanos += stats.nanos();
                 }
+                if (!composite) return;
+                CgCanvas canvas = frame.canvas();
                 float s = frame.scale();
-                CgCanvasBox box = frame.canvas().box(PIC_X * s, PIC_Y * s, W * s, H * s).fill(texture).premultiplied();
-                if (bottomUp) box.region(0f, 1f, 1f, 0f);
-                box.draw();
-                if (!alphaAsked && phase == Phase.PARITY && ticks > WARM / 2) {
-                    alphaAsked = true;
-                    readAlpha(texture, Math.round(W * s), Math.round(H * s));
+                canvas.save().scale(s, s);
+                canvas.picture(PICTURE, PIC_X, PIC_Y, panelW(), panelH());
+                if (parity()) canvas.picture(FAILING, FAIL_X, FAIL_Y, FAIL_SIZE, FAIL_SIZE);
+                canvas.restore();
+                if (phase == Phase.PARITY && refused == null) refused = refusal();
+                if (phase == Phase.PARITY && !pictureAsked && ticks > WARM / 2) {
+                    pictureAsked = true;
+                    readPicture(s);
                 }
             });
             install();
@@ -314,6 +352,16 @@ public final class CgPicturesProbe {
         }
     }
 
+    /** From inside the HUD's device section: a draw point there must be refused. What happened. */
+    private static String refusal() {
+        try {
+            CgHostPictures.drawPoint();
+            return "not refused";
+        } catch (IllegalStateException e) {
+            return e.getMessage().startsWith("CgHostPictures.drawPoint() inside a device section") ? "refused" : "threw " + e;
+        }
+    }
+
     private static synchronized void install() {
         if (installed) return;
         installed = true;
@@ -330,6 +378,12 @@ public final class CgPicturesProbe {
                 Host host = CgPlatform.get(Host.SERVICE);
                 if (host.absent() != null) {
                     test.skipped("everything", host.absent());
+                    finish(test);
+                    return;
+                }
+                String noDraw = CgPlatform.get(CgHostPictures.HOST).absent();
+                if (noDraw != null) {
+                    test.skipped("everything", noDraw);
                     finish(test);
                     return;
                 }
@@ -350,7 +404,6 @@ public final class CgPicturesProbe {
             case SHOT -> {
                 if (!shot.done()) return;
                 compare(test);
-                composite = false;
                 startCost(false);
                 next(Phase.COST_STATIC);
             }
@@ -380,6 +433,16 @@ public final class CgPicturesProbe {
             else test.noted("pictures.absent." + id.trim(), "not an item here");
         }
         known = items;
+        List<Cell> out = cellsOf(items);
+        for (Kind kind : Kind.values()) {
+            if (!host.draws(kind)) test.noted("pictures.kind." + kind.name().toLowerCase(Locale.ROOT), "not drawn by this node's probe host");
+        }
+        out.removeIf(c -> !host.draws(c.kind()));
+        return out;
+    }
+
+    /** The parity panel's cells over {@code items}: a row of them, then the fixed cells. */
+    public static List<Cell> cellsOf(List<String> items) {
         List<Cell> out = new ArrayList<>();
         int x = 4;
         for (String id : items) {
@@ -397,6 +460,32 @@ public final class CgPicturesProbe {
         return out;
     }
 
+    /** The picture's own texture, read back: how many of its pixels Minecraft drew on. */
+    private static void readPicture(float s) {
+        int w = Math.round(W * s), h = Math.round(H * s);
+        CgPicture.Image image = PICTURE.image(w, h, s);
+        if (image == null || image.texture() == null) {
+            pictureRead = "no picture yet at " + w + " x " + h;
+            return;
+        }
+        CgReadback.texture(image.texture(), 0, 0, 0, w, h, new CgReadback.Sink() {
+            @Override
+            public void accept(ByteBuffer px) {
+                int drawn = 0;
+                for (int i = 0; i + 3 < px.limit() && i < w * h * 4; i += 4) {
+                    if ((px.get(i) | px.get(i + 1) | px.get(i + 2) | px.get(i + 3)) != 0) drawn++;
+                }
+                pictureRead = drawn + " of " + w * h;
+                pictureDrawn = drawn;
+            }
+
+            @Override
+            public void failed(String reason) {
+                pictureRead = "never read: " + reason;
+            }
+        });
+    }
+
     private static void startCost(boolean glint) {
         List<Cell> grid = new ArrayList<>();
         for (int i = 0; i < GRID * GRID; i++) {
@@ -408,14 +497,14 @@ public final class CgPicturesProbe {
     }
 
     private static void cost(Test test, String name) {
-        test.noted("pictures.cost." + name, String.format(Locale.ROOT, "%.3f ms cpu a frame into the picture, %.3f ms "
+        test.noted("pictures.cost." + name, String.format(Locale.ROOT, "%.3f ms cpu a frame at the draw point, %.3f ms "
                 + "drawn by vanilla into the main target (%d frames, %d items)", pictureNanos / 1e6 / costFrames,
                 referenceNanos / 1e6 / costFrames, costFrames, GRID * GRID));
     }
 
     // ── what is measured ─────────────────────────────────────────────────────────
 
-    /** The capture, the picture's panel against the reference's, per cell and whole. */
+    /** The capture: the picture's panel against the reference's, per cell and whole; the failing picture; the refusal. */
     private static void compare(Test test) {
         if (!shot.written()) {
             test.stated("pictures.parity", false, "the capture was never written: " + shot.failure());
@@ -429,29 +518,52 @@ public final class CgPicturesProbe {
             return;
         }
         float s = scale;
+        test.stated("pictures.picture", pictureDrawn > 0, "pixels Minecraft drew on in the picture's own texture: " + pictureRead);
+        int magenta = magenta(image, s);
+        test.stated("pictures.failure", FAILING.state() == CgHostPicture.State.FAILED && magenta > 0,
+                "a renderer that throws: " + FAILING.state() + ", " + magenta + " magenta pixels where it shows");
+        if (CgModLoader.development()) {
+            test.stated("pictures.refused", "refused".equals(refused), "a draw point inside a device section: " + refused);
+        } else {
+            test.skipped("pictures.refused", "a dev run refuses it; elsewhere it logs once");
+        }
+        if (!referenceDrew) {
+            test.skipped("pictures.parity", "no reference panel: this node's HUD hook gives no GUI object, or the node no fill");
+            return;
+        }
+        List<int[]> slack = new ArrayList<>();
         for (Cell cell : cells) {
             int[] r = cell.rect();
-            int[] d = diff(image, r[0], r[1], r[2], r[3], s);
-            // A glint's offset follows the game's millisecond clock, which can tick between the two draws
-            boolean ok = d[0] == 0 || cell.glinted() && d[1] <= GLINT_SLACK;
-            test.stated("pictures.parity." + cell.name(), ok, d[0] + " of " + d[2] + " pixels differ by more than 1; max "
-                    + d[1] + (cell.glinted() && d[0] > 0 && ok ? " (the glint's clock moved between the draws)" : ""));
+            int[] own = {r[0], r[1], r[2], r[3], cell.slack()};
+            slack.add(own);
+            int[] d = diff(image, r[0], r[1], r[2], r[3], s, false, List.of(own));
+            test.stated("pictures.parity." + cell.name(), d[0] == 0, d[0] + " of " + d[2] + " pixels differ by more than "
+                    + cell.slack() + "; max " + d[1] + (d[1] > 1 && d[0] == 0 ? " (" + cell.slackReason() + ")" : ""));
         }
-        List<int[]> glinted = new ArrayList<>();
-        for (Cell cell : cells) if (cell.glinted()) glinted.add(cell.rect());
-        int[] whole = diff(image, 0, 0, W, H, s, false, glinted);
+        int[] whole = diff(image, 0, 0, W, H, s, false, slack);
         test.stated("pictures.parity", whole[0] == 0, "the whole panel: " + whole[0] + " of " + whole[2]
-                + " pixels differ by more than 1 (" + GLINT_SLACK + " in a glinted cell); max " + whole[1] + "; scale " + s);
+                + " pixels differ by more than their cell allows (1; " + GLINT_SLACK + " glinted; " + LAYER_SLACK
+                + " under a tooltip's layers); max " + whole[1] + "; scale " + s);
         int[] blank = diff(image, 0, 0, W, H, s, true, List.of());
         test.stated("pictures.drawn", blank[0] > 0, blank[0] + " of the reference panel's pixels are not the background");
     }
 
-    /** {pixels differing by more than 1, the largest difference, pixels compared} of a rect in GUI units. */
-    private static int[] diff(BufferedImage image, int gx, int gy, int gw, int gh, float s) {
-        return diff(image, gx, gy, gw, gh, s, false, List.of());
+    /** Pixels of the missing texture's magenta where the failing picture shows. */
+    private static int magenta(BufferedImage image, float s) {
+        int n = 0;
+        for (int y = Math.round(FAIL_Y * s); y < Math.round((FAIL_Y + FAIL_SIZE) * s) && y < image.getHeight(); y++) {
+            for (int x = Math.round(FAIL_X * s); x < Math.round((FAIL_X + FAIL_SIZE) * s) && x < image.getWidth(); x++) {
+                int p = image.getRGB(x, y);
+                if ((p >> 16 & 255) > 230 && (p >> 8 & 255) < 20 && (p & 255) > 230) n++;
+            }
+        }
+        return n;
     }
 
-    /** As {@link #diff(BufferedImage, int, int, int, int, float)}, {@link #GLINT_SLACK} allowed inside {@code slack}'s rects. */
+    /**
+     * {pixels differing by more than allowed, the largest difference, pixels compared} of a rect in GUI units: 1 allowed,
+     * or the most of {@code slack}'s rects ({x, y, w, h, allowed}) a pixel lies in.
+     */
     private static int[] diff(BufferedImage image, int gx, int gy, int gw, int gh, float s, boolean againstBackground,
                               List<int[]> slack) {
         int x0 = Math.round(Math.max(0, gx) * s), y0 = Math.round(Math.max(0, gy) * s);
@@ -466,49 +578,19 @@ public final class CgPicturesProbe {
                 int d = Math.max(Math.abs((a >> 16 & 255) - (b >> 16 & 255)),
                         Math.max(Math.abs((a >> 8 & 255) - (b >> 8 & 255)), Math.abs((a & 255) - (b & 255))));
                 n++;
-                if (d > (inside(slack, x / s, y / s) ? GLINT_SLACK : 1)) over++;
+                if (d > allowed(slack, x / s, y / s)) over++;
                 max = Math.max(max, d);
             }
         }
         return new int[]{over, max, n};
     }
 
-    private static boolean inside(List<int[]> rects, float gx, float gy) {
+    private static int allowed(List<int[]> rects, float gx, float gy) {
+        int most = 1;
         for (int[] r : rects) {
-            if (gx >= r[0] && gx < r[0] + r[2] && gy >= r[1] && gy < r[1] + r[3]) return true;
+            if (gx >= r[0] && gx < r[0] + r[2] && gy >= r[1] && gy < r[1] + r[3]) most = Math.max(most, r[4]);
         }
-        return false;
-    }
-
-    /** The picture's own alpha: how many pixels are partial, and whether their colour is premultiplied. */
-    private static void readAlpha(CgTexture2D texture, int w, int h) {
-        CgReadback.texture(texture, 0, 0, 0, w, h, new CgReadback.Sink() {
-            @Override
-            public void accept(ByteBuffer px) {
-                int clear = 0, opaque = 0, partial = 0, brighter = 0;
-                for (int i = 0; i + 3 < px.limit() && i < w * h * 4; i += 4) {
-                    int r = px.get(i) & 255, g = px.get(i + 1) & 255, b = px.get(i + 2) & 255, a = px.get(i + 3) & 255;
-                    if (a == 0) clear++;
-                    else if (a == 255) opaque++;
-                    else {
-                        partial++;
-                        if (Math.max(r, Math.max(g, b)) > a + 1) brighter++;
-                    }
-                }
-                Test test = active;
-                if (test != null) {
-                    test.noted("pictures.alpha", clear + " clear, " + opaque + " opaque, " + partial + " partial pixels, "
-                            + brighter + " of those brighter than their alpha (" + (brighter == 0 ? "premultiplied"
-                            : "not premultiplied") + ")");
-                }
-            }
-
-            @Override
-            public void failed(String reason) {
-                Test test = active;
-                if (test != null) test.noted("pictures.alpha", "never read: " + reason);
-            }
-        });
+        return most;
     }
 
     private static void next(Phase p) {

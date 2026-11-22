@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.legacy.platform;
 
 import com.crystalgraphics.probe.CgPicturesProbe;
 //? if >=1.12 {
+import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.probe.CgPicturesProbe.Cell;
 import com.crystalgraphics.probe.CgPicturesProbe.Drawn;
 import net.minecraft.client.Minecraft;
@@ -12,13 +13,10 @@ import net.minecraft.client.gui.inventory.GuiInventory;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.RenderHelper;
-import net.minecraft.client.shader.Framebuffer;
 import net.minecraft.init.Enchantments;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
 
 import java.util.IdentityHashMap;
@@ -27,8 +25,8 @@ import java.util.Map;
 //?}
 
 /**
- * NR0's host code for {@link CgPicturesProbe} on legacy Forge: vanilla's GUI calls drawn into the main framebuffer and
- * into a {@code Framebuffer} of the host's. 1.12.2 only; 1.8.9 and 1.10.2 give the probe its absent value.
+ * The legacy half of {@link CgPicturesProbe}: vanilla's GUI calls, into the main framebuffer from the HUD hook and into
+ * a picture through the draw point. 1.12.2 only; 1.8.9 and 1.10.2 give the probe its absent value.
  */
 public final class PicturesProbeLegacy {
 
@@ -44,10 +42,8 @@ public final class PicturesProbeLegacy {
     }
 
     //? if >=1.12 {
-    /** Immediate GL through {@code GlStateManager}, the projection {@code setupOverlayRendering} leaves: ortho, 1000 to 3000. */
+    /** Immediate GL through {@code GlStateManager}, into whatever framebuffer is bound. */
     private static final class Gui1122 implements CgPicturesProbe.Host {
-        private Framebuffer black, white, picture;
-        private int program;
         private Tips tips;
         private final Map<Cell, ItemStack> stacks = new IdentityHashMap<>();
 
@@ -69,11 +65,6 @@ public final class PicturesProbeLegacy {
         }
 
         @Override
-        public boolean bottomUp() {
-            return true;
-        }
-
-        @Override
         public void reference(Object gui, List<Cell> cells, int x, int y, int w, int h, int bx, int by, int background,
                               Drawn out) {
             Minecraft mc = Minecraft.getMinecraft();
@@ -85,115 +76,20 @@ public final class PicturesProbeLegacy {
             for (Cell cell : cells) draw(mc, cell);
             GlStateManager.popMatrix();
             out.nanos = System.nanoTime() - start;
+            out.drew = true;
         }
 
-        // Legacy GUI code writes alpha raw (a blend-off draw, glBlendFunc's alpha a^2): drawn over black and over white,
-        // alpha = 1 - (white - black) and colour = black is what the screen would show over any background.
         @Override
-        public Object picture(List<Cell> cells, int w, int h, Drawn out) {
+        public void cells(CgHostDrawContext ctx, List<Cell> cells, Drawn out) {
             Minecraft mc = Minecraft.getMinecraft();
-            int scale = new ScaledResolution(mc).getScaleFactor();
-            int pw = w * scale, ph = h * scale;
-            black = sized(black, pw, ph);
-            white = sized(white, pw, ph);
-            picture = sized(picture, pw, ph);
-            long start = System.nanoTime();
-            GlStateManager.matrixMode(GL11.GL_PROJECTION);
-            GlStateManager.pushMatrix();
-            GlStateManager.loadIdentity();
-            GlStateManager.ortho(0.0, w, h, 0.0, 1000.0, 3000.0);
-            GlStateManager.matrixMode(GL11.GL_MODELVIEW);
-            try {
-                drawOver(mc, cells, black, 0f, out);
-                drawOver(mc, cells, white, 1f, null);
-            } finally {
-                GlStateManager.matrixMode(GL11.GL_PROJECTION);
-                GlStateManager.popMatrix();
-                GlStateManager.matrixMode(GL11.GL_MODELVIEW);
-            }
-            unmatte();
-            mc.getFramebuffer().bindFramebuffer(true);
-            out.nanos = System.nanoTime() - start;
-            return picture.framebufferTexture;
-        }
-
-        private static Framebuffer sized(Framebuffer f, int w, int h) {
-            if (f == null) return new Framebuffer(w, h, true);
-            if (f.framebufferWidth != w || f.framebufferHeight != h) f.createBindFramebuffer(w, h);
-            return f;
-        }
-
-        private void drawOver(Minecraft mc, List<Cell> cells, Framebuffer target, float clear, Drawn out) {
-            target.setFramebufferColor(clear, clear, clear, 0f);
-            target.framebufferClear();
-            target.bindFramebuffer(true);
+            // Measured in the parity phase only: a glGet stalls a legacy context
+            int bound = out.checkTarget ? GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING) : 0;
             for (Cell cell : cells) {
                 draw(mc, cell);
-                // Measured in the parity phase only: a glGet stalls a legacy context
-                if (out != null && out.checkTarget && GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING) != target.framebufferObject) {
+                if (out.checkTarget && GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING) != bound) {
                     out.retargeted.add(cell.item().isEmpty() ? cell.kind().name() : cell.item());
-                    target.bindFramebuffer(true);
                 }
             }
-        }
-
-        // black and white into one premultiplied picture: a full-target pass of a GLSL 1.20 program
-        private void unmatte() {
-            if (program == 0) program = link();
-            picture.bindFramebuffer(true);
-            GlStateManager.disableBlend();
-            GlStateManager.disableDepth();
-            GlStateManager.disableAlpha();
-            GlStateManager.disableCull();
-            // Bound for the program, never enabled: an enabled unit textures every fixed-function draw after it
-            GlStateManager.setActiveTexture(GL13.GL_TEXTURE2);
-            GlStateManager.bindTexture(white.framebufferTexture);
-            GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);
-            GlStateManager.enableTexture2D();
-            GlStateManager.bindTexture(black.framebufferTexture);
-            OpenGlHelper.glUseProgram(program);
-            GL20.glUniform1i(GL20.glGetUniformLocation(program, "black"), 0);
-            GL20.glUniform1i(GL20.glGetUniformLocation(program, "white"), 2);
-            GL11.glBegin(GL11.GL_QUADS);
-            GL11.glTexCoord2f(0f, 0f);
-            GL11.glVertex2f(-1f, -1f);
-            GL11.glTexCoord2f(1f, 0f);
-            GL11.glVertex2f(1f, -1f);
-            GL11.glTexCoord2f(1f, 1f);
-            GL11.glVertex2f(1f, 1f);
-            GL11.glTexCoord2f(0f, 1f);
-            GL11.glVertex2f(-1f, 1f);
-            GL11.glEnd();
-            OpenGlHelper.glUseProgram(0);
-            GlStateManager.enableDepth();
-            GlStateManager.enableAlpha();
-        }
-
-        private static int link() {
-            int vs = shader(GL20.GL_VERTEX_SHADER, "#version 120\nvoid main() { gl_TexCoord[0] = gl_MultiTexCoord0; "
-                    + "gl_Position = gl_Vertex; }");
-            int fs = shader(GL20.GL_FRAGMENT_SHADER, "#version 120\nuniform sampler2D black; uniform sampler2D white;\n"
-                    + "void main() { vec4 b = texture2D(black, gl_TexCoord[0].st); vec4 w = texture2D(white, gl_TexCoord[0].st);\n"
-                    + "  float a = 1.0 - dot(w.rgb - b.rgb, vec3(1.0 / 3.0));\n"
-                    + "  gl_FragColor = vec4(b.rgb, clamp(a, 0.0, 1.0)); }");
-            int p = GL20.glCreateProgram();
-            GL20.glAttachShader(p, vs);
-            GL20.glAttachShader(p, fs);
-            GL20.glLinkProgram(p);
-            if (GL20.glGetProgrami(p, GL20.GL_LINK_STATUS) == 0) {
-                throw new IllegalStateException("picture unmatte: " + GL20.glGetProgramInfoLog(p, 4096));
-            }
-            return p;
-        }
-
-        private static int shader(int type, String source) {
-            int s = GL20.glCreateShader(type);
-            GL20.glShaderSource(s, source);
-            GL20.glCompileShader(s);
-            if (GL20.glGetShaderi(s, GL20.GL_COMPILE_STATUS) == 0) {
-                throw new IllegalStateException("picture unmatte: " + GL20.glGetShaderInfoLog(s, 4096));
-            }
-            return s;
         }
 
         private void draw(Minecraft mc, Cell cell) {

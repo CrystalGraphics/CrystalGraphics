@@ -1,5 +1,7 @@
 package com.crystalgraphics.mc.v1710.platform;
 
+import com.crystalgraphics.mc.render.CgHostPictures;
+import com.crystalgraphics.probe.CgPicturesProbe;
 import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -21,17 +23,23 @@ public final class OverlayStages1710 {
     /** Posted per HUD element; ALL is the once-a-frame one. */
     @SubscribeEvent
     public void onRenderOverlay(RenderGameOverlayEvent.Post event) {
-        if (event.type == RenderGameOverlayEvent.ElementType.ALL) fire(CgRenderStage.HUD);
+        if (event.type != RenderGameOverlayEvent.ElementType.ALL) return;
+        Pictures1710.partialTick = event.partialTicks;
+        CgPicturesProbe.hud(null);
+        fire(CgRenderStage.HUD);
     }
 
     @SubscribeEvent
     public void onDrawScreen(GuiScreenEvent.DrawScreenEvent.Post event) {
+        Pictures1710.partialTick = event.renderPartialTicks;
         fire(CgRenderStage.SCREEN);
     }
 
     private static void fire(CgRenderStage stage) {
         Minecraft mc = Minecraft.getMinecraft();
         int scale = new ScaledResolution(mc, mc.displayWidth, mc.displayHeight).getScaleFactor();
+        // The draw point: Minecraft draws its objects into targets of its own here, before our section opens
+        CgHostPictures.drawPoint();
         try {
             CgStageHost.fireOverlay(stage, mc.displayWidth, mc.displayHeight, scale,
                     OpenGlHelper.isFramebufferEnabled() ? mc.getFramebuffer().framebufferObject : 0);

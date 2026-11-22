@@ -11,6 +11,7 @@ import org.joml.Matrix4f;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.paint.CgPaint;
 import com.crystalgraphics.api.paint.brush.CgBrush;
+import com.crystalgraphics.api.paint.pattern.CgGrid;
 import com.crystalgraphics.api.text.CgText;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
@@ -76,6 +77,8 @@ public final class CgCanvas {
 
     /** A save's fields: the affine, opacity, intensity, clip entry, clip rect and whether it is one, clip node, cull rect. */
     private static final int SAVED = 23;
+    /** Minecraft's missing texture's magenta, with black in the other two quarters. */
+    private static final int MISSING_MAGENTA = 0xFFF800F8;
 
     private static final Logger LOGGER = Logger.getLogger(CgCanvas.class.getName());
 
@@ -714,6 +717,26 @@ public final class CgCanvas {
     public CgCanvas picture(CgKeptLayer kept, float sx, float sy, float sw, float sh, float x, float y, float w, float h) {
         keptLayers.picture(kept, sx, sy, sw, sh, x, y, w, h);
         return this;
+    }
+
+    /**
+     * {@code picture} over a rect in the units now, premultiplied, asked for at the rect's device size: an item's icon,
+     * an entity Minecraft draws, anything another producer keeps drawing. Nothing while it holds nothing; Minecraft's
+     * missing texture where it failed.
+     *
+     * <pre>{@code
+     * canvas.picture(CgCustomPicture.of("mymod:radar").renderer(Radar::draw), x, y, 128, 128);
+     * }</pre>
+     */
+    public CgCanvas picture(CgPicture picture, float x, float y, float w, float h) {
+        int pw = Math.max(1, Math.round(w * (float) Math.hypot(a, b)));
+        int ph = Math.max(1, Math.round(h * (float) Math.hypot(c, d)));
+        CgPicture.Image image = picture.image(pw, ph, deviceScale());
+        if (image == null) return this;
+        if (image == CgPicture.Image.MISSING) return fill(x, y, w, h, CgGrid.checker(MISSING_MAGENTA, 0xFF000000).cell(w * 0.5f, h * 0.5f));
+        CgCanvasBox box = box(x, y, w, h).fill(image.texture).premultiplied().region(image.u0, image.v0, image.u1, image.v1);
+        if (image.matte != null) box.material(image.matte);
+        return box.draw();
     }
 
     /**

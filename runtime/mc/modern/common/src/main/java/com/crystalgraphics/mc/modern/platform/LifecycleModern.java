@@ -20,6 +20,7 @@ import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
+import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.probe.CgPicturesProbe;
 
 import net.minecraft.client.Minecraft;
@@ -157,7 +158,7 @@ public final class LifecycleModern {
         hud(null);
     }
 
-    /** {@link #hud()} from a hook that has the era's GUI object ({@code GuiGraphics}), which NR0's probe draws with. */
+    /** {@link #hud()} from a hook that has the era's GUI object ({@code GuiGraphics}), which the pictures probe draws with. */
     public static void hud(@Nullable Object gui) {
         if (canRender()) CgPicturesProbe.hud(gui);
         overlay(CgRenderStage.HUD);
@@ -192,7 +193,7 @@ public final class LifecycleModern {
         mc.renderBuffers().bufferSource().endBatch();
         //?}
         // The draw point: Minecraft draws its objects into targets of its own here, before our section opens
-        if (stage == CgRenderStage.HUD) CgPicturesProbe.drawPoint();
+        CgHostPictures.drawPoint();
         CgDeviceSection.begin();
         try {
             int mainFbo = bindMainTarget(mc);

@@ -2499,6 +2499,7 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public photograph (ILcom/crystalgraphics/api/canvas/CgPhotograph$Sink;)Z
   method public picture (Lcom/crystalgraphics/api/canvas/CgKeptLayer;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public picture (Lcom/crystalgraphics/api/canvas/CgKeptLayer;FFFFFFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public picture (Lcom/crystalgraphics/api/canvas/CgPicture;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public pixelSnap (Z)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public recording ()Z
   method public rectilinear ()Z
@@ -2637,9 +2638,11 @@ com/crystalgraphics/api/canvas/CgCullRect
 com/crystalgraphics/api/canvas/CgKeptLayer
   access public,final
   extends java/lang/Object
+  implements com/crystalgraphics/api/canvas/CgPicture
   method public <init> ()V
   method public delete ()V
   method public hasPicture ()Z
+  method public image (IIF)Lcom/crystalgraphics/api/canvas/CgPicture$Image;
   method public invalidate ()V
   method public keep (Z)Lcom/crystalgraphics/api/canvas/CgKeptLayer;
   method public pictureHeight ()I
@@ -2647,6 +2650,7 @@ com/crystalgraphics/api/canvas/CgKeptLayer
   method public reserve (II)Lcom/crystalgraphics/api/canvas/CgKeptLayer;
   method public texture ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public thumbnailStale ()Z
+  method public version ()J
 com/crystalgraphics/api/canvas/CgKeptLayer$Placement
   access public,final
   extends java/lang/Object
@@ -2708,6 +2712,18 @@ com/crystalgraphics/api/canvas/CgPhotograph$Sink
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract accept (II[B)V
+com/crystalgraphics/api/canvas/CgPicture
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract image (IIF)Lcom/crystalgraphics/api/canvas/CgPicture$Image;
+  method public,abstract version ()J
+com/crystalgraphics/api/canvas/CgPicture$Image
+  access public,final
+  extends java/lang/Object
+  field public,static,final MISSING Lcom/crystalgraphics/api/canvas/CgPicture$Image;
+  method public texture ()Lcom/crystalgraphics/api/texture/CgTexture;
+  method public,static matted (Lcom/crystalgraphics/api/texture/CgTexture;Lcom/crystalgraphics/api/texture/CgTexture;FFFF)Lcom/crystalgraphics/api/canvas/CgPicture$Image;
+  method public,static of (Lcom/crystalgraphics/api/texture/CgTexture;FFFF)Lcom/crystalgraphics/api/canvas/CgPicture$Image;
 com/crystalgraphics/api/canvas/CgUiMaterials
   access public,final
   extends java/lang/Object
@@ -11954,8 +11970,9 @@ com/crystalgraphics/probe/CgPicturesProbe
   field public,static,final REF_X I
   field public,static,final REF_Y I
   field public,static,final W I
-  method public,static drawPoint ()V
+  method public,static cellsOf (Ljava/util/List;)Ljava/util/List;
   method public,static hud (Ljava/lang/Object;)V
+  method public,static renderer (Ljava/util/List;)Lcom/crystalgraphics/mc/render/custom/CgPictureRenderer;
   method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
 com/crystalgraphics/probe/CgPicturesProbe$Cell
   access public,final,record
@@ -11975,8 +11992,8 @@ com/crystalgraphics/probe/CgPicturesProbe$Drawn
   access public,final
   extends java/lang/Object
   field public checkTarget Z
+  field public drew Z
   field public nanos J
-  field public state Ljava/lang/String;
   field public,final retargeted Ljava/util/List;
   method public <init> ()V
 com/crystalgraphics/probe/CgPicturesProbe$Host
@@ -11984,10 +12001,10 @@ com/crystalgraphics/probe/CgPicturesProbe$Host
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/probe/CgPicturesProbe$Host;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public draws (Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;)Z
   method public,abstract absent ()Ljava/lang/String;
-  method public,abstract bottomUp ()Z
+  method public,abstract cells (Lcom/crystalgraphics/mc/render/custom/CgHostDrawContext;Ljava/util/List;Lcom/crystalgraphics/probe/CgPicturesProbe$Drawn;)V
   method public,abstract knows (Ljava/lang/String;)Z
-  method public,abstract picture (Ljava/util/List;IILcom/crystalgraphics/probe/CgPicturesProbe$Drawn;)Ljava/lang/Object;
   method public,abstract reference (Ljava/lang/Object;Ljava/util/List;IIIIIIILcom/crystalgraphics/probe/CgPicturesProbe$Drawn;)V
 com/crystalgraphics/probe/CgPicturesProbe$Kind
   access public,final,enum
@@ -20301,6 +20318,7 @@ com/crystalgraphics/util/trace/CgChannels
   field public,static,final GPU_GROUPS Lcom/crystalgraphics/trace/CgTraceChannel;
   field public,static,final MISC Lcom/crystalgraphics/trace/CgTraceChannel;
   field public,static,final NET Lcom/crystalgraphics/trace/CgTraceChannel;
+  field public,static,final PICTURES Lcom/crystalgraphics/trace/CgTraceChannel;
   field public,static,final SHADERGRAPH Lcom/crystalgraphics/trace/CgTraceChannel;
   field public,static,final TEXT Lcom/crystalgraphics/trace/CgTraceChannel;
   field public,static,final TEXT_DETAIL Lcom/crystalgraphics/trace/CgTraceChannel;

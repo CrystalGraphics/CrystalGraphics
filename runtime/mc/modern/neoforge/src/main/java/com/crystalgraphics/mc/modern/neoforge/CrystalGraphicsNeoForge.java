@@ -28,14 +28,6 @@ import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import java.util.function.BiConsumer;
-//? if >=26.2 <26.3 {
-/*import com.crystalgraphics.mc.modern.platform.PicturesProbeModern;
-import java.util.List;
-import net.minecraft.client.gui.render.pip.GuiEntityRenderer;
-import net.minecraft.client.renderer.state.gui.pip.GuiEntityRenderState;
-import net.neoforged.neoforge.client.ClientHooks;
-import net.neoforged.neoforge.client.gui.PictureInPictureRendererRegistration;
-*///?}
 //? if >=1.21.7 {
 /*import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.client.network.event.RegisterClientPayloadHandlersEvent;
@@ -248,12 +240,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                 /*CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN);
                 *///?}
                 // A dev run wraps every GPU texture and the device for validation; ours are the GL ones under them.
-                // NR0's pictures draw through a GuiRenderer of their own: NeoForge's takes registrations, mods' gathered
-                //? if >=26.2 <26.3 {
-                /*PicturesProbeModern.pictureInPicture(mc -> ClientHooks.gatherPictureInPictureRenderers(List.of(
-                        new PictureInPictureRendererRegistration<>(GuiEntityRenderState.class,
-                                () -> new GuiEntityRenderer(mc.getEntityRenderDispatcher())))));
-                *///?}
+                PicturesNeoForge.install();
                 //? if >=1.21.8 <26.1 {
                 /*LifecycleModern.unwrapWith(
                         texture -> texture instanceof ValidationGpuTexture wrapped ? wrapped.getRealTexture() : texture,
