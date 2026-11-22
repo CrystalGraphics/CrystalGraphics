@@ -10,6 +10,7 @@ import com.crystalgraphics.serialization.CgStateMap;
 import javax.annotation.Nullable;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.text.ParsePosition;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -151,6 +152,22 @@ public final class CgNbt {
     @SuppressWarnings("unchecked")
     public static <T extends CgNbtTag> T parse(String snbt) {
         return (T) Snbt.parse(snbt);
+    }
+
+    /**
+     * One tag from the middle of a text, as a command's argument holds it: read from {@code position}'s index, which is
+     * left just after the tag.
+     *
+     * <pre>{@code
+     * ParsePosition at = new ParsePosition("minecraft:sheep".length());
+     * CgNbtCompound data = CgNbt.parse("minecraft:sheep{Color:2} ~ ~ ~", at);   // {Color:2}; at is 24
+     * }</pre>
+     *
+     * @throws CgCodecException where no tag starts there, naming the position
+     */
+    @SuppressWarnings("unchecked")
+    public static <T extends CgNbtTag> T parse(String text, ParsePosition position) {
+        return (T) Snbt.read(text, position);
     }
 
     // ── Codecs ──────────────────────────────────────────────────────────────

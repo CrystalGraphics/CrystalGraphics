@@ -5,6 +5,7 @@ import net.minecraftforge.client.event.RegisterItemDecorationsEvent;
 import net.minecraft.world.item.Items;
 //?}
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
+import com.crystalgraphics.mc.fluid.CgFluids;
 import com.crystalgraphics.mc.modern.platform.world.EntitySavesModern;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.world.CgEntitySaves;
@@ -214,7 +215,10 @@ public final class CrystalGraphicsForge implements VariantEntry {
         //?} else {
         /*CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(entity -> ((IForgeEntity) entity).getEntityData(), false));   // no mixins: written as it changes
         *///?}
-        if (FMLEnvironment.dist == Dist.CLIENT) PlatformServiceModern.installClient();
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            PlatformServiceModern.installClient();
+            CgPlatform.provide(CgFluids.HOST, new FluidsForge());
+        }
         CgEngineLifecycle.preInit();
         CgEngineLifecycle.init(Network.register());
         ServerEvents.register();

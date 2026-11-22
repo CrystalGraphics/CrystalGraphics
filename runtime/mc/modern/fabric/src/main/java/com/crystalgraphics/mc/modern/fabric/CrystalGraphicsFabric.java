@@ -1,5 +1,7 @@
 package com.crystalgraphics.mc.modern.fabric;
 
+import com.crystalgraphics.mc.fluid.CgFluids;
+import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.mc.modern.platform.KeyBindingsModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 //? if >=26.1 {
@@ -56,6 +58,9 @@ public final class CrystalGraphicsFabric implements VariantEntry {
     @Override
     public void start(Object context) {
         PlatformServiceModern.installClient();
+        //? if >=1.16.5 {
+        CgPlatform.provide(CgFluids.HOST, new FluidsFabric());
+        //?}
         Events.register();
         // What the node mixins apply and report: CameraHook from 1.15 (1.14.4 turns its view from elsewhere, so the hook
         // changes nothing seen) with roll from 1.21.11, FovHook on every version, ExplosionHook on every version,

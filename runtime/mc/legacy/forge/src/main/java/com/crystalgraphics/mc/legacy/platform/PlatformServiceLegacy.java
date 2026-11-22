@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.legacy.platform;
 
+import com.crystalgraphics.mc.fluid.CgFluids;
 import com.crystalgraphics.mc.legacy.platform.world.EntitySavesLegacy;
 import com.crystalgraphics.world.CgEntitySaves;
 import com.crystalgraphics.mc.model.CgVanillaPoses;
@@ -41,6 +42,7 @@ import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgKeyBindings;
 import com.crystalgraphics.mc.container.CgContainers;
+import com.crystalgraphics.mc.block.CgBlocks;
 import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.platform.service.CgScreens;
 import com.crystalgraphics.platform.service.CgGameSession;
@@ -65,6 +67,7 @@ import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.item.CgItemIcons;
 import com.crystalgraphics.mc.render.tooltip.CgTooltips;
 import com.crystalgraphics.probe.CgPicturesProbe;
+import com.crystalgraphics.probe.CgValuesProbe;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 
@@ -115,6 +118,8 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgMirrorHost.HOST, new MirrorHostLegacy());
         CgPlatform.provide(CgNbt.HOST, new NbtLegacy());
         CgPlatform.provide(CgItems.HOST, ItemsLegacy.INSTANCE);
+        CgPlatform.provide(CgBlocks.HOST, BlocksLegacy.INSTANCE);
+        CgPlatform.provide(CgValuesProbe.Host.SERVICE, ValuesProbeLegacy.INSTANCE);
         // FML traps a mod's own Runtime.halt.
         CgPlatform.provide(CgProcessExit.HOST, status -> FMLCommonHandler.instance().exitJava(status, true));
         FMLCommonHandler.instance().bus().register(new TicksLegacy());
@@ -138,6 +143,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgHostPictures.HOST, new PicturesLegacy());
         CgPlatform.provide(CgItemIcons.HOST, new ItemIconsLegacy());
         CgPlatform.provide(CgTooltips.HOST, new TooltipsLegacy());
+        CgPlatform.provide(CgFluids.HOST, new FluidsLegacy());
         CgPlatform.provide(CgPicturesProbe.Host.SERVICE, PicturesProbeLegacy.create());
         CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsLegacy.INSTANCE);
         CgKeyBindings.hostProvided();

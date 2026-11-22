@@ -5,6 +5,8 @@ import com.crystalgraphics.platform.CgService;
 import com.crystalgraphics.serialization.nbt.CgNbtCompound;
 
 import javax.annotation.Nullable;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * The game's item stacks, copied into {@link CgItemStack} and built back, on every version. Most code calls
@@ -71,6 +73,11 @@ public final class CgItems {
         /** Whether that item is in item tag {@code tag} ({@code minecraft:swords}); false where the version has no item tags. */
         boolean inTag(int itemId, String tag);
 
+        /** The registry names of the items in item tag {@code tag}, in the tag's order; none where the version has no item tags. */
+        default List<String> tagItems(String tag) {
+            return Collections.emptyList();
+        }
+
         Host NONE = new Host() {
             @Override public boolean isStack(Object o) { return false; }
             @Override public CgNbtCompound save(Object stack) { throw absent(); }
@@ -112,6 +119,11 @@ public final class CgItems {
         if (itemId < 0) return false;
         if (reference.startsWith("#")) return host().inTag(itemId, reference.substring(1));
         return reference.equals(host().name(itemId));
+    }
+
+    /** The items in item tag {@code tag} ({@code minecraft:planks}, a leading {@code #} allowed); none before 1.13 or with no game. */
+    public static List<String> tagItems(String tag) {
+        return host().tagItems(tag.startsWith("#") ? tag.substring(1) : tag);
     }
 
     /** A copy of the game's stack; {@link CgItemStack#EMPTY} for null or an empty one. */

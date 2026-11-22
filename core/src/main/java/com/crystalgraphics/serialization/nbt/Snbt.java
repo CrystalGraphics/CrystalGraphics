@@ -2,6 +2,7 @@ package com.crystalgraphics.serialization.nbt;
 
 import com.crystalgraphics.serialization.CgCodecException;
 
+import java.text.ParsePosition;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -113,6 +114,15 @@ final class Snbt {
         CgNbtTag tag = reader.value();
         reader.skipSpace();
         if (reader.at < snbt.length()) throw reader.error("text after the tag");
+        return tag;
+    }
+
+    /** One tag from {@code position}'s index, which is left after it; spaces before it are skipped. */
+    static CgNbtTag read(String text, ParsePosition position) {
+        Reader reader = new Reader(text);
+        reader.at = position.getIndex();
+        CgNbtTag tag = reader.value();
+        position.setIndex(reader.at);
         return tag;
     }
 

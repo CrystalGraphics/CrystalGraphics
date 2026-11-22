@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.item;
 
+import com.crystalgraphics.mc.CgCommandReader;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.nbt.CgNbtCompound;
@@ -30,7 +31,14 @@ import java.util.function.Consumer;
  * player.getInventory().setItem(0, better.toHost());                   // the game's, built from the data
  *
  * CgItemStack test = CgItemStack.of("minecraft:stone", 16);            // no game: a test, a tool, the harness
+ * CgItemStack given = CgItemStack.parse("diamond_sword[enchantments={levels:{sharpness:3}}] 2");   // what /give takes
  * }</pre>
+ *
+ * <h2>As text</h2>
+ * {@link #parse} reads what {@code /give} takes on any version: {@code id[component=snbt,!removed] count} (1.20.5 on),
+ * {@code id{tag} count} (1.13 to 1.20.4) and {@code id count damage {tag}} (before 1.13). {@link #toString} writes the
+ * first, the same on every version; {@link #toCommand} writes the running version's own, which its {@code /give}
+ * reads.
  *
  * <h2>The data</h2>
  * A stack's data is its <b>components</b>, as 1.21.5 and later keep them: a compound of {@code namespace:path} keys
@@ -102,6 +110,70 @@ public final class CgItemStack {
         return new CgItemStack(item, count, 0, new CgNbtCompound());
     }
 
+    /**
+     * From {@code /give}'s item and count, in any version's syntax (see the class javadoc); the count is 1 where none is
+     * given, and an id without a namespace is {@code minecraft:}'s.
+     *
+     * @throws com.crystalgraphics.serialization.CgCodecException where it is none of them, naming the position
+     */
+    public static CgItemStack parse(String text) {
+        CgCommandReader r = new CgCommandReader(text);
+        r.skipSpaces();
+        String id = r.readId();
+        CgNbtCompound components = new CgNbtCompound();
+        CgNbtCompound oldTag = null;
+        if (r.skip('[')) {
+            r.skipSpaces();
+            if (!r.skip(']')) {
+                do {
+                    r.skipSpaces();
+                    if (r.skip('!')) {
+                        components.put("!" + r.readId(), new CgNbtCompound());
+                    } else {
+                        String key = r.readId();
+                        r.skipSpaces();
+                        r.expect('=');
+                        r.skipSpaces();
+                        components.put(key, r.readTag());
+                    }
+                    r.skipSpaces();
+                } while (r.skip(','));
+                r.expect(']');
+            }
+        } else if (r.peek() == '{') {
+            oldTag = compound(r);
+        }
+        r.skipSpaces();
+        int count = isNumber(r) ? r.readInt() : 1;
+        r.skipSpaces();
+        if (isNumber(r)) {
+            // Before 1.13: /give <item> <count> <damage> {tag}
+            if (oldTag != null || !components.isEmpty()) throw r.error("one syntax, not two");
+            int damage = r.readInt();
+            r.skipSpaces();
+            CgNbtCompound saved = new CgNbtCompound().put("id", id).putByte("Count", count).putShort("Damage", damage);
+            if (r.peek() == '{') saved.put("tag", compound(r));
+            r.expectEnd();
+            return ItemShapes.fromSaved(saved, CgItems.Shape.LEGACY, 0);
+        }
+        r.expectEnd();
+        if (oldTag != null) {
+            CgNbtCompound saved = new CgNbtCompound().put("id", id).putByte("Count", count).put("tag", oldTag);
+            return ItemShapes.fromSaved(saved, CgItems.Shape.TAG, 0);
+        }
+        return new CgItemStack(id, count, 0, components);
+    }
+
+    private static boolean isNumber(CgCommandReader r) {
+        return Character.isDigit(r.peek()) || r.peek() == '-';
+    }
+
+    private static CgNbtCompound compound(CgCommandReader r) {
+        CgNbtTag tag = r.readTag();
+        if (!(tag instanceof CgNbtCompound)) throw r.error("the item's data as a compound");
+        return (CgNbtCompound) tag;
+    }
+
     /** A copy of the game's stack, on every version; {@link #EMPTY} for null. Throws outside Minecraft. */
     public static CgItemStack of(@Nullable Object hostStack) {
         return CgItems.of(hostStack);
@@ -128,8 +200,9 @@ public final class CgItemStack {
         return maxDamage;
     }
 
+    /** No item, none of it, or air: what the game counts as an empty slot. */
     public boolean isEmpty() {
-        return count <= 0 || item.isEmpty();
+        return count <= 0 || item.isEmpty() || item.equals("minecraft:air");
     }
 
     /** The data: a copy of the components, as the game's newest version keeps them. */
@@ -328,10 +401,40 @@ public final class CgItemStack {
         return isEmpty() ? 0 : 31 * stamp() + count;
     }
 
+    /**
+     * {@code minecraft:diamond_sword[minecraft:damage=9,!minecraft:food] 2}: 1.20.5's {@code /give} syntax, the same on
+     * every version, what {@link #parse} reads; the count is left out at 1. {@code minecraft:air 0} when empty.
+     */
     @Override
     public String toString() {
-        if (isEmpty()) return "empty";
-        return count + " x " + item + (components.isEmpty() ? "" : " " + components);
+        if (isEmpty()) return "minecraft:air 0";
+        StringBuilder out = new StringBuilder(item);
+        if (!components.isEmpty()) {
+            out.append('[');
+            boolean first = true;
+            for (String key : components.keys()) {
+                if (!first) out.append(',');
+                first = false;
+                if (key.startsWith("!")) out.append(key);
+                else out.append(key).append('=').append(components.get(key));
+            }
+            out.append(']');
+        }
+        if (count != 1) out.append(' ').append(count);
+        return out.toString();
+    }
+
+    /**
+     * The running version's own {@code /give} syntax for this stack: {@link #toString} from 1.20.5, {@code id{tag} count}
+     * from 1.13, {@code id count damage {tag}} before. Without a game, 1.20.5's.
+     */
+    public String toCommand() {
+        CgItems.Shape shape = CgItems.shape();
+        if (shape == CgItems.Shape.COMPONENTS || isEmpty()) return toString();
+        CgNbtCompound saved = ItemShapes.toSaved(this, shape);
+        CgNbtCompound tag = saved.getCompound("tag");
+        if (shape == CgItems.Shape.TAG) return item + (tag.isEmpty() ? "" : tag.toString()) + (count != 1 ? " " + count : "");
+        return item + " " + count + " " + saved.getInt("Damage") + (tag.isEmpty() ? "" : " " + tag);
     }
 
     /** The levels of an enchantment compound, in either spelling: {@code {id: level}} or 1.20.5-1.21.4's {@code {levels:{id: level}}}. */

@@ -12029,6 +12029,22 @@ com/crystalgraphics/probe/CgServerSmoke
   extends com/crystalgraphics/gauntlet/CgGauntletController
   method public <init> ()V
   method public,static clientOnly ([Ljava/lang/String;)V
+com/crystalgraphics/probe/CgValuesProbe
+  access public,final
+  extends java/lang/Object
+  method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
+com/crystalgraphics/probe/CgValuesProbe$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/probe/CgValuesProbe$Host;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract absent ()Ljava/lang/String;
+  method public,abstract faces ()Ljava/util/List;
+  method public,abstract gameBlock (Ljava/lang/String;)Lcom/crystalgraphics/mc/block/CgBlockState;
+  method public,abstract gameEntity (Ljava/lang/String;)Lcom/crystalgraphics/mc/entity/CgEntityData;
+  method public,abstract gameItem (Ljava/lang/String;)Lcom/crystalgraphics/mc/item/CgItemStack;
+  method public,abstract packed (III)Ljava/lang/Long;
+  method public,abstract sheep ()Ljava/lang/String;
 com/crystalgraphics/probe/CgWorldProbe
   access public,final
   extends java/lang/Object
@@ -17766,6 +17782,7 @@ com/crystalgraphics/serialization/nbt/CgNbt
   method public,static list ()Lcom/crystalgraphics/serialization/nbt/CgNbtList;
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
   method public,static parse (Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public,static parse (Ljava/lang/String;Ljava/text/ParsePosition;)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
   method public,static present ()Z
   method public,static readBinary (Ljava/io/InputStream;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
   method public,static state ()Lcom/crystalgraphics/serialization/CgStateMap;

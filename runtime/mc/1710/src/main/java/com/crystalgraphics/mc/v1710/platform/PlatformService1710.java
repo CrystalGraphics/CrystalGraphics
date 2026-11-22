@@ -1,9 +1,11 @@
 package com.crystalgraphics.mc.v1710.platform;
 
+import com.crystalgraphics.mc.fluid.CgFluids;
 import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.item.CgItemIcons;
 import com.crystalgraphics.mc.render.tooltip.CgTooltips;
 import com.crystalgraphics.probe.CgPicturesProbe;
+import com.crystalgraphics.probe.CgValuesProbe;
 import com.crystalgraphics.mc.v1710.platform.world.EntitySaves1710;
 import com.crystalgraphics.world.CgEntitySaves;
 import com.crystalgraphics.mc.model.CgVanillaPoses;
@@ -116,6 +118,7 @@ public final class PlatformService1710 implements CgPlatformService {
         CgPlatform.provide(CgMirrorHost.HOST, new MirrorHost1710());
         CgPlatform.provide(CgNbt.HOST, new Nbt1710());
         CgPlatform.provide(CgItems.HOST, Items1710.INSTANCE);
+        CgPlatform.provide(CgValuesProbe.Host.SERVICE, ValuesProbe1710.INSTANCE);
         // FML traps a mod's own Runtime.halt.
         CgPlatform.provide(CgProcessExit.HOST, status -> FMLCommonHandler.instance().exitJava(status, true));
         FMLCommonHandler.instance().bus().register(new Ticks1710());
@@ -155,6 +158,7 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgHostPictures.HOST, new Pictures1710());
             CgPlatform.provide(CgItemIcons.HOST, new ItemIcons1710());
             CgPlatform.provide(CgTooltips.HOST, new Tooltips1710());
+            CgPlatform.provide(CgFluids.HOST, new Fluids1710());
             CgPlatform.provide(CgPicturesProbe.Host.SERVICE, new PicturesProbe1710());
             CgPlatform.provide(CgKeyBindings.HOST, KeyBindings1710.INSTANCE);
             CgKeyBindings.hostProvided();

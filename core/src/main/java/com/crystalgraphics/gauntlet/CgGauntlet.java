@@ -31,6 +31,7 @@ import com.crystalgraphics.probe.CgActorProbe;
 import com.crystalgraphics.probe.CgCollisionProbe;
 import com.crystalgraphics.probe.CgContainersProbe;
 import com.crystalgraphics.probe.CgPicturesProbe;
+import com.crystalgraphics.probe.CgValuesProbe;
 import com.crystalgraphics.probe.CgServerSmoke;
 import com.crystalgraphics.probe.CgWorldProbe;
 import com.crystalgraphics.variable.CgVar;
@@ -116,6 +117,7 @@ public final class CgGauntlet {
         register("crystalgraphics:containers", CgContainersProbe::test);
         register("crystalgraphics:actors", CgActorProbe::test);
         register("crystalgraphics:pictures", CgPicturesProbe::test);
+        register("crystalgraphics:values", CgValuesProbe::test);
         register("crystalgraphics:net", CgNetProbe::test);
         register("crystalgraphics:player-saves", CgPlayerSavesProbe::test);
         register("crystalgraphics:entity-saves", CgEntitySavesProbe::test);

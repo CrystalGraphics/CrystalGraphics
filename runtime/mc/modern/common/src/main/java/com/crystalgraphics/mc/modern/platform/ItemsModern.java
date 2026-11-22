@@ -10,12 +10,17 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+
+import java.util.ArrayList;
+import java.util.List;
 //? if >=1.19.3 {
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.tags.TagKey;
 //?} elif >=1.18.2 {
-/*import net.minecraft.core.Registry;
+/*import net.minecraft.core.Holder;
+import net.minecraft.core.Registry;
 import net.minecraft.tags.TagKey;
 *///?} else {
 /*import net.minecraft.core.Registry;
@@ -150,5 +155,23 @@ public final class ItemsModern implements CgItems.Host {
         /*Tag<Item> items = ItemTags.getAllTags().getTag(ResourceIds.parse(tag));
         return items != null && items.contains(item);
         *///?}
+    }
+
+    @Override
+    public List<String> tagItems(String tag) {
+        List<String> out = new ArrayList<>();
+        //? if >=1.19.3 {
+        for (Holder<Item> h : BuiltInRegistries.ITEM.getTagOrEmpty(TagKey.create(Registries.ITEM, ResourceIds.parse(tag)))) {
+            out.add(String.valueOf(BuiltInRegistries.ITEM.getKey(h.value())));
+        }
+        //?} elif >=1.18.2 {
+        /*for (Holder<Item> h : Registry.ITEM.getTagOrEmpty(TagKey.create(Registry.ITEM_REGISTRY, ResourceIds.parse(tag)))) {
+            out.add(String.valueOf(Registry.ITEM.getKey(h.value())));
+        }
+        *///?} else {
+        /*Tag<Item> items = ItemTags.getAllTags().getTag(ResourceIds.parse(tag));
+        if (items != null) for (Item item : items.getValues()) out.add(String.valueOf(Registry.ITEM.getKey(item)));
+        *///?}
+        return out;
     }
 }

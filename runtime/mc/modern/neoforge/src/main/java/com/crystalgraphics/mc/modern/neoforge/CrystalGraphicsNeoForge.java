@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.neoforge;
 
+import com.crystalgraphics.mc.fluid.CgFluids;
 import net.neoforged.neoforge.client.event.RegisterItemDecorationsEvent;
 import net.minecraft.world.item.Items;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
@@ -249,6 +250,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                 *///?}
                 // A dev run wraps every GPU texture and the device for validation; ours are the GL ones under them.
                 PicturesNeoForge.install();
+                CgPlatform.provide(CgFluids.HOST, new FluidsNeoForge());
                 //? if >=1.21.8 <26.1 {
                 /*LifecycleModern.unwrapWith(
                         texture -> texture instanceof ValidationGpuTexture wrapped ? wrapped.getRealTexture() : texture,

@@ -58,6 +58,7 @@ import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgKeyBindings;
 import com.crystalgraphics.mc.container.CgContainers;
+import com.crystalgraphics.mc.block.CgBlocks;
 import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.platform.service.CgScreens;
 import com.crystalgraphics.platform.service.CgServers;
@@ -74,6 +75,7 @@ import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.item.CgItemIcons;
 import com.crystalgraphics.mc.render.tooltip.CgTooltips;
 import com.crystalgraphics.probe.CgPicturesProbe;
+import com.crystalgraphics.probe.CgValuesProbe;
 
 import net.minecraft.client.Minecraft;
 
@@ -124,6 +126,8 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgMirrorHost.HOST, new MirrorHostModern());
         CgPlatform.provide(CgNbt.HOST, new NbtModern());
         CgPlatform.provide(CgItems.HOST, ItemsModern.INSTANCE);
+        CgPlatform.provide(CgBlocks.HOST, BlocksModern.INSTANCE);
+        CgPlatform.provide(CgValuesProbe.Host.SERVICE, ValuesProbeModern.INSTANCE);
         CgPlatform.provide(CgCommands.HOST, CommandsModern.INSTANCE);
     }
 
