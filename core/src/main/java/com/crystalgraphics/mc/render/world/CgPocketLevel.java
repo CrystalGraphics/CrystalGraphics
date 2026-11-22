@@ -1,5 +1,7 @@
 package com.crystalgraphics.mc.render.world;
 
+import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.trace.CgTrace;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -431,6 +433,7 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
         // Drawn by the host's world pipelines, so in its world's convention, wherever the draw point falls
         boolean before = CgDepthConvention.hostReversed();
         CgDepthConvention.host(CgDepthConvention.worldReversed());
+        long zone = CgTrace.begin(CgChannels.PICTURES, "pocket.drawPoint");
         try {
             for (CgPocketLevel level : OPEN) {
                 try {
@@ -441,6 +444,7 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
                 }
             }
         } finally {
+            CgTrace.end(zone);
             CgDepthConvention.host(before);
         }
     }
@@ -467,8 +471,14 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
             CgView view = ask.view;
             Runnable components = view == null ? () -> { }
                     : () -> CgHostWorld.drawScene(view.scene(), ox, oy, oz, cameraView, partialTick, true);
-            ask.drawn = host.draw(level, e.getKey(), ask.width, ask.height, cameraView, ox, oy, oz, projection,
-                    partialTick, components);
+            long zone = CgTrace.begin(CgChannels.PICTURES, "pocket.draw");
+            try {
+                ask.drawn = host.draw(level, e.getKey(), ask.width, ask.height, cameraView, ox, oy, oz, projection,
+                        partialTick, components);
+            } finally {
+                CgTrace.end(zone);
+            }
+            CgTrace.add(CgChannels.PICTURES, "pocket-draws", 1);
             ask.drawnFrame = frame;
             ask.drawnStamp = stamp;
             if (ask.picture != null) ask.picture.drew();

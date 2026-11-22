@@ -8,10 +8,8 @@ import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.CgPictureLighting;
 import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.mc.render.custom.CgPictureRenderer;
-//? if >=1.21.6 {
-/*import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
-*///?}
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import net.minecraft.client.Minecraft;
 import javax.annotation.Nullable;
@@ -427,19 +425,25 @@ public final class PicturesModern implements CgHostPictures.Host {
     // once; everything put back as the HUD had it
     private void immediate(Minecraft mc, RenderTarget t, float clear, @Nullable int[] rects, int count,
                            CgPictureLighting lighting, CgPictureRenderer drawer, Context ctx) {
+        long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.setup");
         if (rects == null) clearAndBind(t, clear);
         else clearRectsAndBind(t, clear, rects, count);
         project(ctx.width, ctx.height);
         light(lighting);
         answerWindow(Math.round(ctx.width * ctx.scale), Math.round(ctx.height * ctx.scale), 0, ctx.scale, ctx.width,
                 ctx.height);
+        CgTrace.end(zone);
+        zone = CgTrace.begin(CgChannels.PICTURES, "pictures.minecraft");
         try {
             drawAtOnce(mc, drawer, ctx);
         } finally {
+            CgTrace.end(zone);
+            zone = CgTrace.begin(CgChannels.PICTURES, "pictures.restore");
             window = false;
             unproject();
             unlight();
             unbind(mc);
+            CgTrace.end(zone);
         }
     }
 

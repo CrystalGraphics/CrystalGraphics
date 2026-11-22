@@ -132,6 +132,11 @@ public abstract class CgHostPicture implements CgPicture {
      */
     protected abstract void draw(CgHostDrawContext ctx);
 
+    /** The trace zone its draws land in, a constant per kind: {@code pictures.entity}, {@code pictures.block}. */
+    protected String traceZone() {
+        return "pictures.custom";
+    }
+
     /** What draws it, named in a failure's log line: a custom picture's renderer. Itself by default. */
     protected Object drawnBy() {
         return this;

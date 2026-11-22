@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.view;
 
+import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.trace.CgTrace;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -123,6 +125,15 @@ public final class CgViewPicture implements CgPicture {
     public static void drawPoint() {
         if (SHOWN.isEmpty()) return;
         long frame = CgFrameRing.frame();
+        long zone = CgTrace.begin(CgChannels.PICTURES, "viewPicture.drawPoint");
+        try {
+            drawShown(frame);
+        } finally {
+            CgTrace.end(zone);
+        }
+    }
+
+    private static void drawShown(long frame) {
         for (CgViewPicture picture : SHOWN) {
             if (frame - picture.asked > FORGET_FRAMES) {
                 picture.forget();

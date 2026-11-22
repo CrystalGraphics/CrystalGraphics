@@ -86,4 +86,9 @@ public final class CgTooltipPicture extends CgHostPicture {
         }
         if (w > 0 && h > 0) host.draw(ctx, hostStack, BLEED, BLEED);
     }
+
+    @Override
+    protected String traceZone() {
+        return "pictures.tooltip";
+    }
 }

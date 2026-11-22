@@ -55,4 +55,9 @@ public final class CgBlockPicture extends CgHostPicture {
         float size = Math.min(ctx.width(), ctx.height());
         host.draw(ctx, prepared, (ctx.width() - size) / 2, (ctx.height() - size) / 2, size);
     }
+
+    @Override
+    protected String traceZone() {
+        return "pictures.block";
+    }
 }

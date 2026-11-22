@@ -385,6 +385,7 @@ public final class CgHostPictures {
     /** Draws one size; false where the picture failed. */
     private static boolean draw(Host host, CgHostPicture p, CgHostPicture.Size s, long frame) {
         boolean two = host.twoClears();
+        long zone = CgTrace.begin(CgChannels.PICTURES, p.traceZone());
         try {
             int w = s.width + 2 * s.pad, h = s.height + 2 * s.pad;
             if (s.target == null) s.target = host.createTarget(w, h);
@@ -405,6 +406,8 @@ public final class CgHostPictures {
             if (log) LOGGER.error("[cg] picture '{}' failed to draw ({}): it shows the missing texture until a resource "
                     + "reload", p.name(), p.drawnBy().getClass().getName(), t);
             return false;
+        } finally {
+            CgTrace.end(zone);
         }
         CgPicture.Image image = s.image;
         if (image == null) {

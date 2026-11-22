@@ -83,4 +83,9 @@ public final class CgEntityPicture extends CgHostPicture {
         float s = scale > 0 ? scale : ctx.height() * 0.9f / Math.max(0.1f, host.height(entity));
         host.draw(ctx, entity, pose, s, 0, 0, ctx.width(), ctx.height());
     }
+
+    @Override
+    protected String traceZone() {
+        return "pictures.entity";
+    }
 }

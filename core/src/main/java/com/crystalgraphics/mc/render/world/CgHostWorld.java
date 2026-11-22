@@ -1,5 +1,7 @@
 package com.crystalgraphics.mc.render.world;
 
+import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.trace.CgTrace;
 import java.util.List;
 
 import javax.annotation.Nullable;
@@ -128,6 +130,7 @@ public final class CgHostWorld {
             return 0;
         }
         host.begin(view, camX, camY, camZ, partialTick, fullLight);
+        long zone = CgTrace.begin(CgChannels.PICTURES, "hostWorld.draw");
         try {
             for (int i = 0; i < all.size(); i++) {
                 CgHostDrawnComponent<?> c = all.get(i);
@@ -147,7 +150,9 @@ public final class CgHostWorld {
             }
         } finally {
             host.end();
+            CgTrace.end(zone);
         }
+        CgTrace.add(CgChannels.PICTURES, "host-drawn-components", drew);
         return drew;
     }
 }

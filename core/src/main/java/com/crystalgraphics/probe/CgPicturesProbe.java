@@ -85,7 +85,7 @@ public final class CgPicturesProbe {
                 case ITEM, DECORATED -> new int[]{x - 1, y - 1, 18, 18};
                 case PLAYER -> new int[]{x - 26, y - 66, 52, 70};
                 case TOOLTIP -> new int[]{x, y - 16, W - x, H - (y - 16)};
-                case ENTITY -> new int[]{x, y, 52, 70};
+                case ENTITY -> new int[]{x, y, Math.round(count * 52f / 30f), Math.round(count * 70f / 30f)};
                 case BLOCK -> new int[]{x, y, 16, 16};
             };
         }
@@ -222,7 +222,29 @@ public final class CgPicturesProbe {
     private static final String VANILLA = "minecraft:diamond_sword,minecraft:clock,minecraft:compass,minecraft:chest,"
             + "minecraft:shield,minecraft:carved_pumpkin,minecraft:oak_sapling";
 
-    private enum Phase { WAITING, SETTLING, PARITY, SHOT, TIPS, TIPS_SHOT, COST_STATIC, COST_GLINT, DONE }
+    private enum Phase { WAITING, SETTLING, PARITY, SHOT, TIPS, TIPS_SHOT, COST, DONE }
+
+    /** A cost workload: a grid of one kind, {@code scale} its cells' size where the kind has one. */
+    private record CostRun(String name, Kind kind, List<String> what, int scale, boolean glint, int count) {
+    }
+
+    /** What the cost phase measures, each drawn by the engine alone and by vanilla alone, against the empty frame. */
+    private static final List<CostRun> RUNS = List.of(
+            new CostRun("static100", Kind.ITEM, List.of(), 1, false, GRID * GRID),
+            new CostRun("glinted100", Kind.ITEM, List.of(), 1, true, GRID * GRID),
+            new CostRun("entities48", Kind.ENTITY, List.of("minecraft:zombie", "minecraft:sheep{Color:2b}",
+                    "minecraft:villager", "player"), 12, false, 48),
+            new CostRun("chests50", Kind.BLOCK, List.of("minecraft:chest[facing=south]"), 1, false, 50),
+            new CostRun("tooltips12", Kind.TOOLTIP, List.of("minecraft:diamond_sword", "minecraft:book"), 1, true, 12));
+    /** The runs to measure, by name ({@code -Dcrystalgraphics.pictures.cost=entities48}); empty measures every one. */
+    private static final String ONLY = System.getProperty("crystalgraphics.pictures.cost", "");
+
+    /** The run measured, -1 the empty frame; its side, 0 the engine's pictures, 1 vanilla's drawing. */
+    private static int costRun, costSide;
+    /** Frame intervals summed over a side, after its settle; the empty frame's, in ms. */
+    private static long frameSum, frameLast;
+    private static int frameCount;
+    private static double emptyFrameMs;
 
     /** Kept cooling down through the run: its overlay animates as vanilla's does. */
     public static final String COOLING = "minecraft:ender_pearl";
@@ -323,7 +345,8 @@ public final class CgPicturesProbe {
 
     /** Host side: its HUD hook, with the hook's GUI object (null where it makes its own). Render thread. */
     public static void hud(@Nullable Object gui) {
-        if (active == null || !drawing()) return;
+        if (active == null || !drawing() || !referenceShown()) return;
+        long start = System.nanoTime();
         Host host = CgPlatform.get(Host.SERVICE);
         reference.clear();
         host.reference(gui, hostKinds(cells), REF_X, REF_Y, panelW(), panelH(), PIC_X, PIC_Y, BACKGROUND, reference);
@@ -338,7 +361,7 @@ public final class CgPicturesProbe {
                 }
             }
         }
-        referenceNanos += reference.nanos;
+        referenceNanos += System.nanoTime() - start;
         referenceFrames++;
         if (reference.drew) referenceDrew = true;
     }
@@ -462,7 +485,8 @@ public final class CgPicturesProbe {
         if (st.frame() == iconFrame) return;
         iconFrame = st.frame();
         Phase p = phase;
-        if ((p != Phase.COST_STATIC && p != Phase.COST_GLINT) || costFrames < ICONS_SETTLE) return;
+        if (p != Phase.COST || costSide != 0 || costRun < 0 || RUNS.get(costRun).kind() != Kind.ITEM
+                || costFrames < ICONS_SETTLE) return;
         long now = System.nanoTime();
         if (iconFrames == 0) iconFirstNanos = now;
         iconLastNanos = now;
@@ -474,7 +498,26 @@ public final class CgPicturesProbe {
 
     private static boolean drawing() {
         Phase p = phase;
-        return parity() || p == Phase.TIPS || p == Phase.TIPS_SHOT || p == Phase.COST_STATIC || p == Phase.COST_GLINT;
+        return parity() || p == Phase.TIPS || p == Phase.TIPS_SHOT || p == Phase.COST;
+    }
+
+    // In the cost phase each side draws alone, and the empty frame neither
+    private static boolean referenceShown() {
+        return phase != Phase.COST || costRun >= 0 && costSide == 1;
+    }
+
+    private static boolean picturesShown() {
+        return phase != Phase.COST || costRun >= 0 && costSide == 0;
+    }
+
+    // Each frame's interval, once the side has settled: what the whole frame cost, CPU and GPU, uncapped
+    private static void timeFrame() {
+        long now = System.nanoTime();
+        if (frameLast != 0L && costFrames >= ICONS_SETTLE) {
+            frameSum += now - frameLast;
+            frameCount++;
+        }
+        frameLast = now;
     }
 
     /** The parity panels are drawn: while warming, and until the shot has been read, its frame among them. */
@@ -515,7 +558,8 @@ public final class CgPicturesProbe {
             active = this;
             hud = CgRenderStage.HUD.register(Integer.MAX_VALUE - 1, frame -> {
                 scale = frame.scale();
-                if (!drawing()) return;
+                if (phase == Phase.COST) timeFrame();
+                if (!drawing() || !picturesShown()) return;
                 CgHostPictures.Stats stats = CgHostPictures.stats();
                 if (stats.frame() != statsFrame) {
                     statsFrame = stats.frame();
@@ -693,21 +737,36 @@ public final class CgPicturesProbe {
                     BufferedImage image = read(test, "pictures.parity.tooltips.panel");
                     if (image != null) parity(test, image, scale, "tooltips.");
                 }
-                startCost(false);
-                next(Phase.COST_STATIC);
+                costRun = -1;
+                costSide = 0;
+                startCost();
+                next(Phase.COST);
             }
-            case COST_STATIC -> {
+            case COST -> {
                 if (++costFrames < COST) return;
-                cost(test, "static100");
-                iconChecks(test, false);
-                startCost(true);
-                next(Phase.COST_GLINT);
-            }
-            case COST_GLINT -> {
-                if (++costFrames < COST) return;
-                cost(test, "glinted100");
-                iconChecks(test, true);
-                finish(test);
+                double frameMs = frameSum / 1e6 / Math.max(1, frameCount);
+                if (costRun < 0) {
+                    emptyFrameMs = frameMs;
+                } else if (costSide == 0) {
+                    oursFrameMs = frameMs;
+                    if (RUNS.get(costRun).kind() == Kind.ITEM) iconChecks(test, RUNS.get(costRun).glint());
+                } else {
+                    cost(test, RUNS.get(costRun), frameMs);
+                }
+                // The empty frame, then each run's sides: the engine's, then vanilla's
+                if (costRun >= 0 && costSide == 0) costSide = 1;
+                else {
+                    costRun++;
+                    while (costRun < RUNS.size() && !ONLY.isEmpty()
+                            && !List.of(ONLY.split(",")).contains(RUNS.get(costRun).name())) costRun++;
+                    costSide = 0;
+                }
+                if (costRun >= RUNS.size()) {
+                    finish(test);
+                    return;
+                }
+                startCost();
+                next(Phase.COST);
             }
             default -> { }
         }
@@ -829,10 +888,53 @@ public final class CgPicturesProbe {
         });
     }
 
-    private static void startCost(boolean glint) {
+    /** The engine side's frame, kept until vanilla's is measured beside it. */
+    private static double oursFrameMs;
+
+    private static void startCost() {
+        frameSum = frameLast = 0L;
+        frameCount = 0;
+        pictureNanos = referenceNanos = 0;
+        costFrames = pictureFrames = referenceFrames = 0;
+        cells = costRun < 0 ? List.of() : costCells(RUNS.get(costRun));
+        if (costRun >= 0 && costSide == 0 && RUNS.get(costRun).kind() == Kind.ITEM) startIconCount();
+    }
+
+    // A run's grid inside the cost panel, GRID * 18 + 4 units square
+    private static List<Cell> costCells(CostRun run) {
+        if (run.kind() == Kind.ITEM) return iconGrid(run.glint());
+        List<Cell> out = new ArrayList<>();
+        int w, h;
+        switch (run.kind()) {
+            case ENTITY -> {
+                w = Math.round(run.scale() * 52f / 30f) + 2;
+                h = Math.round(run.scale() * 70f / 30f) + 2;
+            }
+            case TOOLTIP -> {
+                w = 90;
+                h = 28;
+            }
+            default -> {
+                w = 18;
+                h = 18;
+            }
+        }
+        int across = Math.max(1, (GRID * 18) / w);
+        for (int i = 0; i < run.count(); i++) {
+            int x = 2 + w * (i % across), y = 2 + h * (i / across) + (run.kind() == Kind.TOOLTIP ? 16 : 0);
+            String what = run.what().get(i % run.what().size());
+            out.add(new Cell(run.kind(), what, x, y, run.kind() == Kind.ENTITY ? run.scale() : 1, 0, run.glint()));
+        }
+        return out;
+    }
+
+    private static void startIconCount() {
         iconFrames = iconFramesRedrawn = 0;
         iconFirstNanos = iconLastNanos = 0L;
         iconFirstDraws = iconRedraws = 0;
+    }
+
+    private static List<Cell> iconGrid(boolean glint) {
         // A clock's or compass's hand is a new look each time it moves, drawn once each: not a still grid's
         List<String> items = new ArrayList<>(known);
         items.removeIf(id -> id.equals("minecraft:clock") || id.equals("minecraft:compass"));
@@ -841,16 +943,15 @@ public final class CgPicturesProbe {
         for (int i = 0; i < GRID * GRID; i++) {
             grid.add(new Cell(Kind.ITEM, items.get(i % items.size()), 2 + 18 * (i % GRID), 2 + 18 * (i / GRID), 1, 0, glint));
         }
-        cells = grid;
-        pictureNanos = referenceNanos = 0;
-        costFrames = pictureFrames = referenceFrames = 0;
+        return grid;
     }
 
-    private static void cost(Test test, String name) {
-        test.noted("pictures.cost." + name, String.format(Locale.ROOT, "%.3f ms cpu a frame at the draw point, %.3f ms "
-                + "drawn by vanilla into the main target (%d and %d frames over %d ticks, %d items)",
-                pictureNanos / 1e6 / Math.max(1, pictureFrames), referenceNanos / 1e6 / Math.max(1, referenceFrames),
-                pictureFrames, referenceFrames, costFrames, GRID * GRID));
+    // Vanilla's side just measured; the engine's kept from before it
+    private static void cost(Test test, CostRun run, double vanillaFrameMs) {
+        test.noted("pictures.cost." + run.name(), String.format(Locale.ROOT, "ours %.3f ms a frame, vanilla %.3f ms, the "
+                        + "empty frame %.3f ms; vanilla's own draw %.3f ms (%d frames, %d %s)", oursFrameMs, vanillaFrameMs,
+                emptyFrameMs, referenceNanos / 1e6 / Math.max(1, referenceFrames), frameCount, run.count(),
+                run.kind().name().toLowerCase(Locale.ROOT)));
     }
 
     /**
