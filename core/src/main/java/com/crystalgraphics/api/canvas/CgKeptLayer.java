@@ -37,6 +37,8 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
  *       picture.</li>
  *   <li>It is a {@link CgPicture}: its last finished picture, whatever size it is asked at; {@link #version} moves with
  *       each walk that draws.</li>
+ *   <li>A {@link CgPicture} drawn in a walk is followed: while held, the layer keeps it shown, and when its version moves
+ *       (a glinted icon, an animated entity) the layer walks again, damaged only where that picture lies.</li>
  * </ul>
  */
 public final class CgKeptLayer implements CgPicture {
@@ -195,6 +197,11 @@ public final class CgKeptLayer implements CgPicture {
     private Tenant[] visited = new Tenant[16], held = new Tenant[16];
     private int[] visitedParts = new int[16], heldParts = new int[16];
     private int visitedCount, heldCount;
+    // The pictures a walk drew, and those the last drawn walk drew: each with its version, device size and texel rect
+    private CgPicture[] walkPictures = new CgPicture[4], heldPictures = new CgPicture[4];
+    private long[] walkVersions = new long[4], heldVersions = new long[4];
+    private float[] walkRects = new float[28], heldRects = new float[28];
+    private int walkPictureCount, heldPictureCount;
     /** Where it lands in a kept layer it is composited into. */
     final Placement placement = new Placement();
 
@@ -296,6 +303,57 @@ public final class CgKeptLayer implements CgPicture {
         damageX0 = damageY0 = Float.MAX_VALUE;
         damageX1 = damageY1 = -Float.MAX_VALUE;
         visitedCount = 0;
+        walkPictureCount = 0;
+    }
+
+    /**
+     * Whether a picture the last drawn walk holds moved since: each is shown again at the size it was drawn (so it stays
+     * alive and an animated one keeps drawing), and the rects of those that moved are kept for {@link #damageMoved}.
+     */
+    boolean picturesMoved() {
+        boolean moved = false;
+        for (int i = 0; i < heldPictureCount; i++) {
+            CgPicture p = heldPictures[i];
+            float[] r = heldRects;
+            int k = i * 7;
+            p.image((int) r[k + 4], (int) r[k + 5], r[k + 6]);
+            if (p.version() != heldVersions[i]) moved = true;
+        }
+        return moved;
+    }
+
+    /** Damages, in this walk, where each held picture whose version moved lies. */
+    void damageMoved() {
+        for (int i = 0; i < heldPictureCount; i++) {
+            if (heldPictures[i].version() == heldVersions[i]) continue;
+            int k = i * 7;
+            damage(heldRects[k], heldRects[k + 1], heldRects[k + 2], heldRects[k + 3]);
+        }
+    }
+
+    /**
+     * Records that this walk drew {@code picture} at {@code version}, over texels {@code (x0, y0)-(x1, y1)} top-down, asked
+     * for at {@code deviceWidth} x {@code deviceHeight} and {@code scale}.
+     */
+    void pictured(CgPicture picture, long version, float x0, float y0, float x1, float y1, int deviceWidth,
+                  int deviceHeight, float scale) {
+        int n = walkPictureCount;
+        if (n == walkPictures.length) {
+            walkPictures = Arrays.copyOf(walkPictures, n * 2);
+            walkVersions = Arrays.copyOf(walkVersions, n * 2);
+            walkRects = Arrays.copyOf(walkRects, n * 14);
+        }
+        walkPictures[n] = picture;
+        walkVersions[n] = version;
+        int k = n * 7;
+        walkRects[k] = x0;
+        walkRects[k + 1] = y0;
+        walkRects[k + 2] = x1;
+        walkRects[k + 3] = y1;
+        walkRects[k + 4] = deviceWidth;
+        walkRects[k + 5] = deviceHeight;
+        walkRects[k + 6] = scale;
+        walkPictureCount = n + 1;
     }
 
     /** Marks texels {@code (x0, y0)-(x1, y1)}, top-down, as drawn again this walk. */
@@ -334,5 +392,18 @@ public final class CgKeptLayer implements CgPicture {
         visited = tenants;
         visitedParts = parts;
         visitedCount = 0;
+        // The pictures this walk drew are the ones followed from here
+        Arrays.fill(heldPictures, 0, heldPictureCount, null);
+        CgPicture[] pictures = heldPictures;
+        long[] versions = heldVersions;
+        float[] rects = heldRects;
+        heldPictures = walkPictures;
+        heldVersions = walkVersions;
+        heldRects = walkRects;
+        heldPictureCount = walkPictureCount;
+        walkPictures = pictures;
+        walkVersions = versions;
+        walkRects = rects;
+        walkPictureCount = 0;
     }
 }

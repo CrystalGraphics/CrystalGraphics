@@ -253,6 +253,14 @@ public final class CgRenderTarget {
         return t;
     }
 
+    /**
+     * Engine side: what a view draws into, as it holds: nothing cleared. A picture drawn piece by piece, an icon page's
+     * cells.
+     */
+    public CgExternalTarget beginDrawKept(boolean depth) {
+        return target(depth);
+    }
+
     /** Engine side: a draw into it ended, its chain remade where it has one. */
     public void drawn() {
         CgGpuTexture storage = ((CgTextureAbstract) colour).rhiTexture();

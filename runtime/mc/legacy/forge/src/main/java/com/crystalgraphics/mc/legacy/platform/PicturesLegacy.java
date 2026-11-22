@@ -49,13 +49,16 @@ final class PicturesLegacy implements CgHostPictures.Host {
 
     @Override
     public Object createTarget(int width, int height) {
-        return new Framebuffer(width, height, true);
+        Framebuffer f = new Framebuffer(width, height, true);
+        rebind();
+        return f;
     }
 
     @Override
     public void deleteTarget(Object target, @Nullable CgTexture texture) {
         CgHostPictures.forget(texture);
         ((Framebuffer) target).deleteFramebuffer();
+        rebind();
     }
 
     @Override
@@ -82,12 +85,36 @@ final class PicturesLegacy implements CgHostPictures.Host {
     @Override
     public void draw(Object target, int width, int height, float scale, float clear, CgPictureLighting lighting,
                      CgPictureRenderer drawer) {
+        draw((Framebuffer) target, width, height, scale, clear, null, 0, drawer);
+    }
+
+    @Override
+    public void drawCells(Object target, int width, int height, float scale, float clear, int[] rects, int count,
+                          CgPictureLighting lighting, CgPictureRenderer drawer) {
+        draw((Framebuffer) target, width, height, scale, clear, rects, count, drawer);
+    }
+
+    // The whole framebuffer cleared, or each rect (pixels from the top-left; GL's scissor is bottom-up), the rest kept
+    private void draw(Framebuffer f, int width, int height, float scale, float clear, @Nullable int[] rects, int count,
+                      CgPictureRenderer drawer) {
         Minecraft mc = Minecraft.getMinecraft();
-        Framebuffer f = (Framebuffer) target;
         float w = width / scale, h = height / scale;
-        f.setFramebufferColor(clear, clear, clear, 0f);
-        f.framebufferClear();
-        f.bindFramebuffer(true);
+        if (rects == null) {
+            f.setFramebufferColor(clear, clear, clear, 0f);
+            f.framebufferClear();
+            f.bindFramebuffer(true);
+        } else {
+            f.bindFramebuffer(true);
+            GlStateManager.clearColor(clear, clear, clear, 0f);
+            GlStateManager.clearDepth(1.0);
+            GL11.glEnable(GL11.GL_SCISSOR_TEST);
+            for (int i = 0; i < count; i++) {
+                int k = i * 4;
+                GL11.glScissor(rects[k], height - rects[k + 1] - rects[k + 3], rects[k + 2], rects[k + 3]);
+                GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+            }
+            GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        }
         // The GUI's own projection and model-view, as setupOverlayRendering sets them, over the picture's units
         GlStateManager.matrixMode(GL11.GL_PROJECTION);
         GlStateManager.pushMatrix();
@@ -106,13 +133,19 @@ final class PicturesLegacy implements CgHostPictures.Host {
             GlStateManager.popMatrix();
             GlStateManager.matrixMode(GL11.GL_MODELVIEW);
             GlStateManager.popMatrix();
-            Framebuffer main = mc.getFramebuffer();
-            if (boundBefore == main.framebufferObject) {
-                main.bindFramebuffer(true);
-            } else {
-                OpenGlHelper.glBindFramebuffer(OpenGlHelper.GL_FRAMEBUFFER, boundBefore);
-                GlStateManager.viewport(viewportBefore[0], viewportBefore[1], viewportBefore[2], viewportBefore[3]);
-            }
+            rebind();
+        }
+    }
+
+    // What the batch found bound, back: after a picture, and after making or freeing a target, which binds 0
+    private void rebind() {
+        if (boundBefore < 0) return;
+        Framebuffer main = Minecraft.getMinecraft().getFramebuffer();
+        if (boundBefore == main.framebufferObject) {
+            main.bindFramebuffer(true);
+        } else {
+            OpenGlHelper.glBindFramebuffer(OpenGlHelper.GL_FRAMEBUFFER, boundBefore);
+            GlStateManager.viewport(viewportBefore[0], viewportBefore[1], viewportBefore[2], viewportBefore[3]);
         }
     }
 

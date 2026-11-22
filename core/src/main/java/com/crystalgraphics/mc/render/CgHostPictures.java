@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import javax.annotation.Nullable;
 
@@ -102,6 +103,27 @@ public final class CgHostPictures {
         void draw(Object target, int width, int height, float scale, float clear, CgPictureLighting lighting,
                   CgPictureRenderer drawer);
 
+        /**
+         * As {@link #draw}, keeping what is outside {@code rects}: each of the first {@code count} rects (pixels from the
+         * top-left, {@code x, y, w, h} in a row) is cleared to {@code (clear, clear, clear, 0)} and its depth, then
+         * {@code drawer} runs over the whole target's units. The rest of the target keeps what it holds: an icon page.
+         */
+        void drawCells(Object target, int width, int height, float scale, float clear, int[] rects, int count,
+                       CgPictureLighting lighting, CgPictureRenderer drawer);
+
+        /**
+         * Whether {@link #drawCells} keeps what is outside its rects. Where it cannot (an era whose device clears only a
+         * whole target), it clears the target whole, and the caller draws every cell it shows in the same call.
+         */
+        default boolean clearsRects() {
+            return true;
+        }
+
+        /** The largest side, in pixels, a target of the host's may have. */
+        default int maxTargetSize() {
+            return 4096;
+        }
+
         /** Before a batch; with {@code check}, notes the state {@link #endBatch} compares. */
         default void beginBatch(boolean check) {
         }
@@ -125,7 +147,69 @@ public final class CgHostPictures {
                              CgPictureRenderer drawer) {
                 throw new UnsupportedOperationException();
             }
+            @Override
+            public void drawCells(Object target, int width, int height, float scale, float clear, int[] rects, int count,
+                                  CgPictureLighting lighting, CgPictureRenderer drawer) {
+                throw new UnsupportedOperationException();
+            }
         };
+    }
+
+    /**
+     * What draws at the draw point besides pictures, in the same batch and budget: the item icon atlas. Internal to
+     * {@code mc.render}'s kinds; a mod draws through a kind, never a batch of its own.
+     */
+    public interface Batch {
+
+        /** Whether it has anything to draw or give back this frame: false costs the draw point nothing. */
+        boolean due();
+
+        /** Draws what is due. Render thread, inside the batch; the host is present. */
+        void draw(Host host, long frame, Budget budget);
+    }
+
+    /** A batch's first-draw allowance and its numbers, shared by pictures and every {@link Batch}. */
+    public static final class Budget {
+
+        private long budget, firstNanos;
+        int drawn, firstDraws, deferred;
+
+        Budget() {
+        }
+
+        void begin(long budgetNanos) {
+            budget = budgetNanos;
+            firstNanos = 0L;
+            drawn = firstDraws = deferred = 0;
+        }
+
+        /** Whether a first draw may still run this frame. */
+        public boolean firstAllowed() {
+            return firstNanos < budget;
+        }
+
+        /** {@code count} first draws, together {@code nanos}. */
+        public void firstDrawn(long nanos, int count) {
+            firstNanos += nanos;
+            firstDraws += count;
+            drawn += count;
+        }
+
+        /** {@code count} redraws of what is shown already: not budgeted, as vanilla redraws its own every frame. */
+        public void redrawn(int count) {
+            drawn += count;
+        }
+
+        /** {@code count} first draws left for the next frame. */
+        public void deferred(int count) {
+            deferred += count;
+        }
+
+        /** A draw that threw: counted with the batch's failures. */
+        public void failed() {
+            failedTotal++;
+            CgTrace.add(CgChannels.PICTURES, "pictures-failed", 1);
+        }
     }
 
     /** The era's host; {@link Host#NONE} until one is provided. */
@@ -136,7 +220,7 @@ public final class CgHostPictures {
      *
      * @param frame      the frame it ran in
      * @param held       pictures shown recently enough to keep
-     * @param drawn      sizes drawn
+     * @param drawn      sizes and icon cells drawn
      * @param firstDraws of those, drawn for the first time
      * @param deferred   first draws left for the next frame by the budget
      * @param failed     pictures failed so far, all told
@@ -161,6 +245,8 @@ public final class CgHostPictures {
     private static final ArrayDeque<Release> RELEASING = new ArrayDeque<>();
     private static final List<CgHostPicture> HELD = new ArrayList<>();
     private static final CgHostPicture.Size[] DUE = new CgHostPicture.Size[CgHostPicture.MAX_SIZES];
+    private static final List<Batch> BATCHES = new CopyOnWriteArrayList<>();
+    private static final Budget BUDGET = new Budget();
     private static volatile Stats stats = Stats.NONE;
     private static int failedTotal;
     private static boolean leakLogged;
@@ -180,7 +266,7 @@ public final class CgHostPictures {
      */
     public static void drawPoint() {
         for (CgHostPicture p; (p = ASKED.poll()) != null; ) HELD.add(p);
-        if (HELD.isEmpty() && RELEASED.isEmpty() && RELEASING.isEmpty()) return;
+        if (HELD.isEmpty() && RELEASED.isEmpty() && RELEASING.isEmpty() && !batchDue()) return;
         if (CgDeviceSection.open()) {
             refuse("CgHostPictures.drawPoint() inside a device section: Minecraft's code would run with the engine's "
                     + "state bound. Call it before CgDeviceSection.begin()");
@@ -198,8 +284,9 @@ public final class CgHostPictures {
                 }
             }
         }
-        long start = System.nanoTime(), budget = (long) (FIRST_DRAW_MS.get() * 1_000_000L), firstNanos = 0L;
-        int drawn = 0, first = 0, deferred = 0;
+        long start = System.nanoTime();
+        Budget budget = BUDGET;
+        budget.begin((long) (FIRST_DRAW_MS.get() * 1_000_000L));
         boolean check = check() != 0;
         long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.drawPoint");
         host.beginBatch(check);
@@ -229,8 +316,8 @@ public final class CgHostPictures {
                     CgHostPicture.Size s = DUE[k];
                     DUE[k] = null;
                     boolean isFirst = s.image == null;
-                    if (isFirst && firstNanos >= budget) {
-                        deferred++;
+                    if (isFirst && !budget.firstAllowed()) {
+                        budget.deferred(1);
                         continue;
                     }
                     long t = System.nanoTime();
@@ -238,12 +325,13 @@ public final class CgHostPictures {
                         while (++k < due) DUE[k] = null;
                         break;
                     }
-                    drawn++;
-                    if (isFirst) {
-                        first++;
-                        firstNanos += System.nanoTime() - t;
-                    }
+                    if (isFirst) budget.firstDrawn(System.nanoTime() - t, 1);
+                    else budget.redrawn(1);
                 }
+            }
+            for (int i = 0; i < BATCHES.size(); i++) {
+                Batch b = BATCHES.get(i);
+                if (b.due()) b.draw(host, frame, budget);
             }
         } finally {
             String leak = host.endBatch();
@@ -251,10 +339,10 @@ public final class CgHostPictures {
             if (leak != null) leaked(leak);
         }
         long nanos = System.nanoTime() - start;
-        stats = new Stats(frame, HELD.size(), drawn, first, deferred, failedTotal, nanos);
-        CgTrace.counter(CgChannels.PICTURES, "pictures-drawn", drawn);
-        CgTrace.counter(CgChannels.PICTURES, "pictures-first-draws", first);
-        CgTrace.counter(CgChannels.PICTURES, "pictures-deferred", deferred);
+        stats = new Stats(frame, HELD.size(), budget.drawn, budget.firstDraws, budget.deferred, failedTotal, nanos);
+        CgTrace.counter(CgChannels.PICTURES, "pictures-drawn", budget.drawn);
+        CgTrace.counter(CgChannels.PICTURES, "pictures-first-draws", budget.firstDraws);
+        CgTrace.counter(CgChannels.PICTURES, "pictures-deferred", budget.deferred);
         CgTrace.counter(CgChannels.PICTURES, "pictures-held", HELD.size());
     }
 
@@ -269,6 +357,16 @@ public final class CgHostPictures {
     /** Forgets what {@link #imported} made; the host's texture is untouched. */
     public static void forget(@Nullable CgTexture imported) {
         if (imported instanceof CgTexture2D t) t.delete();
+    }
+
+    /** Joins {@code batch} to every draw point from now on. */
+    public static void join(Batch batch) {
+        BATCHES.add(batch);
+    }
+
+    private static boolean batchDue() {
+        for (int i = 0; i < BATCHES.size(); i++) if (BATCHES.get(i).due()) return true;
+        return false;
     }
 
     /** The last draw point's numbers. Any thread. */
@@ -294,8 +392,7 @@ public final class CgHostPictures {
                 log = !p.logged;
                 p.logged = true;
             }
-            failedTotal++;
-            CgTrace.add(CgChannels.PICTURES, "pictures-failed", 1);
+            BUDGET.failed();
             if (log) LOGGER.error("[cg] picture '{}' failed to draw ({}): it shows the missing texture until a resource "
                     + "reload", p.name(), p.drawnBy().getClass().getName(), t);
             return false;

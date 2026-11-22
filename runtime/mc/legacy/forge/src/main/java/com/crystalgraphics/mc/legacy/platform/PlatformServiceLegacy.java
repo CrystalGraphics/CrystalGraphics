@@ -62,6 +62,7 @@ import com.crystalgraphics.mc.legacy.platform.service.HostI18nLegacy;
 import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import com.crystalgraphics.mc.render.CgHostPictures;
+import com.crystalgraphics.mc.render.item.CgItemIcons;
 import com.crystalgraphics.probe.CgPicturesProbe;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.FMLCommonHandler;
@@ -134,6 +135,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgContainers.HOST, ContainersLegacy.INSTANCE);
         CgPlatform.provide(CgGameSession.HOST, GameSessionLegacy.INSTANCE);
         CgPlatform.provide(CgHostPictures.HOST, new PicturesLegacy());
+        CgPlatform.provide(CgItemIcons.HOST, new ItemIconsLegacy());
         CgPlatform.provide(CgPicturesProbe.Host.SERVICE, PicturesProbeLegacy.create());
         CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsLegacy.INSTANCE);
         CgKeyBindings.hostProvided();

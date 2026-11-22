@@ -7,6 +7,7 @@ import com.crystalgraphics.probe.CgPicturesProbe;
 import com.crystalgraphics.probe.CgPicturesProbe.Cell;
 import com.crystalgraphics.probe.CgPicturesProbe.Drawn;
 import com.crystalgraphics.probe.CgPicturesProbe.Kind;
+import com.crystalgraphics.serialization.CgCodecException;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.ItemStack;
 import java.util.IdentityHashMap;
@@ -83,8 +84,13 @@ public final class PicturesProbeModern implements CgPicturesProbe.Host {
         //? if <1.14 {
         /*return VANILLA.containsKey(item);
         *///?} else {
-        ItemStack stack = CgItems.toHost(CgItemStack.of(item, 1));
-        return stack != null && !stack.isEmpty();
+        // An item the game lacks: null before 1.20.5, a codec's refusal after
+        try {
+            ItemStack stack = CgItems.toHost(CgItemStack.of(item, 1));
+            return stack != null && !stack.isEmpty();
+        } catch (CgCodecException e) {
+            return false;
+        }
         //?}
     }
 

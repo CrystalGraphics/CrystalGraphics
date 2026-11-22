@@ -35,9 +35,10 @@ has no world pass at all.
 | NeoForge | `TickEvent.RenderTickEvent` at `END` (1.20.2–1.20.4), `RenderFrameEvent.Post` (1.20.6+) |
 | Fabric | node mixin `FrameEndHook`, `GameRenderer.render` TAIL — Fabric has no frame event |
 
-On 26.1+ `onFrame` is also **the last point to draw over the host's picture**: the GUI is extracted
-before the level renders, so anything painted from a GUI hook lands under the world. The GUI stages (`HUD`,
-`SCREEN`) fire there on those nodes, before `onFrame`'s listeners: the hooks only note that they ran.
+From 1.21.6 `onFrame` is also **the last point to draw over the host's picture**: the GUI is recorded and
+rendered at the end of `GameRenderer.render` (26.1 even extracts it before the level renders), so anything painted
+from a GUI hook lands under vanilla's GUI. The GUI stages (`HUD`, `SCREEN`) fire there on those nodes, before
+`onFrame`'s listeners: the hooks only note that they ran.
 
 ## 26.1+: the main target, and 26.2 under Vulkan
 

@@ -169,12 +169,13 @@ public final class LifecycleModern {
         overlay(CgRenderStage.SCREEN);
     }
 
-    /** 26.1+ GUI stages owed to the frame end. */
+    /** 1.21.6+ GUI stages owed to the frame end. */
     private static boolean hudAtFrameEnd, screenAtFrameEnd;
 
     private static void overlay(CgRenderStage stage) {
-        // 26.1 extracts the GUI before it renders the level: drawn from its hooks, a GUI stage lands under the world.
-        //? if >=26.1 {
+        // From 1.21.6 the GUI is recorded and rendered at the frame's end (26.1 even extracts it before the level):
+        // drawn from its hooks, a GUI stage lands under vanilla's GUI
+        //? if >=1.21.6 {
         /*if (stage == CgRenderStage.HUD) hudAtFrameEnd = true;
         else screenAtFrameEnd = true;
         *///?} else {
@@ -236,7 +237,7 @@ public final class LifecycleModern {
      */
     public static void frameEnd() {
         if (canRender()) {
-            // Before onFrame's listeners, which draw over everything (CrystalGUI's desktop on 26.1+).
+            // Before onFrame's listeners, which draw over everything (CrystalGUI's desktop on 1.21.6+).
             if (hudAtFrameEnd) {
                 hudAtFrameEnd = false;
                 fireOverlay(CgRenderStage.HUD);

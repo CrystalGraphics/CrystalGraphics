@@ -17,7 +17,7 @@ public final class ClientLegacy {
         EntityMovementLegacy.INSTANCE.client(InputHoldLegacy::hold);
     }
 
-    static WorldClient world() {
+    public static WorldClient world() {
         //? if >=1.9 {
         return Minecraft.getMinecraft().world;
         //?} else {
@@ -25,7 +25,7 @@ public final class ClientLegacy {
         *///?}
     }
 
-    static EntityPlayerSP player() {
+    public static EntityPlayerSP player() {
         //? if >=1.9 {
         return Minecraft.getMinecraft().player;
         //?} else {

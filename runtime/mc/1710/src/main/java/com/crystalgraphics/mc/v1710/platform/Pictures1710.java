@@ -11,6 +11,7 @@ import net.minecraft.client.renderer.RenderHelper;
 import net.minecraft.client.shader.Framebuffer;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL30;
 
 import java.nio.IntBuffer;
@@ -51,13 +52,16 @@ final class Pictures1710 implements CgHostPictures.Host {
 
     @Override
     public Object createTarget(int width, int height) {
-        return new Framebuffer(width, height, true);
+        Framebuffer f = new Framebuffer(width, height, true);
+        rebind();
+        return f;
     }
 
     @Override
     public void deleteTarget(Object target, @Nullable CgTexture texture) {
         CgHostPictures.forget(texture);
         ((Framebuffer) target).deleteFramebuffer();
+        rebind();
     }
 
     @Override
@@ -84,12 +88,36 @@ final class Pictures1710 implements CgHostPictures.Host {
     @Override
     public void draw(Object target, int width, int height, float scale, float clear, CgPictureLighting lighting,
                      CgPictureRenderer drawer) {
+        draw((Framebuffer) target, width, height, scale, clear, null, 0, drawer);
+    }
+
+    @Override
+    public void drawCells(Object target, int width, int height, float scale, float clear, int[] rects, int count,
+                          CgPictureLighting lighting, CgPictureRenderer drawer) {
+        draw((Framebuffer) target, width, height, scale, clear, rects, count, drawer);
+    }
+
+    // The whole framebuffer cleared, or each rect (pixels from the top-left; GL's scissor is bottom-up), the rest kept
+    private void draw(Framebuffer f, int width, int height, float scale, float clear, @Nullable int[] rects, int count,
+                      CgPictureRenderer drawer) {
         Minecraft mc = Minecraft.getMinecraft();
-        Framebuffer f = (Framebuffer) target;
         float w = width / scale, h = height / scale;
-        f.setFramebufferColor(clear, clear, clear, 0f);
-        f.framebufferClear();
-        f.bindFramebuffer(true);
+        if (rects == null) {
+            f.setFramebufferColor(clear, clear, clear, 0f);
+            f.framebufferClear();
+            f.bindFramebuffer(true);
+        } else {
+            f.bindFramebuffer(true);
+            GL11.glClearColor(clear, clear, clear, 0f);
+            GL11.glClearDepth(1.0);
+            GL11.glEnable(GL11.GL_SCISSOR_TEST);
+            for (int i = 0; i < count; i++) {
+                int k = i * 4;
+                GL11.glScissor(rects[k], height - rects[k + 1] - rects[k + 3], rects[k + 2], rects[k + 3]);
+                GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+            }
+            GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        }
         // The GUI's own projection and model-view, as setupOverlayRendering sets them, over the picture's units
         GL11.glMatrixMode(GL11.GL_PROJECTION);
         GL11.glPushMatrix();
@@ -99,22 +127,36 @@ final class Pictures1710 implements CgHostPictures.Host {
         GL11.glPushMatrix();
         GL11.glLoadIdentity();
         GL11.glTranslatef(0f, 0f, -2000f);
+        // Each clear's draw starts from the same state, the hotbar's for its slots: otherwise the white draw starts from
+        // what the black one left, and the matte between them is wrong where they differ. 1.7.10 caches no GL state
+        GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_CURRENT_BIT | GL11.GL_LIGHTING_BIT);
+        GL11.glColor4f(1f, 1f, 1f, 1f);
+        GL11.glEnable(GL11.GL_BLEND);
+        OpenGlHelper.glBlendFunc(770, 771, 1, 0);
+        GL11.glEnable(GL12.GL_RESCALE_NORMAL);
         RenderHelper.enableGUIStandardItemLighting();
         try {
             drawer.draw(new Context(w, h, scale, partialTick));
         } finally {
             RenderHelper.disableStandardItemLighting();
+            GL11.glPopAttrib();
             GL11.glMatrixMode(GL11.GL_PROJECTION);
             GL11.glPopMatrix();
             GL11.glMatrixMode(GL11.GL_MODELVIEW);
             GL11.glPopMatrix();
-            Framebuffer main = mc.getFramebuffer();
-            if (boundBefore == main.framebufferObject) {
-                main.bindFramebuffer(true);
-            } else {
-                GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, boundBefore);
-                GL11.glViewport(viewportBefore[0], viewportBefore[1], viewportBefore[2], viewportBefore[3]);
-            }
+            rebind();
+        }
+    }
+
+    // What the batch found bound, back: after a picture, and after making or freeing a target, which binds 0
+    private void rebind() {
+        if (boundBefore < 0) return;
+        Framebuffer main = Minecraft.getMinecraft().getFramebuffer();
+        if (boundBefore == main.framebufferObject) {
+            main.bindFramebuffer(true);
+        } else {
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, boundBefore);
+            GL11.glViewport(viewportBefore[0], viewportBefore[1], viewportBefore[2], viewportBefore[3]);
         }
     }
 

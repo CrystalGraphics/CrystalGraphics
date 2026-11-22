@@ -57,6 +57,11 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
         mc.gameSettings.pauseOnLostFocus = false;
         // A focus lost before this already paused it
         if (mc.currentScreen instanceof GuiIngameMenu) mc.displayGuiScreen(null);
+        // A death's screen tints everything: respawned, as its Respawn button does
+        if (mc.thePlayer != null && mc.thePlayer.getHealth() <= 0f) {
+            mc.thePlayer.respawnPlayer();
+            mc.displayGuiScreen(null);
+        }
     }
 
     @Override

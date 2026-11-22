@@ -1,5 +1,9 @@
 package com.crystalgraphics.mc.render;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
+
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.canvas.CgCanvas;
@@ -7,6 +11,7 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.mc.render.custom.CgPictureRenderer;
 import com.crystalgraphics.render.graph.CgExecutor;
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.render.target.CgRenderTarget;
 
 /**
@@ -32,6 +37,8 @@ import com.crystalgraphics.render.target.CgRenderTarget;
 public final class CgStandInPictures implements CgHostPictures.Host {
 
     private final CgCanvas canvas = new CgCanvas();
+    /** Targets drawn into once: cleared then, kept by a cell draw after. */
+    private final Set<Object> started = Collections.newSetFromMap(new IdentityHashMap<>());
     private final boolean twoClears;
 
     /** Draws each picture once, keeping alpha. */
@@ -75,6 +82,7 @@ public final class CgStandInPictures implements CgHostPictures.Host {
 
     @Override
     public void deleteTarget(Object target, @Nullable CgTexture texture) {
+        started.remove(target);
         ((CgRenderTarget) target).release();
     }
 
@@ -82,7 +90,25 @@ public final class CgStandInPictures implements CgHostPictures.Host {
     public void draw(Object target, int width, int height, float scale, float clear, CgPictureLighting lighting,
                      CgPictureRenderer drawer) {
         CgRenderTarget t = ((CgRenderTarget) target).clearColor(clear, clear, clear, 0f);
-        try (CgExecutor.Into ignored = CgExecutor.into(t.beginDraw(false))) {
+        started.add(t);
+        drawInto(t.beginDraw(false), width, height, scale, drawer);
+        t.drawn();
+    }
+
+    /**
+     * Cleared whole the first time it is drawn into, kept after: what the canvas draws a cell over replaces it, as the
+     * stand-in's icons are opaque squares filling their cell.
+     */
+    @Override
+    public void drawCells(Object target, int width, int height, float scale, float clear, int[] rects, int count,
+                          CgPictureLighting lighting, CgPictureRenderer drawer) {
+        CgRenderTarget t = ((CgRenderTarget) target).clearColor(clear, clear, clear, 0f);
+        drawInto(started.add(t) ? t.beginDraw(false) : t.beginDrawKept(false), width, height, scale, drawer);
+        t.drawn();
+    }
+
+    private void drawInto(CgExternalTarget into, int width, int height, float scale, CgPictureRenderer drawer) {
+        try (CgExecutor.Into ignored = CgExecutor.into(into)) {
             canvas.beginNow(width, height);
             canvas.save().scale(scale, scale);
             try {
@@ -92,7 +118,6 @@ public final class CgStandInPictures implements CgHostPictures.Host {
                 canvas.end();
             }
         }
-        t.drawn();
     }
 
     /** The canvas as the GUI object, in the picture's units. */

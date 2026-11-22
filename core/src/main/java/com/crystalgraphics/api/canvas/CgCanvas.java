@@ -732,6 +732,7 @@ public final class CgCanvas {
         int pw = Math.max(1, Math.round(w * (float) Math.hypot(a, b)));
         int ph = Math.max(1, Math.round(h * (float) Math.hypot(c, d)));
         CgPicture.Image image = picture.image(pw, ph, deviceScale());
+        keptLayers.pictured(picture, x, y, w, h, pw, ph);
         if (image == null) return this;
         if (image == CgPicture.Image.MISSING) return fill(x, y, w, h, CgGrid.checker(MISSING_MAGENTA, 0xFF000000).cell(w * 0.5f, h * 0.5f));
         CgCanvasBox box = box(x, y, w, h).fill(image.texture).premultiplied().region(image.u0, image.v0, image.u1, image.v1);

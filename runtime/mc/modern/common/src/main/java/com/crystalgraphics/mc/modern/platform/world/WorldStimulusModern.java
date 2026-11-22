@@ -34,6 +34,11 @@ public final class WorldStimulusModern implements CgWorldStimulus {
         // A focus lost before this already paused it
         //? if >=1.14.3 {
         if (CgMinecraftClient.screen(mc) instanceof PauseScreen) CgMinecraftClient.setScreen(mc, null);
+        // A death's screen tints everything: respawned, as its Respawn button does
+        if (mc.player != null && mc.player.getHealth() <= 0f) {
+            mc.player.respawn();
+            CgMinecraftClient.setScreen(mc, null);
+        }
         //?}
     }
 

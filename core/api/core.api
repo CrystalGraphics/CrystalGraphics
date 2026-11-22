@@ -15554,6 +15554,7 @@ com/crystalgraphics/render/target/CgRenderTarget
   access public,final
   extends java/lang/Object
   method public beginDraw (Z)Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
+  method public beginDrawKept (Z)Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
   method public clear ()V
   method public clearColor (FFFF)Lcom/crystalgraphics/render/target/CgRenderTarget;
   method public clearColor (I)Lcom/crystalgraphics/render/target/CgRenderTarget;

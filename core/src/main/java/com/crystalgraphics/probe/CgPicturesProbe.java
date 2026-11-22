@@ -7,12 +7,16 @@ import com.crystalgraphics.gauntlet.CgGauntletCapture;
 import com.crystalgraphics.gauntlet.CgGauntletController;
 import com.crystalgraphics.gauntlet.CgGauntletState;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
+import com.crystalgraphics.mc.item.CgItemStack;
+import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.mc.render.CgHostPicture;
 import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.CgPictureRefresh;
 import com.crystalgraphics.mc.render.custom.CgCustomPicture;
 import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.mc.render.custom.CgPictureRenderer;
+import com.crystalgraphics.mc.render.item.CgItemIcon;
+import com.crystalgraphics.mc.render.item.CgItemIcons;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgService;
 import com.crystalgraphics.platform.service.CgModLoader;
@@ -25,6 +29,10 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.annotation.Nullable;
 import javax.imageio.ImageIO;
@@ -192,19 +200,26 @@ public final class CgPicturesProbe {
     private static volatile float scale = 1f;
     private static final Drawn picture = new Drawn(), reference = new Drawn();
     private static long pictureNanos, referenceNanos, statsFrame = -1L;
-    private static int costFrames;
+    /** Client ticks a cost phase lasts; the render frames inside it, each side's own. */
+    private static int costFrames, pictureFrames, referenceFrames;
     private static boolean retargetNoted, pictureAsked, referenceDrew;
     private static volatile String pictureRead = "never asked";
     private static volatile int pictureDrawn;
     @Nullable private static volatile String refused;
     private static CgGauntletCapture.Shot shot;
+    /** The cells' icons, kept: a cell asks the same handle each frame. */
+    private static final Map<Cell, CgItemIcon> ICONS = new ConcurrentHashMap<>();
+    /** Frames a cost grid's icons take to draw for the first time, the budget spreading them, before they are counted. */
+    private static final int ICONS_SETTLE = 10;
+    private static long iconFrame = Long.MIN_VALUE;
+    private static int iconFrames, iconFramesRedrawn, iconFirstDraws, iconRedraws;
 
     /** What the draw point draws: the cells, with Minecraft's code, every frame. */
     static final CgCustomPicture PICTURE = CgCustomPicture.of("crystalgraphics:pictures_probe")
             .refresh(CgPictureRefresh.REALTIME)
             .renderer(ctx -> {
                 picture.checkTarget = parity();
-                CgPlatform.get(Host.SERVICE).cells(ctx, cells, picture);
+                CgPlatform.get(Host.SERVICE).cells(ctx, iconsHere() ? notItems(cells) : cells, picture);
                 if (parity() && !picture.retargeted.isEmpty() && !retargetNoted && active != null) {
                     retargetNoted = true;
                     active.noted("pictures.retargeted", picture.retargeted.toString());
@@ -248,7 +263,42 @@ public final class CgPicturesProbe {
         reference.clear();
         host.reference(gui, cells, REF_X, REF_Y, panelW(), panelH(), PIC_X, PIC_Y, BACKGROUND, reference);
         referenceNanos += reference.nanos;
+        referenceFrames++;
         if (reference.drew) referenceDrew = true;
+    }
+
+    /** Whether this node draws item icons; where not (1.13.2), items stay in the probe's picture. */
+    private static boolean iconsHere() {
+        return CgPlatform.get(CgItemIcons.HOST).absent() == null;
+    }
+
+    private static List<Cell> notItems(List<Cell> all) {
+        List<Cell> out = new ArrayList<>(all.size());
+        for (Cell c : all) if (c.kind() != Kind.ITEM) out.add(c);
+        return out;
+    }
+
+    /** A cell's icon: its item, count, durability and, glinted, sharpness by the era's own name for it. */
+    private static CgItemIcon icon(Cell c) {
+        return ICONS.computeIfAbsent(c, k -> {
+            CgItemStack s = CgItemStack.of(k.item(), Math.max(1, k.count()));
+            if (k.damage() > 0) s = s.withDamage(k.damage());
+            if (k.glint()) s = s.withEnchantment(CgItems.shape() == CgItems.Shape.LEGACY ? "16" : "minecraft:sharpness", 1);
+            return CgItemIcons.of(s);
+        });
+    }
+
+    // The icon atlas's draws, a frame at a time, once the cost grid has settled
+    private static void countIcons() {
+        CgItemIcons.Stats st = CgItemIcons.stats();
+        if (st.frame() == iconFrame) return;
+        iconFrame = st.frame();
+        Phase p = phase;
+        if ((p != Phase.COST_STATIC && p != Phase.COST_GLINT) || costFrames < ICONS_SETTLE) return;
+        iconFrames++;
+        iconFirstDraws += st.firstDraws();
+        iconRedraws += st.redraws();
+        if (st.redraws() > 0) iconFramesRedrawn++;
     }
 
     private static boolean drawing() {
@@ -291,14 +341,22 @@ public final class CgPicturesProbe {
                 if (stats.frame() != statsFrame) {
                     statsFrame = stats.frame();
                     pictureNanos += stats.nanos();
+                    pictureFrames++;
                 }
                 if (!composite) return;
                 CgCanvas canvas = frame.canvas();
                 float s = frame.scale();
                 canvas.save().scale(s, s);
                 canvas.picture(PICTURE, PIC_X, PIC_Y, panelW(), panelH());
+                // Items as their icons: Minecraft draws each look once into the atlas, a glinted one every frame
+                if (iconsHere()) {
+                    for (Cell c : cells) {
+                        if (c.kind() == Kind.ITEM) canvas.picture(icon(c), PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
+                    }
+                }
                 if (parity()) canvas.picture(FAILING, FAIL_X, FAIL_Y, FAIL_SIZE, FAIL_SIZE);
                 canvas.restore();
+                countIcons();
                 if (phase == Phase.PARITY && refused == null) refused = refusal();
                 if (phase == Phase.PARITY && !pictureAsked && ticks > WARM / 2) {
                     pictureAsked = true;
@@ -372,6 +430,8 @@ public final class CgPicturesProbe {
         Test test = active;
         if (test == null) return;
         ticks++;
+        // A focus lost at any time would pause the game over the panels
+        if (phase != Phase.WAITING) CgPlatform.get(CgWorldStimulus.SERVICE).keepRunning();
         switch (phase) {
             case WAITING -> {
                 if (!test.inWorld()) return;
@@ -410,12 +470,14 @@ public final class CgPicturesProbe {
             case COST_STATIC -> {
                 if (++costFrames < COST) return;
                 cost(test, "static100");
+                iconChecks(test, false);
                 startCost(true);
                 next(Phase.COST_GLINT);
             }
             case COST_GLINT -> {
                 if (++costFrames < COST) return;
                 cost(test, "glinted100");
+                iconChecks(test, true);
                 finish(test);
             }
             default -> { }
@@ -487,19 +549,53 @@ public final class CgPicturesProbe {
     }
 
     private static void startCost(boolean glint) {
+        iconFrames = iconFramesRedrawn = 0;
+        iconFirstDraws = iconRedraws = 0;
+        // A clock's or compass's hand is a new look each time it moves, drawn once each: not a still grid's
+        List<String> items = new ArrayList<>(known);
+        items.removeIf(id -> id.equals("minecraft:clock") || id.equals("minecraft:compass"));
+        if (items.isEmpty()) items = known;
         List<Cell> grid = new ArrayList<>();
         for (int i = 0; i < GRID * GRID; i++) {
-            grid.add(new Cell(Kind.ITEM, known.get(i % known.size()), 2 + 18 * (i % GRID), 2 + 18 * (i / GRID), 1, 0, glint));
+            grid.add(new Cell(Kind.ITEM, items.get(i % items.size()), 2 + 18 * (i % GRID), 2 + 18 * (i / GRID), 1, 0, glint));
         }
         cells = grid;
         pictureNanos = referenceNanos = 0;
-        costFrames = 0;
+        costFrames = pictureFrames = referenceFrames = 0;
     }
 
     private static void cost(Test test, String name) {
         test.noted("pictures.cost." + name, String.format(Locale.ROOT, "%.3f ms cpu a frame at the draw point, %.3f ms "
-                + "drawn by vanilla into the main target (%d frames, %d items)", pictureNanos / 1e6 / costFrames,
-                referenceNanos / 1e6 / costFrames, costFrames, GRID * GRID));
+                + "drawn by vanilla into the main target (%d and %d frames over %d ticks, %d items)",
+                pictureNanos / 1e6 / Math.max(1, pictureFrames), referenceNanos / 1e6 / Math.max(1, referenceFrames),
+                pictureFrames, referenceFrames, costFrames, GRID * GRID));
+    }
+
+    /**
+     * A still grid of icons draws nothing once its cells are drawn; a glinted one draws its looks again every frame, as
+     * vanilla redraws a glint.
+     */
+    private static void iconChecks(Test test, boolean glint) {
+        if (!iconsHere()) {
+            test.skipped(glint ? "icons.glint" : "icons.static", CgPlatform.get(CgItemIcons.HOST).absent());
+            return;
+        }
+        String counted = iconFrames + " frames after " + ICONS_SETTLE + ": " + iconFirstDraws + " first draws, "
+                + iconRedraws + " redraws";
+        if (!glint) {
+            // A still grid draws nothing but what animates in it: a custom renderer is drawn each frame, as vanilla draws it
+            Set<String> animating = new TreeSet<>();
+            for (Cell c : cells) {
+                CgItemIcon icon = ICONS.get(c);
+                if (icon != null && icon.animated()) animating.add(c.item() + " (" + icon.why() + ")");
+            }
+            boolean ok = iconFrames > 0 && iconFirstDraws == 0 && iconRedraws == (long) iconFrames * animating.size();
+            test.stated("icons.static", ok, counted + "; " + animating.size() + " looks animate"
+                    + (animating.isEmpty() ? "" : ": " + animating));
+            return;
+        }
+        test.stated("icons.glint", iconFrames > 0 && iconFramesRedrawn == iconFrames, counted + ", redrawn in "
+                + iconFramesRedrawn);
     }
 
     // ── what is measured ─────────────────────────────────────────────────────────

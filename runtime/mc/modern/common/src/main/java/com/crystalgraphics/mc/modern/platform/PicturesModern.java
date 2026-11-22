@@ -5,6 +5,10 @@ import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.CgPictureLighting;
 import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.mc.render.custom.CgPictureRenderer;
+//? if >=1.21.6 {
+/*import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
+*///?}
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import net.minecraft.client.Minecraft;
 import javax.annotation.Nullable;
@@ -142,9 +146,10 @@ import java.util.function.Function;
  *
  * <ul>
  *   <li>1.13.2 - 1.21.4: the target bound ({@code bindWrite}), the GUI's orthographic projection over the picture's
- *       units, drawing at once; the main target bound back. Alpha from two clears: the immediate GUI writes it raw.</li>
- *   <li>1.21.5: the same, the target answered for the main one ({@code GuiTargetHook}): render types draw into
- *       whatever {@code getMainRenderTarget} answers.</li>
+ *       units, drawing at once; the main target bound back. Alpha from two clears: the immediate GUI writes it raw.
+ *       From 1.21.2 the target is also answered for the main one ({@code GuiTargetHook}): a render type's
+ *       {@code MAIN_TARGET} binds whatever {@code getMainRenderTarget} answers.</li>
+ *   <li>1.21.5: the same, answered rather than bound.</li>
  *   <li>1.21.6 on: a {@code GuiRenderer} of the host's own over a {@code GuiRenderState} of its own, as vanilla's GUI,
  *       its main target answered by {@code GuiTargetHook} and its window sized to the picture. One draw: it keeps
  *       alpha.</li>
@@ -274,6 +279,12 @@ public final class PicturesModern implements CgHostPictures.Host {
 
     @Override
     public Object createTarget(int width, int height) {
+        RenderTarget t = make(width, height);
+        rebind();
+        return t;
+    }
+
+    private static RenderTarget make(int width, int height) {
         //? if <1.14.3 {
         /*return new RenderTarget(width, height, true);
         *///?} elif <1.17 {
@@ -295,6 +306,14 @@ public final class PicturesModern implements CgHostPictures.Host {
     public void deleteTarget(Object target, @Nullable CgTexture texture) {
         CgHostPictures.forget(texture);
         ((RenderTarget) target).destroyBuffers();
+        rebind();
+    }
+
+    // Making or freeing a target binds framebuffer 0 below 1.21.5: what the batch found bound goes back
+    private void rebind() {
+        //? if <1.21.5 {
+        if (boundBefore >= 0) unbind(Minecraft.getInstance());
+        //?}
     }
 
     @Override
@@ -346,17 +365,41 @@ public final class PicturesModern implements CgHostPictures.Host {
         Minecraft mc = Minecraft.getInstance();
         RenderTarget t = (RenderTarget) target;
         Context ctx = new Context(width / scale, height / scale, scale, partialTick());
-        if (twoClears()) immediate(mc, t, clear, lighting, drawer, ctx);
-        else recorded(mc, t, drawer, ctx);
+        if (twoClears()) immediate(mc, t, clear, null, 0, lighting, drawer, ctx);
+        else recorded(mc, t, null, 0, drawer, ctx);
+    }
+
+    @Override
+    public void drawCells(Object target, int width, int height, float scale, float clear, int[] rects, int count,
+                          CgPictureLighting lighting, CgPictureRenderer drawer) {
+        Minecraft mc = Minecraft.getInstance();
+        RenderTarget t = (RenderTarget) target;
+        Context ctx = new Context(width / scale, height / scale, scale, partialTick());
+        int[] kept = clearsRects() ? rects : null;
+        if (twoClears()) immediate(mc, t, clear, kept, count, lighting, drawer, ctx);
+        else recorded(mc, t, kept, count, drawer, ctx);
+    }
+
+    // 1.21.5's encoder and 26.3's render passes clear a whole target, never a rect
+    @Override
+    public boolean clearsRects() {
+        //? if >=1.21.5 <1.21.6 {
+        /*return false;
+        *///?} elif >=26.3 {
+        /*return false;
+        *///?} else {
+        return true;
+        //?}
     }
 
     // ── The immediate GUI, 1.13.2 - 1.21.5 ──────────────────────────────
 
     // The target bound (or answered, 1.21.5), the GUI's projection over the picture's units, the drawing landing at
     // once; everything put back as the HUD had it
-    private void immediate(Minecraft mc, RenderTarget t, float clear, CgPictureLighting lighting, CgPictureRenderer drawer,
-                           Context ctx) {
-        clearAndBind(t, clear);
+    private void immediate(Minecraft mc, RenderTarget t, float clear, @Nullable int[] rects, int count,
+                           CgPictureLighting lighting, CgPictureRenderer drawer, Context ctx) {
+        if (rects == null) clearAndBind(t, clear);
+        else clearRectsAndBind(t, clear, rects, count);
         project(ctx.width, ctx.height);
         light(lighting);
         answerWindow(Math.round(ctx.width * ctx.scale), Math.round(ctx.height * ctx.scale), 0, ctx.scale, ctx.width,
@@ -385,11 +428,60 @@ public final class PicturesModern implements CgHostPictures.Host {
         /*t.setClearColor(clear, clear, clear, 0f);
         t.clear();
         t.bindWrite(true);
+        drawing = t;
         *///?} elif <1.21.6 {
         /*int c = Math.round(clear * 255f);
         RenderSystem.getDevice().createCommandEncoder()
                 .clearColorAndDepthTextures(t.getColorTexture(), c << 16 | c << 8 | c, t.getDepthTexture(), 1.0);
         drawing = t;
+        *///?}
+    }
+
+    // Each rect (pixels from the top-left) cleared, the rest kept; then the target bound. GL's scissor is bottom-up
+    private static void clearRectsAndBind(RenderTarget t, float clear, int[] rects, int count) {
+        int height = t.height;
+        //? if <1.14.3 {
+        /*t.bindWrite(true);
+        GlStateManager.clearColor(clear, clear, clear, 0f);
+        GlStateManager.clearDepth(1.0);
+        GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        for (int i = 0; i < count; i++) {
+            int k = i * 4;
+            GL11.glScissor(rects[k], height - rects[k + 1] - rects[k + 3], rects[k + 2], rects[k + 3]);
+            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        }
+        GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        *///?} elif <1.16.5 {
+        /*t.setClearColor(clear, clear, clear, 0f);
+        GL11.glEnable(GL11.GL_SCISSOR_TEST);
+        for (int i = 0; i < count; i++) {
+            int k = i * 4;
+            GL11.glScissor(rects[k], height - rects[k + 1] - rects[k + 3], rects[k + 2], rects[k + 3]);
+            t.clear(Minecraft.ON_OSX);
+        }
+        GL11.glDisable(GL11.GL_SCISSOR_TEST);
+        t.bindWrite(true);
+        *///?} elif <1.21.2 {
+        t.setClearColor(clear, clear, clear, 0f);
+        for (int i = 0; i < count; i++) {
+            int k = i * 4;
+            RenderSystem.enableScissor(rects[k], height - rects[k + 1] - rects[k + 3], rects[k + 2], rects[k + 3]);
+            t.clear(Minecraft.ON_OSX);
+        }
+        RenderSystem.disableScissor();
+        t.bindWrite(true);
+        //?} elif <1.21.5 {
+        /*t.setClearColor(clear, clear, clear, 0f);
+        for (int i = 0; i < count; i++) {
+            int k = i * 4;
+            RenderSystem.enableScissor(rects[k], height - rects[k + 1] - rects[k + 3], rects[k + 2], rects[k + 3]);
+            t.clear();
+        }
+        RenderSystem.disableScissor();
+        t.bindWrite(true);
+        drawing = t;
+        *///?} else {
+        /*clearAndBind(t, clear);
         *///?}
     }
 
@@ -403,6 +495,8 @@ public final class PicturesModern implements CgHostPictures.Host {
             GlStateManager.viewport(viewportBefore[0], viewportBefore[1], viewportBefore[2], viewportBefore[3]);
         }
         *///?} elif <1.21.5 {
+        // Before asking for the main target, which answers the picture's while one draws (1.21.2+)
+        drawing = null;
         RenderTarget main = mc.getMainRenderTarget();
         if (boundBefore == main.frameBufferId) {
             main.bindWrite(true);
@@ -527,19 +621,25 @@ public final class PicturesModern implements CgHostPictures.Host {
 
     // Drawn into a state of our own, rendered by a GuiRenderer of our own whose main target and window are the
     // picture's for the call. The window is sized so its projection spans the picture's units at an integer GUI scale.
-    private void recorded(Minecraft mc, RenderTarget t, CgPictureRenderer drawer, Context ctx) {
+    private void recorded(Minecraft mc, RenderTarget t, @Nullable int[] rects, int count, CgPictureRenderer drawer,
+                          Context ctx) {
         int guiScale = Math.max(1, (int) Math.ceil(ctx.scale));
         int pixelsWide = Math.round(ctx.width * guiScale), pixelsHigh = Math.round(ctx.height * guiScale);
         //? if >=1.21.6 <26.1 {
         /*if (renderer == null) makeRenderer(mc);
         ctx.gui = guiGraphics(mc);
+        long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.record");
         drawer.draw(ctx);
-        RenderSystem.getDevice().createCommandEncoder()
-                .clearColorAndDepthTextures(t.getColorTexture(), 0, t.getDepthTexture(), 1.0);
+        CgTrace.end(zone);
+        zone = CgTrace.begin(CgChannels.PICTURES, "pictures.clear");
+        clearRecorded(t, rects, count);
+        CgTrace.end(zone);
         drawing = t;
         answerWindow(pixelsWide, pixelsHigh, guiScale, guiScale, ctx.width, ctx.height);
         try {
+            zone = CgTrace.begin(CgChannels.PICTURES, "pictures.render");
             renderer.render(fog.getBuffer(FogRenderer.FogMode.NONE));
+            CgTrace.end(zone);
         } finally {
             drawing = null;
             window = false;
@@ -548,9 +648,12 @@ public final class PicturesModern implements CgHostPictures.Host {
         *///?} elif >=26.1 <26.2 {
         /*if (renderer == null) makeRenderer(mc);
         ctx.gui = new GuiGraphicsExtractor(mc, state, -1, -1);
+        long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.record");
         drawer.draw(ctx);
-        RenderSystem.getDevice().createCommandEncoder()
-                .clearColorAndDepthTextures(t.getColorTexture(), 0, t.getDepthTexture(), 1.0);
+        CgTrace.end(zone);
+        zone = CgTrace.begin(CgChannels.PICTURES, "pictures.clear");
+        clearRecorded(t, rects, count);
+        CgTrace.end(zone);
         WindowRenderState state = mc.gameRenderer.getGameRenderState().windowRenderState;
         int realWidth = state.width, realHeight = state.height, realScale = state.guiScale;
         state.width = pixelsWide;
@@ -558,7 +661,9 @@ public final class PicturesModern implements CgHostPictures.Host {
         state.guiScale = guiScale;
         drawing = t;
         try {
+            zone = CgTrace.begin(CgChannels.PICTURES, "pictures.render");
             renderer.render(fog.getBuffer(FogRenderer.FogMode.NONE));
+            CgTrace.end(zone);
         } finally {
             drawing = null;
             state.width = realWidth;
@@ -569,8 +674,12 @@ public final class PicturesModern implements CgHostPictures.Host {
         *///?} elif >=26.2 {
         /*if (renderer == null) makeRenderer(mc);
         ctx.gui = new GuiGraphicsExtractor(mc, state, -1, -1);
+        long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.record");
         drawer.draw(ctx);
-        clearReversed(t);
+        CgTrace.end(zone);
+        zone = CgTrace.begin(CgChannels.PICTURES, "pictures.clear");
+        clearRecorded(t, rects, count);
+        CgTrace.end(zone);
         WindowRenderState state = mc.gameRenderer.gameRenderState().windowRenderState;
         int realWidth = state.width, realHeight = state.height, realScale = state.guiScale;
         state.width = pixelsWide;
@@ -578,7 +687,9 @@ public final class PicturesModern implements CgHostPictures.Host {
         state.guiScale = guiScale;
         drawing = t;
         try {
+            zone = CgTrace.begin(CgChannels.PICTURES, "pictures.render");
             renderer.render();
+            CgTrace.end(zone);
         } finally {
             drawing = null;
             state.width = realWidth;
@@ -599,15 +710,39 @@ public final class PicturesModern implements CgHostPictures.Host {
     }
     *///?}
 
-    //? if >=26.2 <26.3 {
+    // The whole target cleared, or each rect (pixels from the top-left) as Mojang's item atlas clears a slot:
+    // the device's rect is bottom-up
+    //? if >=1.21.6 <26.2 {
+    /*private static void clearRecorded(RenderTarget t, @Nullable int[] rects, int count) {
+        if (rects == null) {
+            RenderSystem.getDevice().createCommandEncoder()
+                    .clearColorAndDepthTextures(t.getColorTexture(), 0, t.getDepthTexture(), 1.0);
+            return;
+        }
+        for (int i = 0; i < count; i++) {
+            int k = i * 4;
+            RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(t.getColorTexture(), 0,
+                    t.getDepthTexture(), 1.0, rects[k], t.height - rects[k + 1] - rects[k + 3], rects[k + 2], rects[k + 3]);
+        }
+    }
+    *///?} elif >=26.2 <26.3 {
     /*// Reversed depth from 26.2: cleared to 0, as the GUI's own targets
-    private static void clearReversed(RenderTarget t) {
-        RenderSystem.getDevice().createCommandEncoder()
-                .clearColorAndDepthTextures(t.getColorTexture(), new Vector4f(0f), t.getDepthTexture(), 0.0);
+    private static void clearRecorded(RenderTarget t, @Nullable int[] rects, int count) {
+        if (rects == null) {
+            RenderSystem.getDevice().createCommandEncoder()
+                    .clearColorAndDepthTextures(t.getColorTexture(), new Vector4f(0f), t.getDepthTexture(), 0.0);
+            return;
+        }
+        for (int i = 0; i < count; i++) {
+            int k = i * 4;
+            RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(t.getColorTexture(),
+                    new Vector4f(0f), t.getDepthTexture(), 0.0, rects[k], t.height - rects[k + 1] - rects[k + 3],
+                    rects[k + 2], rects[k + 3]);
+        }
     }
     *///?} elif >=26.3 {
-    /*// 26.3 clears as a render pass opens; reversed depth, cleared to 0
-    private static void clearReversed(RenderTarget t) {
+    /*// 26.3 clears as a render pass opens, whole (clearsRects is false); reversed depth, cleared to 0
+    private static void clearRecorded(RenderTarget t, @Nullable int[] rects, int count) {
         RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "crystalgraphics picture clear",
                 t.getColorTextureView(), Optional.of(new Vector4f(0f)), t.getDepthTextureView(), OptionalDouble.of(0.0)).close();
     }

@@ -66,7 +66,10 @@ final class CgCanvasKeptLayers {
         walk.y0 = y0;
         walk.opacity = 1f;
         walk.revision = revision;
-        walk.draws = !kept.holds(revision, pw, ph);
+        // Held, unless a picture it drew moved since: then it walks again, damaged only where that picture lies
+        boolean held = kept.holds(revision, pw, ph);
+        boolean moved = held && kept.picturesMoved();
+        walk.draws = !held || moved;
         if (!walk.draws) return walk;
 
         CgRecording recording = cv.recording;
@@ -92,6 +95,7 @@ final class CgCanvasKeptLayers {
         }
         kept.invalidate();
         kept.beginWalk(now, full);
+        if (moved && !full) kept.damageMoved();
         CgCanvasLayer l = cv.layers.open(Float.NaN, 0f, 0f, 0f);
         l.kept = walk;
         l.x0 = x0;
@@ -111,6 +115,22 @@ final class CgCanvasKeptLayers {
         cv.pass();
         cv.recorder.openPass();
         return walk;
+    }
+
+    /**
+     * Records {@code picture}, drawn over a rect in the units now at its version, in the innermost walk drawing on this
+     * canvas, if any: that layer follows it from then on.
+     */
+    void pictured(CgPicture picture, float x, float y, float w, float h, int deviceWidth, int deviceHeight) {
+        CgCanvasLayers layers = canvas.layers;
+        for (int i = layers.count - 1; i >= 0; i--) {
+            CgKeptLayer.Walk walk = layers.at(i).kept;
+            if (walk == null || !walk.live) continue;
+            float[] r = rect(walk, x, y, w, h);
+            walk.layer().pictured(picture, picture.version(), r[0], r[1], r[2], r[3], deviceWidth, deviceHeight,
+                    canvas.deviceScale());
+            return;
+        }
     }
 
     /** A rect in the units now as {@code walk}'s texels, top-down, into a scratch array. */

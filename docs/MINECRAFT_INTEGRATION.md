@@ -278,7 +278,8 @@ the world's depth is gone once the graph has run, and a depth reader (the showca
 | Fabric 26.1+ | `LevelRenderEvents.BEFORE_TRANSLUCENT_TERRAIN` | node mixin `TransparentPassHook`: `renderLevel` tail on 26.1.2, `WorldBorderRenderer.render` return on 26.2, `executeOit`/`executeClassicTransparency` tail on 26.3 |
 
 **The GUI stages** (`CgRenderStage.HUD`, `SCREEN`) fire through `LifecycleModern.hud()`/`screen()`, once a frame
-each; from 26.1 they are noted at the hook and fired at the frame end, since 26.1 extracts the GUI before the level:
+each; from 1.21.6 they are noted at the hook and fired at the frame end, since the GUI is recorded there and rendered
+after the hooks (26.1 even extracts it before the level), so a stage drawn from its hook lands under vanilla's GUI:
 
 | Loader | HUD | Screen |
 |---|---|---|
