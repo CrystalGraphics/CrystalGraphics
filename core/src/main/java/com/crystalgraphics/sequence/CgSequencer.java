@@ -12,6 +12,7 @@ import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.mc.render.world.CgSequenceEntity;
 import com.crystalgraphics.audio.CgAudioEngine;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
@@ -142,6 +143,7 @@ public final class CgSequencer extends CgWorldSubsystem {
         evaluators.add(new CgSequenceEventEvaluator(this));
         spawners.put("light", CgSequenceLight.SPAWNER);
         spawners.put("puppet", CgSequencePuppet.DEFAULT);
+        spawners.put("entity", CgSequenceEntity.SPAWNER);
     }
 
     @Override

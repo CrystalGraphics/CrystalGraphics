@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.legacy.mixin;
 
+import com.crystalgraphics.mc.render.world.CgHostWorld;
 import com.crystalgraphics.render.host.CgHostFrame;
 import com.crystalgraphics.mc.legacy.platform.world.HostCameraLegacy;
 import com.crystalgraphics.render.host.CgStageHost;
@@ -57,6 +58,8 @@ public abstract class CgRenderHook {
         EnvironmentLegacy.capture(mc, partialTicks, frame.camera(), frame.environment());
         TexturesLegacy.capture(mc, frame.textures());
         WorldEventsLegacy.poll();
+        // Minecraft's objects in the scene, by Minecraft's renderers with its state: before the section, into its depth
+        CgHostWorld.drawPoint(frame.camera(), partialTicks);
         CgStageHost.fire(CgStageHost.WORLD_OPAQUE);
     }
 

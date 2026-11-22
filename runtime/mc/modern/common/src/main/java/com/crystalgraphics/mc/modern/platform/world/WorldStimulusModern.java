@@ -61,11 +61,11 @@ public final class WorldStimulusModern implements CgWorldStimulus {
     }
 
     @Override
-    public boolean turnLook(float degrees) {
+    public boolean turnLook(float yaw, float pitch) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return false;
         // As the mouse turns it: Entity.turn scales what it is given by 0.15.
-        player.turn(degrees / 0.15, 0.0);
+        player.turn(yaw / 0.15, pitch / 0.15);
         return true;
     }
 

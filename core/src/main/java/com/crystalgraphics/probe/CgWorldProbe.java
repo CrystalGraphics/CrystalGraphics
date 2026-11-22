@@ -777,7 +777,7 @@ public final class CgWorldProbe {
                     String.format("view %.4f %.4f %.4f, pose %.4f %.4f %.4f, %.4f in height", view.x(), view.y(), view.z(),
                             holdAt[0], holdAt[1], holdAt[2], dy));
         } else if (holdFrames == HOLD_STIMULUS) {
-            stimulus.turnLook(20f);
+            stimulus.turnLook(20f, 0f);
             holdPressed = stimulus.pressJump();
         } else if (holdFrames == HOLD_MEASURE) {
             CgCamera view = host.camera();

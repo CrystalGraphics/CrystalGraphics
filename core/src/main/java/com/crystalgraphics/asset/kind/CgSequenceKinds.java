@@ -190,6 +190,11 @@ public final class CgSequenceKinds {
             .property("fade", VALUE)
             .register();
 
+    /** One of Minecraft's entities, drawn by Minecraft ({@code CgSequenceEntity}): its data as {@code /summon} takes it. */
+    static final CgType ENTITY = CgTypes.struct("crystalgraphics:sequence.entity")
+            .property("data", STRING).required()
+            .register();
+
     static final CgType TEMPERATURE = CgTypes.struct("crystalgraphics:sequence.colour_region.temperature")
             .property("type", CgValueType.enumOf("legacy", "white_balance", "colour_temperature"))
             .property("value", FLOAT)
@@ -245,6 +250,7 @@ public final class CgSequenceKinds {
             .property("spline_mesh", CgValueType.struct(SPLINE_MESH)).flags(CgPropertyFlag.STRUCTURAL)
             .property("capture", CgValueType.struct(CAPTURE)).flags(CgPropertyFlag.STRUCTURAL)
             .property("colour_region", CgValueType.struct(COLOUR_REGION)).flags(CgPropertyFlag.STRUCTURAL)
+            .property("entity", CgValueType.struct(ENTITY)).flags(CgPropertyFlag.STRUCTURAL)
             .validator(CgSequenceKinds::oneKind)
             .register();
 
@@ -649,7 +655,7 @@ public final class CgSequenceKinds {
     public static final String SPAWNABLE_KIND = "spawnable_kind";
 
     private static final List<String> SPAWNABLE_KINDS = Arrays.asList("system", "prefab", "puppet", "pose_copy", "camera",
-            "light", "post", "field", "decal", "spline_mesh", "capture", "colour_region");
+            "light", "post", "field", "decal", "spline_mesh", "capture", "colour_region", "entity");
 
     /** A spawnable is one kind of object: exactly one kind key. */
     private static void oneKind(Map<?, ?> spawnable, CgPropertyPath at, CgValidation into) {

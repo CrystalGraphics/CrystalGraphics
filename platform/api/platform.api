@@ -3648,7 +3648,7 @@ com/crystalgraphics/platform/world/CgWorldStimulus
   method public merchant (III)Z
   method public pressJump ()Z
   method public teleport (DDD)Z
-  method public turnLook (F)Z
+  method public turnLook (FF)Z
   method public use (III)Z
   method public useEntity (I)Z
   method public,abstract breakBlock (III)Z

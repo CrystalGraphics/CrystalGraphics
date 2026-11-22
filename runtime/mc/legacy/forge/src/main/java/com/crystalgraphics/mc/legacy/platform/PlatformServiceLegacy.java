@@ -64,6 +64,7 @@ import com.crystalgraphics.mc.legacy.platform.service.HostI18nLegacy;
 import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import com.crystalgraphics.mc.render.block.CgBlockPictures;
+import com.crystalgraphics.mc.render.world.CgHostWorld;
 import com.crystalgraphics.mc.render.entity.CgEntityPictures;
 import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.item.CgItemIcons;
@@ -148,6 +149,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgFluids.HOST, new FluidsLegacy());
         CgPlatform.provide(CgEntityPictures.HOST, new EntityPicturesLegacy());
         CgPlatform.provide(CgBlockPictures.HOST, new BlockPicturesLegacy());
+        CgPlatform.provide(CgHostWorld.HOST, new HostWorldLegacy());
         CgPlatform.provide(CgPicturesProbe.Host.SERVICE, PicturesProbeLegacy.create());
         CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsLegacy.INSTANCE);
         CgKeyBindings.hostProvided();

@@ -76,7 +76,7 @@ public final class EntityPicturesModern implements CgEntityPictures.Host {
 
     @Override
     public Object entity(CgEntityRef ref, @Nullable Object previous) {
-        //? if <1.15 {
+        //? if <1.14 {
         /*return null;
         *///?} else {
         Minecraft mc = Minecraft.getInstance();
@@ -88,9 +88,12 @@ public final class EntityPicturesModern implements CgEntityPictures.Host {
                 if (previous instanceof Entity && ((Entity) previous).isAlive() && ((Entity) previous).getUUID().equals(ref.uuid())) {
                     return previous;
                 }
+                // No list of the level's entities to look in before 1.15: a live entity is none there
+                //? if >=1.15 {
                 for (Entity e : mc.level.entitiesForRendering()) {
                     if (e.getUUID().equals(ref.uuid())) return e instanceof LivingEntity ? e : null;
                 }
+                //?}
                 return null;
             case PROFILE:
                 if (previous != null) return previous;
@@ -131,7 +134,7 @@ public final class EntityPicturesModern implements CgEntityPictures.Host {
     // Made, never added to the level: a picture's entity never joins it
     @Nullable
     private static Object fromData(Minecraft mc, CompoundTag tag) {
-        //? if <1.15 {
+        //? if <1.14 {
         /*Entity e = null;
         *///?} elif <1.21.3 {
         Entity e = EntityType.loadEntityRecursive(tag, mc.level, x -> x);
@@ -148,7 +151,7 @@ public final class EntityPicturesModern implements CgEntityPictures.Host {
 
     @Override
     public float height(Object entity) {
-        //? if <1.15 {
+        //? if <1.14 {
         /*return 1;
         *///?} else {
         return ((Entity) entity).getBbHeight();

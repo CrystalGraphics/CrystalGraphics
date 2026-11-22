@@ -115,14 +115,14 @@ public final class WorldStimulusLegacy implements CgWorldStimulus {
     }
 
     @Override
-    public boolean turnLook(float degrees) {
+    public boolean turnLook(float yaw, float pitch) {
         EntityPlayerSP player = player();
         if (player == null) return false;
         // As the mouse turns it: the entity scales what it is given by 0.15.
         //? if >=1.10 {
-        player.turn(degrees / 0.15f, 0f);
+        player.turn(yaw / 0.15f, -pitch / 0.15f);
         //?} else {
-        /*player.setAngles(degrees / 0.15f, 0f);
+        /*player.setAngles(yaw / 0.15f, -pitch / 0.15f);
         *///?}
         return true;
     }

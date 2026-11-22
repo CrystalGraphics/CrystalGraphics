@@ -1,0 +1,6 @@
+# The world objects gauntlet's prefab (CgWorldObjectsProbe): a body and a right hand, no mesh, so an item Minecraft
+# draws rides the hand of an entity actor.
+_v: 1
+nodes:
+  - { id: n1, name: body }
+  - { id: n2, name: hand_r, parent: body, location: [-0.35, 0.75, 0.1] }

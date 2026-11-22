@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.v1710.mixins.early.impl.client;
 
+import com.crystalgraphics.mc.render.world.CgHostWorld;
 import com.crystalgraphics.render.host.CgHostFrame;
 import com.crystalgraphics.mc.v1710.platform.world.HostCamera1710;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
@@ -109,6 +110,8 @@ public class CgRenderHook {
         Environment1710.capture(mc, partialTicks, frame.camera(), frame.environment());
         Textures1710.capture(mc, frame.textures());
         WorldEvents1710.poll();
+        // Minecraft's objects in the scene, by Minecraft's renderers with its state: before the section, into its depth
+        CgHostWorld.drawPoint(frame.camera(), partialTicks);
         CgStageHost.fire(CgStageHost.WORLD_OPAQUE);
     }
 

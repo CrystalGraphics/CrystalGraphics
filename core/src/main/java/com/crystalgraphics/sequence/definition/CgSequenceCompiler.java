@@ -286,7 +286,7 @@ final class CgSequenceCompiler {
 
     private String spawnableKind(Map<?, ?> s) {
         for (String k : List.of("system", "prefab", "puppet", "pose_copy", "camera", "light", "post", "field", "decal",
-                "spline_mesh", "capture", "colour_region")) {
+                "spline_mesh", "capture", "colour_region", "entity")) {
             if (s.containsKey(k)) return k;
         }
         throw fail("spawnables." + s.get("id"), "holds no kind");

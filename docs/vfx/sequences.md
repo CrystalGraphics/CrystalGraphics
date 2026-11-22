@@ -329,6 +329,15 @@ CgPostVolumeSpawner.install(sequencer);
 sequencer.spawner("camera", (player, spawnable, at) -> new MyCamera(spawnable.tree(), at));   // a kind of your own
 ```
 
+- **An `entity` spawnable is played already** (`CgSequenceEntity`, the default): Minecraft's entity made from its
+  `data` (`CgEntityData`'s text), drawn by the game where the spawnable stands, never added to the level
+  ([Minecraft's objects, § 8](../MINECRAFT_OBJECTS.md#8-in-the-scene)). A server's play makes nothing.
+
+```yaml
+spawnables:
+  - { id: z1, name: zombie, entity: { data: "minecraft:zombie{IsBaby:1b}" } }
+```
+
 - **A `light` spawnable is played already** (`CgSequenceLight`, the sequencer's default): a directional light that
   travels along its node's forward axis, Unreal's +X. While it lives, the directional light with the highest
   `priority` (Unreal's `ForwardShadingPriority`) lights the world, a tie going to the brighter, and the host's sun

@@ -3,7 +3,8 @@
 Minecraft draws its own objects (items, entities, blocks, tooltips, anything a mod draws with Minecraft's API) into
 **pictures** that your canvas shows. Nothing is captured or imitated: the game's own code draws them, so a mod's item
 renderer, a resource pack and a tooltip mod show exactly as in vanilla. This guide covers what exists today: the
-picture, the draw point, custom pictures, item icons with their overlays, tooltips, entities and blocks.
+picture, the draw point, custom pictures, item icons with their overlays, tooltips, entities and blocks, and
+Minecraft's objects standing in the engine's own scene.
 
 ## If you have drawn Minecraft's objects in a UI before
 
@@ -25,7 +26,8 @@ picture, the draw point, custom pictures, item icons with their overlays, toolti
 5. [Entities and blocks](#5-entities-and-blocks)
 6. [The draw point](#6-the-draw-point)
 7. [Hosts](#7-hosts)
-8. [Testing and the Game Gallery](#8-testing-and-the-game-gallery)
+8. [In the scene](#8-in-the-scene)
+9. [Testing and the Game Gallery](#9-testing-and-the-game-gallery)
 
 ---
 
@@ -226,8 +228,51 @@ and what a kept layer damages. A `CgHostPicture` kind asks for it with `bleed()`
 rect. A picture with a size of its own answers `naturalWidth`/`naturalHeight`, and `canvas.picture(p, x, y)` shows it at
 that size.
 
-## 8. Testing and the Game Gallery
+## 8. In the scene
 
+Minecraft's objects can stand in the engine's own scene: an item in an actor's hand, a mob a sequence places, a block
+at a point. Each is a **host-drawn component**: the scene places it like any primitive (attached, moved, hidden), and
+Minecraft's own renderers draw it, into the level's depth, so a mod's item renderer and every layer show as in the
+game, and the engine's lights light it.
+
+```java
+CgItemStackComponent sword = CgItemStackComponent.of(CgScene.client(), CgItemStack.of("mymod:blade", 1))
+        .display(CgItemDisplay.THIRD_PERSON_RIGHT_HAND)     // the model's own hand transform
+        .attach(actor.prefab().node("hand_r"), null)        // rides the socket, as any primitive
+        .spawn();
+
+CgChildEntityComponent zombie = CgChildEntityComponent.of(CgScene.client(),
+        CgEntityRef.of(CgEntityData.parse("minecraft:zombie{IsBaby:1b}")))
+        .at(x, y, z).spawn();                               // its feet at the origin; never added to the level
+zombie.pose(CgEntityPose.of(20, 45, -10));                  // relative to the component's facing
+
+CgBlockStateComponent chest = CgBlockStateComponent.of(CgScene.client(), CgBlockState.parse("chest[facing=south]"))
+        .at(x, y, z).spawn();                               // its corner, as a block's position names it
+```
+
+A sequence places an entity with its `entity` spawnable ([sequences](vfx/sequences.md#what-a-sequence-spawns)).
+
+- Client scene only: `of` throws for any other scene. On a dedicated server nothing draws and nothing is made.
+- An entity is made from its data once, client-side, and never joins the level: it neither ticks nor collides. Its
+  age runs from its spawn, so a mob's idle animation plays.
+- What the game lacks (an unknown item, block or property) is logged once as the component first draws, and the
+  component hides; the rest draw.
+- `CgHostWorld.drawn()` is the last frame's count. Where no Minecraft runs (the harness), nothing draws.
+
+| Era | Where they draw | How |
+|---|---|---|
+| 1.7.10 | the opaque hook | GL's model-view, `RenderManager`, `ItemRenderer`; no blocks |
+| legacy 1.8.9 - 1.12.2 | the opaque hook | GL's model-view, `RenderItem`, `RenderManager`, the tile entity dispatcher |
+| 1.13.2 - 1.14.4 | the opaque hook | GL's model-view; entities from data from 1.14.3 |
+| 1.15.2 - 1.21.8 | the opaque hook | a `PoseStack` and the level's buffers, flushed before the engine's section |
+| 1.21.10 - 26.x | as the level submits its entities (`WorldSubmitHook`) | submitted into the level's own collector under its camera, drawn in its frame with its entities |
+
+## 9. Testing and the Game Gallery
+
+- `crystalgraphics:world_objects` (gauntlet): § 8's components in the level. An actor holds a sword at its hand
+  (`-Dcrystalgraphics.world_objects.item=<id>` for a mod's), a sequence places a zombie, a chest stands beside
+  them, and a point light of ours lights them: `world.rides`, `world.sequence`, `world.drawn` (pixels that change
+  as they show) and `world.lit` (those pixels brighter under the light).
 - `crystalgraphics:pictures` (gauntlet): the draw point's parity test. The host draws the same objects with vanilla's
   own GUI code beside pictures and icons of them; the capture is compared pixel for pixel, within 1 level (8 on a glint, which
   scrolls with the clock; 2 under a tooltip's translucent layers). A throwing renderer shows the missing

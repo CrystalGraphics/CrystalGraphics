@@ -76,6 +76,7 @@ import com.crystalgraphics.mc.render.item.CgItemIcons;
 import com.crystalgraphics.mc.render.block.CgBlockPictures;
 import com.crystalgraphics.mc.render.entity.CgEntityPictures;
 import com.crystalgraphics.mc.render.tooltip.CgTooltips;
+import com.crystalgraphics.mc.render.world.CgHostWorld;
 import com.crystalgraphics.probe.CgPicturesProbe;
 import com.crystalgraphics.probe.CgValuesProbe;
 
@@ -160,6 +161,11 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgTooltips.HOST, new TooltipsModern());
         CgPlatform.provide(CgEntityPictures.HOST, new EntityPicturesModern());
         CgPlatform.provide(CgBlockPictures.HOST, new BlockPicturesModern());
+        //? if <1.15 {
+        /*CgPlatform.provide(CgHostWorld.HOST, new HostWorld114());
+        *///?} else {
+        CgPlatform.provide(CgHostWorld.HOST, new HostWorldModern());
+        //?}
         CgPlatform.provide(CgPicturesProbe.Host.SERVICE, PicturesProbeModern.create());
         CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsModern.INSTANCE);
         CgKeyBindings.hostProvided();

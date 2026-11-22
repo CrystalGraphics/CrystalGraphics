@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.platform;
 
+import com.crystalgraphics.mc.render.world.CgHostWorld;
 import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.net.object.CgNetEntities;
 import com.crystalgraphics.mc.modern.platform.world.LevelEntityQueryModern;
@@ -31,6 +32,16 @@ import javax.annotation.Nullable;
 //? if <26.3 {
 import org.lwjgl.glfw.GLFW;
 //?}
+//? if >=1.21.10 {
+/*import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4f;
+*///?}
+//? if >=1.21.10 <26.1 {
+/*import net.minecraft.client.renderer.state.LevelRenderState;
+*///?} elif >=26.1 {
+/*import net.minecraft.client.renderer.state.level.LevelRenderState;
+*///?}
 //? if >=26.1 {
 /*import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.RenderTarget;
@@ -77,6 +88,22 @@ public final class LifecycleModern {
     private LifecycleModern() {
     }
 
+    //? if >=1.21.10 {
+    /*// The level has submitted its entities (LevelRenderer.submitEntities): the scene's host-drawn components are
+    // submitted after them, into the same collector under the level's camera, and drawn in its feature frame
+    public static void worldSubmit(LevelRenderState level, SubmitNodeCollector collector) {
+        if (!canRender()) return;
+        CgHostWorld.Host host = CgPlatform.get(CgHostWorld.HOST);
+        if (!(host instanceof HostWorldModern)) return;
+        ((HostWorldModern) host).submitting(collector, level.cameraRenderState);
+        Vec3 at = level.cameraRenderState.pos;
+        CgHostWorld.drawPoint(at.x, at.y, at.z, IDENTITY,
+                Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true));
+    }
+
+    private static final Matrix4fc IDENTITY = new Matrix4f();
+    *///?}
+
     /**
      * Minecraft has drawn its opaque world; run the engine's opaque passes.
      *
@@ -89,15 +116,19 @@ public final class LifecycleModern {
     public static void opaquePass(float partialTick) {
         if (!canRender()) return;
         Minecraft mc = Minecraft.getInstance();
+        CgHostFrame frame = CgStageHost.frame(CgStageHost.WORLD_OPAQUE);
+        HostCameraModern.capture(mc, partialTick, frame.camera());
+        //? if <1.21.10 {
+        // Minecraft's objects in the scene, by Minecraft's renderers with its state: before the section, into its depth
+        CgHostWorld.drawPoint(frame.camera(), partialTick);
+        //?}
         CgDeviceSection.begin();
         try {
             // Named, not bound: Fabulous graphics leaves one of its OIT targets bound
             int mainFbo = bindMainTarget(mc);
             worldDepth(true);
             try {
-                CgHostFrame frame = CgStageHost.frame(CgStageHost.WORLD_OPAQUE)
-                        .set(partialTick, Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo);
-                HostCameraModern.capture(mc, partialTick, frame.camera());
+                frame.set(partialTick, Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo);
                 EnvironmentModern.capture(mc, partialTick, frame.camera(), frame.environment());
                 TexturesModern.capture(mc, frame.textures());
                 WorldEventsModern.poll(mc);

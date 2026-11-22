@@ -13,14 +13,16 @@ import com.crystalgraphics.serialization.nbt.CgNbt;
 import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.block.state.BlockState;
-//? if >=1.15 <1.21.6 {
+//? if >=1.15 <1.21.9 {
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.world.level.block.RenderShape;
+//?}
+//? if >=1.15 {
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.EntityBlock;
-import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
 //?}
 //? if >=1.15 <1.17 {
@@ -29,11 +31,15 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 //? if >=1.15 <1.19.3 {
 /*import com.mojang.math.Vector3f;
 *///?}
-//? if >=1.19.3 <1.21.6 {
+//? if >=1.19.3 <1.21.9 {
 import com.mojang.math.Axis;
 //?}
-//? if >=1.21.5 <1.21.6 {
+//? if >=1.21.5 <1.21.9 {
 /*import net.minecraft.world.phys.Vec3;
+*///?}
+//? if >=1.21.6 {
+/*import net.minecraft.util.ProblemReporter;
+import net.minecraft.world.level.storage.TagValueInput;
 *///?}
 //? if >=1.21.6 <26.1 {
 /*import net.minecraft.client.gui.GuiGraphics;
@@ -132,13 +138,13 @@ public final class BlockPicturesModern implements CgBlockPictures.Host {
         if (state.getRenderShape() == RenderShape.MODEL) {
             mc.getBlockRenderer().renderSingleBlock(state, pose, buffers, LIGHT, OverlayTexture.NO_OVERLAY);
         }
-        if (p.blockEntity != null) renderEntity((BlockEntity) p.blockEntity, pose, buffers);
+        if (p.blockEntity != null) renderEntity((BlockEntity) p.blockEntity, pose, buffers, LIGHT);
         ((MultiBufferSource.BufferSource) buffers).endBatch();
         pose.popPose();
         //?}
     }
 
-    //? if >=1.15 <1.21.6 {
+    //? if >=1.15 <1.21.9 {
     private static void rotate(PoseStack pose) {
         //? if <1.19.3 {
         /*pose.mulPose(Vector3f.XP.rotationDegrees(30));
@@ -149,10 +155,27 @@ public final class BlockPicturesModern implements CgBlockPictures.Host {
         //?}
     }
 
-    // Made from the state and its data, never in the level; given the client's level from 1.17, where a chest's
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    static void renderEntity(BlockEntity be, PoseStack pose, MultiBufferSource buffers, int light) {
+        //? if <1.17 {
+        /*BlockEntityRenderer renderer = BlockEntityRenderDispatcher.instance.getRenderer(be);
+        *///?} else {
+        BlockEntityRenderer renderer = Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(be);
+        //?}
+        if (renderer == null) return;
+        //? if <1.21.5 {
+        renderer.render(be, 1.0F, pose, buffers, light, OverlayTexture.NO_OVERLAY);
+        //?} else {
+        /*renderer.render(be, 1.0F, pose, buffers, light, OverlayTexture.NO_OVERLAY, Vec3.ZERO);
+        *///?}
+    }
+    //?}
+
+    //? if >=1.15 {
+    // Made from the state and its data, never in the level (a picture's, or a scene's through HostWorldModern); given the client's level from 1.17, where a chest's
     // renderer reads its facing from the block entity only once it has one
     @Nullable
-    private static BlockEntity blockEntity(BlockState state, CgBlockState s) {
+    static BlockEntity blockEntity(BlockState state, CgBlockState s) {
         if (!(state.getBlock() instanceof EntityBlock)) return null;
         Minecraft mc = Minecraft.getInstance();
         //? if <1.17 {
@@ -172,23 +195,11 @@ public final class BlockPicturesModern implements CgBlockPictures.Host {
         /*be.load(state, tag);
         *///?} elif <1.20.5 {
         be.load(tag);
-        //?} else {
+        //?} elif <1.21.6 {
         /*be.loadWithComponents(tag, Minecraft.getInstance().level.registryAccess());
-        *///?}
-    }
-
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private static void renderEntity(BlockEntity be, PoseStack pose, MultiBufferSource buffers) {
-        //? if <1.17 {
-        /*BlockEntityRenderer renderer = BlockEntityRenderDispatcher.instance.getRenderer(be);
         *///?} else {
-        BlockEntityRenderer renderer = Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(be);
-        //?}
-        if (renderer == null) return;
-        //? if <1.21.5 {
-        renderer.render(be, 1.0F, pose, buffers, LIGHT, OverlayTexture.NO_OVERLAY);
-        //?} else {
-        /*renderer.render(be, 1.0F, pose, buffers, LIGHT, OverlayTexture.NO_OVERLAY, Vec3.ZERO);
+        /*be.loadWithComponents(TagValueInput.create(ProblemReporter.DISCARDING, Minecraft.getInstance().level.registryAccess(),
+                tag));
         *///?}
     }
     //?}

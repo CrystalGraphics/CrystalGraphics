@@ -73,8 +73,11 @@ public interface CgWorldStimulus {
      */
     void keepRunning();
 
-    /** The local player turned by {@code degrees} of yaw, as the mouse turns it; false where there is no player. */
-    default boolean turnLook(float degrees) {
+    /**
+     * The local player turned by {@code yaw} and {@code pitch} degrees (pitch positive down, clamped at 90), as the mouse
+     * turns it; false where there is no player.
+     */
+    default boolean turnLook(float yaw, float pitch) {
         return false;
     }
 

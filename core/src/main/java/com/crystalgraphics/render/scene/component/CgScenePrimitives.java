@@ -82,6 +82,9 @@ public final class CgScenePrimitives {
     private final List<CgTextComponent> textView = Collections.unmodifiableList(texts);
     /** Its spawned quads with a picture, and the canvas they are painted through. */
     final List<CgQuadComponent> pictures = new ArrayList<>();
+    /** Its spawned primitives Minecraft draws, in spawn order: what the host's world draw point walks. */
+    final List<CgHostDrawnComponent<?>> hostDrawn = new ArrayList<>();
+    private final List<CgHostDrawnComponent<?>> hostDrawnView = Collections.unmodifiableList(hostDrawn);
     private final CgCanvas pictureCanvas = new CgCanvas();
     private long capturedFrame = Long.MIN_VALUE;
     private final List<CgSkeletalMeshComponent> skeletalView = Collections.unmodifiableList(skeletal);
@@ -265,6 +268,11 @@ public final class CgScenePrimitives {
     /** A text component reading {@code text}, in its default font. */
     public CgTextComponent text(String text) {
         return new CgTextComponent(this, text);
+    }
+
+    /** Its spawned primitives Minecraft draws, in spawn order: what the host's world draw point walks. Frame thread. */
+    public List<CgHostDrawnComponent<?>> hostDrawn() {
+        return hostDrawnView;
     }
 
     /** Its spawned text components by slot, a free slot null: what its text renderer draws ahead of the frame's. */

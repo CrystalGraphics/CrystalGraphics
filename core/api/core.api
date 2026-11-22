@@ -12049,6 +12049,10 @@ com/crystalgraphics/probe/CgValuesProbe$Host
   method public,abstract gameItem (Ljava/lang/String;)Lcom/crystalgraphics/mc/item/CgItemStack;
   method public,abstract packed (III)Ljava/lang/Long;
   method public,abstract sheep ()Ljava/lang/String;
+com/crystalgraphics/probe/CgWorldObjectsProbe
+  access public,final
+  extends java/lang/Object
+  method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
 com/crystalgraphics/probe/CgWorldProbe
   access public,final
   extends java/lang/Object
@@ -14434,6 +14438,13 @@ com/crystalgraphics/render/scene/component/CgHeightFogComponent
   method public toString ()Ljava/lang/String;
   method public weight ()F
   method public weight (F)Lcom/crystalgraphics/render/scene/component/CgHeightFogComponent;
+com/crystalgraphics/render/scene/component/CgHostDrawnComponent
+  access public,abstract
+  extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent
+  method protected <init> (Lcom/crystalgraphics/render/scene/CgScene;)V
+  method protected hostRelease ()V
+  method protected,abstract hostDraw (Lorg/joml/Matrix4fc;)V
+  method public,final drawHosted (Lorg/joml/Matrix4fc;)V
 com/crystalgraphics/render/scene/component/CgInstancedMeshComponent
   access public,final
   extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent
@@ -14663,6 +14674,7 @@ com/crystalgraphics/render/scene/component/CgScenePrimitives
   method public haze ()Lcom/crystalgraphics/render/scene/component/CgHazeComponent;
   method public heightFog ()Lcom/crystalgraphics/render/scene/component/CgHeightFogComponent;
   method public holdsHaze ()Z
+  method public hostDrawn ()Ljava/util/List;
   method public injectHaze (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/scene/renderer/feature/media/CgSceneMedia;)Z
   method public instanced (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgInstancedMeshComponent;
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
