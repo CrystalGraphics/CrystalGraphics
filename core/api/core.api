@@ -12028,6 +12028,10 @@ com/crystalgraphics/probe/CgPicturesProbe$Kind
   field public,static,final TOOLTIP Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
   method public,static values ()[Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
+com/crystalgraphics/probe/CgPocketLevelProbe
+  access public,final
+  extends java/lang/Object
+  method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
 com/crystalgraphics/probe/CgServerSmoke
   access public,final
   extends com/crystalgraphics/gauntlet/CgGauntletController
@@ -13177,6 +13181,19 @@ com/crystalgraphics/render/host/CgHostFrame
   method public view ()Lcom/crystalgraphics/render/view/CgView;
   method public view (Lcom/crystalgraphics/render/view/CgView;)Lcom/crystalgraphics/render/host/CgHostFrame;
   method public width ()I
+com/crystalgraphics/render/host/CgHostLevel
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract drawn (Lcom/crystalgraphics/render/view/CgView;II)Lcom/crystalgraphics/render/host/CgHostLevel$Drawn;
+com/crystalgraphics/render/host/CgHostLevel$Drawn
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Lcom/crystalgraphics/platform/rhi/CgExternalTarget;Lcom/crystalgraphics/gpu/resource/CgTexture2D;)V
+  method public colour ()Lcom/crystalgraphics/gpu/resource/CgTexture2D;
+  method public target ()Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/render/host/CgHostTextures
   access public,final
   extends java/lang/Object
@@ -13206,6 +13223,7 @@ com/crystalgraphics/render/host/CgStageHost
   method public,static firing ()Z
   method public,static frame (Lcom/crystalgraphics/render/stage/CgRenderStage;)Lcom/crystalgraphics/render/host/CgHostFrame;
   method public,static renderView (Lcom/crystalgraphics/render/view/CgView;Lcom/crystalgraphics/platform/rhi/CgExternalTarget;)V
+  method public,static renderView (Lcom/crystalgraphics/render/view/CgView;Lcom/crystalgraphics/platform/rhi/CgExternalTarget;Z)V
 com/crystalgraphics/render/host/CgWorldAtmosphere
   access public,final
   extends java/lang/Object
@@ -14132,6 +14150,8 @@ com/crystalgraphics/render/scene/CgScene
   method public gpuLights (Lcom/crystalgraphics/render/scene/renderer/feature/light/CgSceneLights$Appender;)Lcom/crystalgraphics/render/scene/CgScene$Registration;
   method public haze ()Lcom/crystalgraphics/render/scene/component/CgHazeComponent;
   method public heightFog ()Lcom/crystalgraphics/render/scene/component/CgHeightFogComponent;
+  method public hostLevel ()Lcom/crystalgraphics/render/host/CgHostLevel;
+  method public hostLevel (Lcom/crystalgraphics/render/host/CgHostLevel;)Lcom/crystalgraphics/render/scene/CgScene;
   method public instanced (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgInstancedMeshComponent;
   method public lights ()Lcom/crystalgraphics/render/scene/renderer/feature/light/CgSceneLights;
   method public media ()Lcom/crystalgraphics/render/scene/renderer/feature/media/CgSceneMedia;
@@ -14469,6 +14489,19 @@ com/crystalgraphics/render/scene/component/CgLightComponent
   method public sampled (Z)Lcom/crystalgraphics/render/scene/component/CgLightComponent;
   method public sourceRadius (F)Lcom/crystalgraphics/render/scene/component/CgLightComponent;
   method public volumetric (F)Lcom/crystalgraphics/render/scene/component/CgLightComponent;
+com/crystalgraphics/render/scene/component/CgLineBatchComponent
+  access public,final
+  extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent
+  method public box (DDDDDDI)Lcom/crystalgraphics/render/scene/component/CgLineBatchComponent;
+  method public box (Lcom/crystalgraphics/shape/bounds/CgAABBc;I)Lcom/crystalgraphics/render/scene/component/CgLineBatchComponent;
+  method public clear ()Lcom/crystalgraphics/render/scene/component/CgLineBatchComponent;
+  method public foreground (Z)Lcom/crystalgraphics/render/scene/component/CgLineBatchComponent;
+  method public keepsPrevious ()Z
+  method public line (DDDDDDI)Lcom/crystalgraphics/render/scene/component/CgLineBatchComponent;
+  method public lines ()I
+  method public thickness (F)Lcom/crystalgraphics/render/scene/component/CgLineBatchComponent;
+  method public,static of (Lcom/crystalgraphics/render/scene/CgScene;)Lcom/crystalgraphics/render/scene/component/CgLineBatchComponent;
+  method public,static precache (Lcom/crystalgraphics/render/precache/CgPipelineList;)V
 com/crystalgraphics/render/scene/component/CgMeshCollector
   access public,final
   extends java/lang/Object
@@ -15173,6 +15206,8 @@ com/crystalgraphics/render/scene/renderer/feature/field/CgVoxelWindow
   method public bind (Lcom/crystalgraphics/api/material/CgMaterialValues;I)Lcom/crystalgraphics/api/material/CgMaterialValues;
   method public bind (Lcom/crystalgraphics/render/graph/CgDispatch;)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public bindBlocks (Lcom/crystalgraphics/render/graph/CgDispatch;)Lcom/crystalgraphics/render/graph/CgDispatch;
+  method public bindNone (Lcom/crystalgraphics/api/material/CgMaterialValues;I)Lcom/crystalgraphics/api/material/CgMaterialValues;
+  method public bindNone (Lcom/crystalgraphics/render/graph/CgDispatch;)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public distance ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public emitters (Lcom/crystalgraphics/render/scene/renderer/feature/field/CgVoxelWindow$Emitters;)V
   method public live ()Z
@@ -15254,6 +15289,7 @@ com/crystalgraphics/render/scene/renderer/feature/light/CgSceneLights
   method public add (Lcom/crystalgraphics/render/scene/component/CgDynamicLights;)V
   method public add (Lcom/crystalgraphics/render/scene/renderer/feature/light/CgSceneLights$Appender;)V
   method public airSpread ()[F
+  method public applied ()Z
   method public apply (Lcom/crystalgraphics/render/stage/CgStageFiring;Lcom/crystalgraphics/render/graph/CgRecording;ZZ)V
   method public budgetPerCell ()I
   method public cameraX ()D
@@ -15270,9 +15306,11 @@ com/crystalgraphics/render/scene/renderer/feature/light/CgSceneLights
   method public hand (Lcom/crystalgraphics/api/material/CgMaterialInterface;Lcom/crystalgraphics/render/graph/CgRecording;)V
   method public handNone (Lcom/crystalgraphics/api/material/CgMaterialInterface;Lcom/crystalgraphics/render/graph/CgRecording;)V
   method public handSun (Lcom/crystalgraphics/api/material/CgMaterialInterface;Z)V
+  method public hostWorld (Ljava/util/function/BooleanSupplier;)V
   method public indices ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public into (Lcom/crystalgraphics/render/graph/CgDispatch;)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public list ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
+  method public listed ()I
   method public localLights ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public normals (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public rays ()[F

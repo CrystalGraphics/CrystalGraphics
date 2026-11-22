@@ -37,9 +37,10 @@ public final class CgHostWorld {
 
         /**
          * Opens a draw point: Minecraft's buffers ready for {@link #drawItem} and the rest. {@code view} is the level's
-         * camera rotation, as the host frame's camera holds it, at {@code camX, camY, camZ}.
+         * camera rotation, as the host frame's camera holds it, at {@code camX, camY, camZ}. {@code fullLight}: lit as a
+         * pocket level is, block and sky 15, never by the client world's light at the component's block.
          */
-        void begin(Matrix4fc view, double camX, double camY, double camZ, float partialTick);
+        void begin(Matrix4fc view, double camX, double camY, double camZ, float partialTick, boolean fullLight);
 
         /** The game's stack for {@code stack}; {@code previous} is what this answered last for the same component. */
         @Nullable
@@ -67,7 +68,8 @@ public final class CgHostWorld {
 
         Host NONE = new Host() {
             @Override public String absent() { return "no world draw point on this node"; }
-            @Override public void begin(Matrix4fc view, double camX, double camY, double camZ, float partialTick) { }
+            @Override public void begin(Matrix4fc view, double camX, double camY, double camZ, float partialTick,
+                                        boolean fullLight) { }
             @Override public Object item(CgItemStack stack, Object previous) { return null; }
             @Override public Object entity(CgEntityRef ref, Object previous) { return null; }
             @Override public Object block(CgBlockState state, Object previous) { return state; }
@@ -107,16 +109,25 @@ public final class CgHostWorld {
      * turned by {@code view}. What a host calls where it submits into Minecraft's own frame (1.21.10 on).
      */
     public static void drawPoint(double camX, double camY, double camZ, Matrix4fc view, float partialTick) {
-        List<CgHostDrawnComponent<?>> all = CgScene.client().primitives().hostDrawn();
-        drawn = 0;
-        if (all.isEmpty()) return;
+        drawn = drawScene(CgScene.client(), camX, camY, camZ, view, partialTick, false);
+    }
+
+    /**
+     * Host side: {@code scene}'s host-drawn components drawn where Minecraft is drawing that scene's world (a pocket
+     * level's, into its view's target), and how many drew.
+     */
+    public static int drawScene(CgScene scene, double camX, double camY, double camZ, Matrix4fc view, float partialTick,
+                                boolean fullLight) {
+        List<CgHostDrawnComponent<?>> all = scene.primitives().hostDrawn();
+        if (all.isEmpty()) return 0;
+        int drew = 0;
         Host host = CgPlatform.get(HOST);
         if (host.absent() != null) {
             if (!absentSaid) LOGGER.info("[cg] Minecraft's objects in the scene are not drawn: {}", host.absent());
             absentSaid = true;
-            return;
+            return 0;
         }
-        host.begin(view, camX, camY, camZ, partialTick);
+        host.begin(view, camX, camY, camZ, partialTick, fullLight);
         try {
             for (int i = 0; i < all.size(); i++) {
                 CgHostDrawnComponent<?> c = all.get(i);
@@ -127,7 +138,7 @@ public final class CgHostWorld {
                 model.set(relative);
                 try {
                     c.drawHosted(model);
-                    drawn++;
+                    drew++;
                 } catch (RuntimeException e) {
                     // One object's renderer failing leaves the rest drawn, as a picture's does
                     LOGGER.warn("[cg] {} failed to draw, hidden: {}", c.getClass().getSimpleName(), e.toString());
@@ -137,5 +148,6 @@ public final class CgHostWorld {
         } finally {
             host.end();
         }
+        return drew;
     }
 }

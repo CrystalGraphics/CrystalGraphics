@@ -3,8 +3,9 @@
 Minecraft draws its own objects (items, entities, blocks, tooltips, anything a mod draws with Minecraft's API) into
 **pictures** that your canvas shows. Nothing is captured or imitated: the game's own code draws them, so a mod's item
 renderer, a resource pack and a tooltip mod show exactly as in vanilla. This guide covers what exists today: the
-picture, the draw point, custom pictures, item icons with their overlays, tooltips, entities and blocks, and
-Minecraft's objects standing in the engine's own scene.
+picture, the draw point, custom pictures, item icons with their overlays, tooltips, entities and blocks,
+Minecraft's objects standing in the engine's own scene, and pocket levels: blocks of your own that Minecraft draws
+under a scene of yours.
 
 ## If you have drawn Minecraft's objects in a UI before
 
@@ -27,7 +28,8 @@ Minecraft's objects standing in the engine's own scene.
 6. [The draw point](#6-the-draw-point)
 7. [Hosts](#7-hosts)
 8. [In the scene](#8-in-the-scene)
-9. [Testing and the Game Gallery](#9-testing-and-the-game-gallery)
+9. [Pocket levels](#9-pocket-levels)
+10. [Testing and the Game Gallery](#10-testing-and-the-game-gallery)
 
 ---
 
@@ -267,12 +269,94 @@ A sequence places an entity with its `entity` spawnable ([sequences](vfx/sequenc
 | 1.15.2 - 1.21.8 | the opaque hook | a `PoseStack` and the level's buffers, flushed before the engine's section |
 | 1.21.10 - 26.x | as the level submits its entities (`WorldSubmitHook`) | submitted into the level's own collector under its camera, drawn in its frame with its entities |
 
-## 9. Testing and the Game Gallery
+## 9. Pocket levels
+
+A **pocket level** is a client-only world of blocks of your own: a structure in a guidebook, a multiblock preview, a
+building editor. Minecraft meshes and draws its blocks with its own section compiler, so a mod's block model, a
+resource pack and a block entity's renderer show exactly as in the game. It draws under a view of a scene of yours:
+your meshes stand among its blocks, depth-tested against them, lit by your lights.
+
+```java
+CgStructure tower = CgStructure.load("mymod:tower");          // data/mymod/structure(s)/tower.nbt, vanilla's format
+CgPocketLevel level = CgPocketLevel.create();                  // a client world must be open
+List<CgChildEntityComponent> mobs = level.place(tower, 0, 0, 0, scene);   // its entities as the scene's components
+
+scene.hostLevel(level);                                        // Minecraft draws the level under this scene
+canvas.view(CgView.of(scene), x, y, w, h);                     // every view of the scene shows it
+```
+
+A structure built in code, for a tool or a test:
+
+```java
+CgStructure wall = CgStructure.builder(5, 3, 1)
+        .fill(0, 0, 0, 4, 2, 0, CgBlockState.parse("minecraft:stone_bricks"))
+        .block(2, 1, 0, CgBlockState.parse("minecraft:glass"))
+        .entity(2.5, 0, 0.5, CgEntityData.parse("minecraft:armor_stand"))
+        .build();
+level.place(wall, 0, 0, 0).setBlock(2, 2, 0, CgBlockState.parse("minecraft:torch"));
+```
+
+A picture of the level alone, with no scene of yours, for a slot or a page; it redraws only when the level or its
+camera changes:
+
+```java
+CgLevelPicture page = CgLevelPicture.of(level).camera(camera);
+canvas.picture(page, x, y, 200, 200);
+```
+
+Picking and outlining a block, as the crosshair does:
+
+```java
+CgPocketLevel.Hit hit = level.pick(eyeX, eyeY, eyeZ, dirX, dirY, dirZ, 8);
+CgLineBatchComponent outline = CgLineBatchComponent.of(scene).thickness(3).spawn();
+if (hit != null) for (CgAABBc box : hit.outline()) outline.box(box, 0xFF000000);
+```
+
+Only the blocks of some layers, as a guidebook slices a build; and the block entities' own animation:
+
+```java
+level.visibleRange(0, 4);       // only blocks with 0 <= y <= 4 exist; level.visibleRange() shows them all again
+level.ticking(true);            // the client tickers run: an enchanting table's book turns, a furnace flickers
+```
+
+- Client only. `create` throws on a dedicated server and where no Minecraft runs.
+- A pocket level is never a world: no server ticks it and nothing is sent anywhere. Its light is full and its biome
+  plains; Minecraft's own world neither lights nor shadows it, and the scene's lights do.
+- Changes are applied at the next draw point, on the render thread; a section is meshed again only where a block in
+  or beside it changed.
+- A view's first frame at a new size shows the scene without the level: the level is drawn at the draw point, before
+  the view asks for it.
+- `pick` answers blocks only; a structure's entities are the scene's components, which `CgView.pick` answers.
+- The outline follows the era's crosshair: a block's shape from 1.13 (a stair's two boxes), its one selection box
+  before. `CgPocketLevel.picksByShape()` says which.
+- `close()` frees its meshes and targets; a scene that still names it draws without it.
+
+| Era | How Minecraft draws it |
+|---|---|
+| 26.3 | one render pass on the view's target: each section's uploaded buffer, then the level's features |
+| 26.2 | each section uploaded once and drawn from its buffer; block entities through the feature dispatcher |
+| 26.1 | meshed as the section compiler meshes, written as a moving block; the kept bytes drawn by the block render types |
+| 1.21.5 - 1.21.11 | the kept bytes drawn by the chunk layer's render type; from 1.21.10 block entities submitted and rendered as a picture-in-picture renderer does |
+| 1.17 - 1.21.4 | a vertex buffer per section and layer, drawn as `renderChunkLayer` draws one |
+| 1.15 - 1.16 | fixed function: the projection in GL's stack, each section drawn under its pose |
+| 1.14.3 - 1.14.4 | 1.14's own terrain path: `RenderChunk.compile`, `VboRenderList`'s client arrays |
+| legacy 1.8.9 - 1.12.2 | `RenderChunk.rebuildChunk` per layer a block renders in, `VboRenderList`; tile entities by the dispatcher |
+| 1.13.2, 1.7.10 | none: 1.13.2 meshes a block only through a whole world, and 1.7.10 has no block states. `create` throws with the reason |
+
+A host level draws in the depth convention of Minecraft's world, not the GUI's where its draw point falls: reversed from
+26.2, as the world draws. `CgHostLevel` is the engine's side of it, for a host level of another kind.
+
+## 10. Testing and the Game Gallery
 
 - `crystalgraphics:world_objects` (gauntlet): § 8's components in the level. An actor holds a sword at its hand
   (`-Dcrystalgraphics.world_objects.item=<id>` for a mod's), a sequence places a zombie, a chest stands beside
   them, and a point light of ours lights them: `world.rides`, `world.sequence`, `world.drawn` (pixels that change
   as they show) and `world.lit` (those pixels brighter under the light).
+- `crystalgraphics:pocket_level` (gauntlet): § 9's tower in a view of a scene of ours: `pocket.drawn`, `pocket.depth`
+  (a cube of ours partly behind its wall), `pocket.lit` (the wall brighter under our light), `pocket.pick` and
+  `pocket.outline` (a stair picked and outlined as the era's crosshair does), `pocket.picture`, `pocket.range`,
+  `pocket.ticking` and `pocket.entities`. It waits for pipelines still building, so a cold client's captures are of
+  a built engine.
 - `crystalgraphics:pictures` (gauntlet): the draw point's parity test. The host draws the same objects with vanilla's
   own GUI code beside pictures and icons of them; the capture is compared pixel for pixel, within 1 level (8 on a glint, which
   scrolls with the clock; 2 under a tooltip's translucent layers). A throwing renderer shows the missing

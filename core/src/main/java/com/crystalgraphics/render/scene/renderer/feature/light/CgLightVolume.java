@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.scene.renderer.feature.light;
 
+import java.util.function.BooleanSupplier;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
@@ -60,8 +61,12 @@ final class CgLightVolume {
     /** This firing's volume, or null. */
     @Nullable
     CgGraphTexture localLights;
+    // Whether its scene is the host's world: Minecraft's blocks and entities shadow only that
+    private final BooleanSupplier hostWorld;
 
-    CgLightVolume(CgLightGrid grid, CgLightList list, CgShadowCasters casters, CgMegaLights shadows) {
+    CgLightVolume(CgLightGrid grid, CgLightList list, CgShadowCasters casters, CgMegaLights shadows,
+                  BooleanSupplier hostWorld) {
+        this.hostWorld = hostWorld;
         this.grid = grid;
         this.list = list;
         this.casters = casters;
@@ -197,6 +202,7 @@ final class CgLightVolume {
                 .set("_Entities", traced && boxes != null ? shadows.entities : 0).set("_Casters", meshes ? casters.count : 0)
                 .texture("_CasterRows", meshes ? casters.texture : CgFallbackTextures.BLACK_1x1)
                 .texture("_MeshFields", meshes ? casters.fields.atlas() : CgFallbackTextures.BLACK_1x1);
-        CgVoxelWindow.get().bind(d);
+        if (hostWorld.getAsBoolean()) CgVoxelWindow.get().bind(d);
+        else CgVoxelWindow.get().bindNone(d);
     }
 }

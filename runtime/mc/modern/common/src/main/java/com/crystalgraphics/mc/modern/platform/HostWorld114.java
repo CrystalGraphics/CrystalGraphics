@@ -47,6 +47,7 @@ public final class HostWorld114 implements CgHostWorld.Host {
     private final FloatBuffer matrix = BufferUtils.createFloatBuffer(16);
     private double camX, camY, camZ;
     private float partialTick;
+    private boolean fullLight;
 
     // A block and its block entity, made once a component
     private static final class Block {
@@ -65,7 +66,8 @@ public final class HostWorld114 implements CgHostWorld.Host {
     }
 
     @Override
-    public void begin(Matrix4fc view, double camX, double camY, double camZ, float partialTick) {
+    public void begin(Matrix4fc view, double camX, double camY, double camZ, float partialTick, boolean fullLight) {
+        this.fullLight = fullLight;
         this.view.set(view);
         this.camX = camX;
         this.camY = camY;
@@ -173,12 +175,14 @@ public final class HostWorld114 implements CgHostWorld.Host {
         model.get(matrix);
         GL11.glMultMatrixf(matrix);
         Minecraft mc = Minecraft.getInstance();
-        if (mc.level != null) {
+        if (mc.level != null && !fullLight) {
             // getLightColor's packing, by hand: 1.13.2 leaves that method unnamed
             BlockPos at = new BlockPos((int) Math.floor(model.m30() + camX), (int) Math.floor(model.m31() + camY),
                     (int) Math.floor(model.m32() + camZ));
             int sky = mc.level.getBrightness(LightLayer.SKY, at), blockLight = mc.level.getBrightness(LightLayer.BLOCK, at);
             GLX.glMultiTexCoord2f(GLX.GL_TEXTURE1, blockLight << 4, sky << 4);
+        } else if (fullLight) {
+            GLX.glMultiTexCoord2f(GLX.GL_TEXTURE1, 240f, 240f);
         }
         GlStateManager.color4f(1, 1, 1, 1);
     }

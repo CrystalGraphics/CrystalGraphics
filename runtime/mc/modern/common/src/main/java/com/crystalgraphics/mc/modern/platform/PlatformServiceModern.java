@@ -77,6 +77,7 @@ import com.crystalgraphics.mc.render.block.CgBlockPictures;
 import com.crystalgraphics.mc.render.entity.CgEntityPictures;
 import com.crystalgraphics.mc.render.tooltip.CgTooltips;
 import com.crystalgraphics.mc.render.world.CgHostWorld;
+import com.crystalgraphics.mc.render.world.CgPocketLevel;
 import com.crystalgraphics.probe.CgPicturesProbe;
 import com.crystalgraphics.probe.CgValuesProbe;
 
@@ -166,6 +167,14 @@ public final class PlatformServiceModern implements CgPlatformService {
         *///?} else {
         CgPlatform.provide(CgHostWorld.HOST, new HostWorldModern());
         //?}
+        //? if >=1.15 <26.4 {
+        CgPlatform.provide(CgPocketLevel.HOST, new PocketLevelsModern());
+        //?} elif >=1.14.3 {
+        /*CgPlatform.provide(CgPocketLevel.HOST, new PocketLevels114());
+        *///?} else {
+        /*CgPlatform.provide(CgPocketLevel.HOST, CgPocketLevel.Host.absent(
+                "no pocket levels on 1.13.2: it meshes a block only through a whole world's LevelReader"));
+        *///?}
         CgPlatform.provide(CgPicturesProbe.Host.SERVICE, PicturesProbeModern.create());
         CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsModern.INSTANCE);
         CgKeyBindings.hostProvided();

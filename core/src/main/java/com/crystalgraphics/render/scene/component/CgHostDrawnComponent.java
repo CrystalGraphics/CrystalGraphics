@@ -33,9 +33,9 @@ public abstract class CgHostDrawnComponent<T extends CgHostDrawnComponent<T>> ex
 
     protected CgHostDrawnComponent(CgScene scene) {
         super(scene.primitives());
-        if (scene != CgScene.client()) {
-            throw new IllegalArgumentException(getClass().getSimpleName() + ": Minecraft draws only into the client scene, "
-                    + "and " + scene + " has no host world");
+        if (scene != CgScene.client() && scene.hostLevel() == null) {
+            throw new IllegalArgumentException(getClass().getSimpleName() + ": Minecraft draws only into the client scene or"
+                    + " a scene with a host level (scene.hostLevel), and " + scene + " has neither");
         }
     }
 

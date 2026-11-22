@@ -235,11 +235,15 @@ public final class CgAssetRegistry {
 
     /** {@code root} as the folder it is: its real path, links resolved; absolute and normalized where it is not there. */
     private static Path realRoot(Path root) {
+        Path real;
         try {
-            return root.toRealPath();
+            real = root.toRealPath();
         } catch (IOException e) {
-            return root.toAbsolutePath().normalize();
+            real = null;
         }
+        // Forge 1.17.1's jar filesystem answers null rather than throwing
+        if (real == null) real = root.toAbsolutePath().normalize();
+        return real != null ? real : root;
     }
 
     /** What a scan read of one namespace: every entry, its content index and units, nothing registered yet. */

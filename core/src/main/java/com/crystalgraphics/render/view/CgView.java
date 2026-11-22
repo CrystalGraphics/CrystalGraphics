@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.view;
 
+import com.crystalgraphics.render.CgDepthConvention;
+import com.crystalgraphics.render.host.CgHostLevel;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
@@ -642,9 +644,25 @@ public final class CgView {
      * <ul>
      *   <li>Not the main view: its host draws it.</li>
      *   <li>The texture answered is replaced when the size changes; read it again each frame.</li>
+     *   <li>A scene with a host level ({@code scene.hostLevel}) draws over the level its host drew for this view and
+     *       answers that target's colour; {@code argb} is the background only where the level has none yet.</li>
      * </ul>
      */
     public CgTexture2D renderPicture(int width, int height, int argb) {
+        CgHostLevel level = scene == null ? null : scene.hostLevel();
+        CgHostLevel.Drawn drawn = level == null ? null : level.drawn(this, width, height);
+        if (drawn != null) {
+            // Over the level its host drew for this view: the scene beside its depth, as the game's view over the world,
+            // in the convention the host's world pipelines wrote that depth in
+            boolean before = CgDepthConvention.hostReversed();
+            CgDepthConvention.host(CgDepthConvention.worldReversed());
+            try {
+                CgStageHost.renderView(this, drawn.target(), true);
+            } finally {
+                CgDepthConvention.host(before);
+            }
+            return drawn.colour();
+        }
         if (picture == null) picture = new CgViewPicture("cg_view." + name);
         CgRenderTarget target = picture.at(width, height, argb);
         renderInto(target.beginDraw(true));

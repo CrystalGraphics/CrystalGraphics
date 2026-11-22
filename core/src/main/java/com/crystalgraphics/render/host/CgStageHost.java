@@ -180,11 +180,19 @@ public final class CgStageHost {
      * viewport drawn from the HUD), the target its own.
      */
     public static void renderView(CgView view, CgExternalTarget target) {
+        renderView(view, target, false);
+    }
+
+    /**
+     * {@link #renderView(CgView, CgExternalTarget)}, over a world its host drew into {@code target} where
+     * {@code overHostWorld}: a pocket level's ({@link CgHostLevel}), the scene drawn beside that world's depth.
+     */
+    public static void renderView(CgView view, CgExternalTarget target, boolean overHostWorld) {
         if (CgGraphicsLifecycle.isContextDestroyed() || CgGraphicsLifecycle.isStoodDown()) return;
         // Its scene's captures first: each is a renderView of its own, and the shared firing below is begun after
         if (CgGraphicsLifecycle.isInitialized()) view.scene().primitives().updateCaptures();
         CgHostFrame game = frame(WORLD_OPAQUE);
-        VIEWS.host.set(game.partialTick(), target.width(), target.height(), target).drawsWorld(false);
+        VIEWS.host.set(game.partialTick(), target.width(), target.height(), target).drawsWorld(overHostWorld);
         if (view.scene() == CgScene.client()) {
             view.environment().set(game.environment());
             view.hostTextures().set(game.textures());

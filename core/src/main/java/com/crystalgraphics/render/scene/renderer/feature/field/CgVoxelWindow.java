@@ -232,7 +232,17 @@ public final class CgVoxelWindow {
 
     /** The volume, its distance field and where it sits, on a dispatch of a kernel declaring {@link #PROPERTIES}. */
     public CgDispatch bind(CgDispatch d) {
-        return bindBlocks(d).texture("_WorldDistance", live ? distances[current] : noSections);
+        if (!live) return bindNone(d);
+        return bindBlocks(d).texture("_WorldDistance", distances[current]);
+    }
+
+    /**
+     * {@link #bind(CgDispatch)} with no blocks: for a scene the window is not of (a scene of your own, a pocket level's),
+     * where Minecraft's blocks round the eye neither shadow nor light anything.
+     */
+    public CgDispatch bindNone(CgDispatch d) {
+        return d.texture("_World", noVolume).texture("_WorldSections", noSections).set("_WorldLive", 0)
+                .texture("_WorldDistance", noSections);
     }
 
     /**
@@ -250,15 +260,18 @@ public final class CgVoxelWindow {
      * at units {@code unit} to {@code unit + 2}. A pass drawing with it is ordered after the window's fill.
      */
     public CgMaterialValues bind(CgMaterialValues b, int unit) {
-        if (!live) {
-            return b.sampler("_World", unit, noVolume).sampler("_WorldSections", unit + 1, noSections)
-                    .sampler("_WorldDistance", unit + 2, noSections).set1i("_WorldLive", 0);
-        }
+        if (!live) return bindNone(b, unit);
         return b.sampler("_World", unit, volume).sampler("_WorldSections", unit + 1, sections)
                 .sampler("_WorldDistance", unit + 2, distances[current])
                 .set1i("_WorldBaseX", baseX).set1i("_WorldBaseY", baseY).set1i("_WorldBaseZ", baseZ)
                 .set1i("_WorldWrapX", Math.floorMod(baseX, WIDTH)).set1i("_WorldWrapY", Math.floorMod(baseY, HEIGHT))
                 .set1i("_WorldWrapZ", Math.floorMod(baseZ, DEPTH)).set1i("_WorldLive", 1);
+    }
+
+    /** {@link #bind(CgMaterialValues, int)} with no blocks, as {@link #bindNone(CgDispatch)}. */
+    public CgMaterialValues bindNone(CgMaterialValues b, int unit) {
+        return b.sampler("_World", unit, noVolume).sampler("_WorldSections", unit + 1, noSections)
+                .sampler("_WorldDistance", unit + 2, noSections).set1i("_WorldLive", 0);
     }
 
     /** The window's volumes and where it sits, without its distance field: what the flood itself reads. */

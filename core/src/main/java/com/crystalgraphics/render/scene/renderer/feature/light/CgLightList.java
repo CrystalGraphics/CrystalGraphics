@@ -125,7 +125,7 @@ final class CgLightList {
      * The firing begun from the grid's eye: Minecraft's light-giving blocks gathered when {@code blockShadows} (only
      * where something of ours can shadow them), nothing listed yet. Whether there is anything to list.
      */
-    boolean begin(CgLightGrid grid, boolean blockShadows) {
+    boolean begin(CgLightGrid grid, boolean blockShadows, boolean hostWorld) {
         eyeX = grid.cameraX;
         eyeY = grid.cameraY;
         eyeZ = grid.cameraZ;
@@ -133,7 +133,8 @@ final class CgLightList {
         shapedExact = shapedAny = false;
         blockCount = 0;
         blockReach = CgLightSettings.BLOCK_REACH.get();
-        if (CgLightSettings.SHADOWS.get() && blockReach > 0f && blockShadows) {
+        // Minecraft's light-giving blocks are the host world's: a scene of your own has none
+        if (hostWorld && CgLightSettings.SHADOWS.get() && blockReach > 0f && blockShadows) {
             CgVoxelWindow window = CgVoxelWindow.get();
             window.useDistance();
             window.emitters(gatherBlock);

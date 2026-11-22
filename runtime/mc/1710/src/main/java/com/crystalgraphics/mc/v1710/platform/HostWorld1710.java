@@ -40,6 +40,7 @@ public final class HostWorld1710 implements CgHostWorld.Host {
     private final FloatBuffer matrix = BufferUtils.createFloatBuffer(16);
     private double camX, camY, camZ;
     private float partialTick;
+    private boolean fullLight;
 
     @Override
     public String absent() {
@@ -47,7 +48,8 @@ public final class HostWorld1710 implements CgHostWorld.Host {
     }
 
     @Override
-    public void begin(Matrix4fc view, double camX, double camY, double camZ, float partialTick) {
+    public void begin(Matrix4fc view, double camX, double camY, double camZ, float partialTick, boolean fullLight) {
+        this.fullLight = fullLight;
         this.view.set(view);
         this.camX = camX;
         this.camY = camY;
@@ -140,10 +142,12 @@ public final class HostWorld1710 implements CgHostWorld.Host {
         model.get(matrix);
         GL11.glMultMatrix(matrix);
         WorldClient world = Minecraft.getMinecraft().theWorld;
-        if (world != null) {
+        if (world != null && !fullLight) {
             int light = world.getLightBrightnessForSkyBlocks((int) Math.floor(model.m30() + camX),
                     (int) Math.floor(model.m31() + camY), (int) Math.floor(model.m32() + camZ), 0);
             OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, light % 65536, light / 65536);
+        } else if (fullLight) {
+            OpenGlHelper.setLightmapTextureCoords(OpenGlHelper.lightmapTexUnit, 240f, 240f);
         }
         GL11.glColor4f(1, 1, 1, 1);
     }

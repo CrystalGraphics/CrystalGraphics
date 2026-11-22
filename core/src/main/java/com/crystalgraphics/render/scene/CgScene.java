@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.scene;
 
+import com.crystalgraphics.render.host.CgHostLevel;
 import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.animation.CgAnimation;
 import com.crystalgraphics.api.material.CgMaterialInterface;
@@ -129,6 +130,7 @@ public final class CgScene {
     private final CgSceneRenderer renderer;
     private final CgSceneClock clock;
     private final CgHostEnvironment environment = new CgHostEnvironment();
+    @Nullable private CgHostLevel hostLevel;
 
     public CgScene() {
         this("crystalgraphics.scene", null);
@@ -153,6 +155,22 @@ public final class CgScene {
      */
     public CgHostEnvironment environment() {
         return this == CLIENT ? CgStageHost.frame(CgStageHost.WORLD_OPAQUE).environment() : environment;
+    }
+
+    /** The level its host draws under it, or null: the client scene's is Minecraft's world, drawn by its host already. */
+    @Nullable
+    public CgHostLevel hostLevel() {
+        return hostLevel;
+    }
+
+    /**
+     * {@code level} drawn under it by its host, sharing its depth: its views draw the scene beside the level's blocks
+     * ({@link CgHostLevel}). Null takes it away. The client scene's is Minecraft's own world, so it takes none.
+     */
+    public CgScene hostLevel(@Nullable CgHostLevel level) {
+        if (this == CLIENT && level != null) throw new IllegalStateException("the client scene's host level is Minecraft's world");
+        this.hostLevel = level;
+        return this;
     }
 
     /** What draws it through a view: engine side. */

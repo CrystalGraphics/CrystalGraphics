@@ -1,5 +1,8 @@
 package com.crystalgraphics.mc.modern.platform;
 
+//? if >=1.21.5 {
+/*import com.mojang.blaze3d.textures.GpuTexture;
+*///?}
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.CgPictureLighting;
@@ -203,6 +206,17 @@ public final class PicturesModern implements CgHostPictures.Host {
         return t != null ? t : main;
     }
 
+    /**
+     * {@code t} answered for the main target from now (null: the main target again), and what was answered before:
+     * what a pocket level's draw sets, so the render types binding the main target (1.21.2 on) bind its.
+     */
+    @Nullable
+    static RenderTarget answerMain(@Nullable RenderTarget t) {
+        RenderTarget before = drawing;
+        drawing = t;
+        return before;
+    }
+
     /** Whether a picture draws now: {@code GuiWindowHook} answers the picture's window. */
     public static boolean answersWindow() {
         return window;
@@ -284,7 +298,7 @@ public final class PicturesModern implements CgHostPictures.Host {
         return t;
     }
 
-    private static RenderTarget make(int width, int height) {
+    static RenderTarget make(int width, int height) {
         //? if <1.14.3 {
         /*return new RenderTarget(width, height, true);
         *///?} elif <1.17 {
@@ -321,19 +335,34 @@ public final class PicturesModern implements CgHostPictures.Host {
         return CgHostPictures.imported(handle((RenderTarget) target));
     }
 
-    // The target's colour as CgHostImports takes it: a GL name, or the device texture 26.2's Vulkan image was wrapped in
-    private static Object handle(RenderTarget t) {
+    // The target's colour as CgHostImports takes it: a GL name, or the device texture 26.2's Vulkan image was wrapped in.
+    // Under a loader's wrapper (NeoForge's dev-time validation) to 26.1, the GL texture beneath it
+    static Object handle(RenderTarget t) {
         //? if <1.16 {
         /*return t.colorTextureId;
         *///?} elif <1.21.5 {
         return t.getColorTextureId();
-        //?} elif <26.2 {
-        /*return ((GlTexture) t.getColorTexture()).glId();
-        *///?} else {
-        /*return GraphicsApi.vulkan() ? Blaze3dVulkanHost.current().importTexture(t.getColorTexture())
-                : (Object) ((GlTexture) t.getColorTexture()).glId();
+        //?} else {
+        /*return deviceHandle(t.getColorTexture());
         *///?}
     }
+
+    //? if >=1.21.5 {
+    /*// The target's depth, as handle answers its colour
+    static Object depthHandle(RenderTarget t) {
+        return deviceHandle(t.getDepthTexture());
+    }
+
+    private static Object deviceHandle(GpuTexture texture) {
+        //? if <26.1 {
+        return ((GlTexture) LifecycleModern.hostTexture(texture)).glId();
+        //?} elif <26.2 {
+        /^return ((GlTexture) texture).glId();
+        ^///?} else {
+        /^return GraphicsApi.vulkan() ? Blaze3dVulkanHost.current().importTexture(texture) : (Object) ((GlTexture) texture).glId();
+        ^///?}
+    }
+    *///?}
 
     @Override
     public void beginBatch(boolean check) {

@@ -225,6 +225,10 @@ scene.pointLight().at(x, y, z).radius(2f).color(0xFFFFE080).intensity(4f)
   (its level less the blocks between) and traces it; the share that gets through scales the pixel's block light, again
   through the lightmap. Casters are as for the sun. A block placed after its section was read waits for the window's
   refresh; `--mode=lights-torch` is the gate.
+- **Only the client scene meets Minecraft's world.** Its blocks round the eye, its light-giving blocks and its
+  entities shadow and light `CgScene.client()` alone: a scene of your own (a view's, a pocket level's) binds an empty
+  window (`CgVoxelWindow.bindNone`), so whatever stands at those coordinates in the open world neither occludes nor
+  lights it. `CgSceneLights.hostWorld` says which, read as it records.
 - **What casts**: Minecraft's blocks within the window, its living entities within 64 blocks, anything on screen, and
   our meshes through their **mesh distance fields** (Unreal's `MeshDistanceFieldUtilities.cpp`, traced as
   `DistanceFieldShadowingShared.ush` does), static meshes only as in Unreal: a skinned mesh has no field, and casts

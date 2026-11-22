@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.scene.renderer.feature.light;
 
+import java.util.function.BooleanSupplier;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterialInterface;
@@ -169,8 +170,8 @@ public final class CgSceneLights {
      */
     public CgSceneLights(CgDynamicLights components) {
         list = new CgLightList(components);
-        shadows = new CgMegaLights(grid, list, casters, gbuffer, sun);
-        volume = new CgLightVolume(grid, list, casters, shadows);
+        shadows = new CgMegaLights(grid, list, casters, gbuffer, sun, () -> hostWorld.getAsBoolean());
+        volume = new CgLightVolume(grid, list, casters, shadows, () -> hostWorld.getAsBoolean());
     }
 
     /**
@@ -224,6 +225,16 @@ public final class CgSceneLights {
 
     public double cameraZ() {
         return grid.cameraZ;
+    }
+
+    /** The CPU's lights the last firing listed: 0 where it listed none, or its kernels were not yet ready. */
+    public int listed() {
+        return list.listed;
+    }
+
+    /** Whether the last firing applied lights: its kernels ready and something listed or appended. */
+    public boolean applied() {
+        return lastLit;
     }
 
     /** Lights past {@link #CAPACITY} in a recent firing, read back a few frames late; the CPU's at once. */
@@ -339,6 +350,17 @@ public final class CgSceneLights {
         CgMegaLights.precache();
     }
 
+    private boolean lastLit;
+    private BooleanSupplier hostWorld = () -> true;
+
+    /**
+     * Engine side: whether its scene is the host's world, read as it records. Only then do Minecraft's blocks and
+     * entities round the eye shadow its lights and its light-giving blocks join them; a scene of your own has neither.
+     */
+    public void hostWorld(BooleanSupplier ofHost) {
+        this.hostWorld = ofHost;
+    }
+
     /**
      * The firing's list under {@code view}: the CPU's lights placed from its eye, then each appender's, binned into the
      * grid. False when it holds none, and nothing is recorded.
@@ -353,7 +375,8 @@ public final class CgSceneLights {
             casters.reset();
             // Lights wait for their kernels as the apply waits for its programs: a dispatch taking one still linking
             // held the loading screen 100 ms
-            if (!list.begin(grid, gbuffer.hasNormals()) || !grid.ready() || !volume.ready()) {
+            if (!list.begin(grid, gbuffer.hasNormals(), hostWorld.getAsBoolean()) || !grid.ready() || !volume.ready()) {
+                lastLit = false;
                 warm();
                 return false;
             }
@@ -371,6 +394,7 @@ public final class CgSceneLights {
                 if (!a.pointsOnly()) list.shapedExact = list.shapedAny = true;
             }
             boolean lit = list.listed > 0 || appended;
+            lastLit = lit;
             if (lit) grid.bin(recording, frame.constants(), pass, list, frame.host().textures().lightmapTexture());
             else pass.end();
             list.readDropped(recording, appended);
@@ -442,7 +466,8 @@ public final class CgSceneLights {
                     .set1i("_EyeX", grid.eyeBlock[0]).set1i("_EyeY", grid.eyeBlock[1]).set1i("_EyeZ", grid.eyeBlock[2])
                     .vec4("_EyeFrac", grid.eyeFrac[0], grid.eyeFrac[1], grid.eyeFrac[2], 0f).set1i("_Scale", shadows.lightScale)
                     .sampler("_GBuffer", 5, gbuffer.texture));
-            CgVoxelWindow.get().bind(apply, 2);
+            if (hostWorld.getAsBoolean()) CgVoxelWindow.get().bind(apply, 2);
+            else CgVoxelWindow.get().bindNone(apply, 2);
             CgPipeline pipeline = CgMaterialProxy.of(apply).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) return;
             CgRasterPass add = recording.raster("worldLights.target").color(stage.target(), CgLoad.load())

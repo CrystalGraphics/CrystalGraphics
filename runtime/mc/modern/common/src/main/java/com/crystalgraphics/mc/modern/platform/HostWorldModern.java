@@ -80,6 +80,7 @@ public final class HostWorldModern implements CgHostWorld.Host {
     private final Vector3f v = new Vector3f();
     private double camX, camY, camZ;
     private float partialTick;
+    private boolean fullLight;
     //? if >=1.15 {
     private final PoseStack pose = new PoseStack();
     //?}
@@ -121,7 +122,8 @@ public final class HostWorldModern implements CgHostWorld.Host {
     }
 
     @Override
-    public void begin(Matrix4fc view, double camX, double camY, double camZ, float partialTick) {
+    public void begin(Matrix4fc view, double camX, double camY, double camZ, float partialTick, boolean fullLight) {
+        this.fullLight = fullLight;
         this.camX = camX;
         this.camY = camY;
         this.camZ = camZ;
@@ -352,6 +354,7 @@ public final class HostWorldModern implements CgHostWorld.Host {
 
     // Minecraft's light at the model's block, as an entity standing there is lit
     private int light(Matrix4fc model) {
+        if (fullLight) return 0xF000F0;
         //? if <26.1 {
         return LevelRenderer.getLightColor(Minecraft.getInstance().level, blockAt(model));
         //?} elif <26.2 {

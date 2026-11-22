@@ -88,11 +88,12 @@ final class CgLightGrid {
      * The grid binned nothing yet.
      */
     void place(CgCamera camera, Matrix4fc toWorld, float targetWidth, float targetHeight) {
-        // The froxels' eye (CgSceneMedia's): the view's position plus where toWorld puts the eye.
+        // The froxels' eye (CgSceneMedia's): where toWorld puts the eye, from the view's origin. Not its position: a
+        // camera of your own (lookAt) holds the eye in its view already, and would count it twice.
         toWorld.transformPosition(eye.set(0f, 0f, 0f));
-        cameraX = camera.x() + eye.x;
-        cameraY = camera.y() + eye.y;
-        cameraZ = camera.z() + eye.z;
+        cameraX = camera.originX() + eye.x;
+        cameraY = camera.originY() + eye.y;
+        cameraZ = camera.originZ() + eye.z;
         eyeBlock[0] = (int) Math.floor(cameraX);
         eyeBlock[1] = (int) Math.floor(cameraY);
         eyeBlock[2] = (int) Math.floor(cameraZ);

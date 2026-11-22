@@ -275,9 +275,9 @@ public final class CgSceneMedia {
             // The eye in the renderer's camera-relative space, which a host may keep off its origin (the harness's view
             // holds its own translation): froxels are placed from it, so what an injector places goes from it too.
             toWorld.transformPosition(eye.set(0f, 0f, 0f));
-            cameraX = view.x() + eye.x;
-            cameraY = view.y() + eye.y;
-            cameraZ = view.z() + eye.z;
+            cameraX = view.originX() + eye.x;
+            cameraY = view.originY() + eye.y;
+            cameraZ = view.originZ() + eye.z;
             Last last = state.get(LAST);
             reprojects = state.continuous() && last.frame == state.frame() - 1 && !resized;
             if (reprojects) {

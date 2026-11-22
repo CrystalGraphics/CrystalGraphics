@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.scene.renderer.feature.light;
 
+import java.util.function.BooleanSupplier;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.compute.CgCompute;
@@ -85,8 +86,12 @@ final class CgMegaLights {
     int lightScale = 1;
     /** The downsample factor the sample and shade passes read; the samples a downsampled pixel takes, as their block. */
     private int downX = 2, downY = 2, sampleX = 2, sampleY = 2;
+    // Whether its scene is the host's world: Minecraft's blocks and entities shadow only that
+    private final BooleanSupplier hostWorld;
 
-    CgMegaLights(CgLightGrid grid, CgLightList list, CgShadowCasters casters, CgLightGBuffer gbuffer, CgSunShadows sun) {
+    CgMegaLights(CgLightGrid grid, CgLightList list, CgShadowCasters casters, CgLightGBuffer gbuffer, CgSunShadows sun,
+                 BooleanSupplier hostWorld) {
+        this.hostWorld = hostWorld;
         this.grid = grid;
         this.list = list;
         this.casters = casters;
@@ -173,9 +178,13 @@ final class CgMegaLights {
             CgGraphBuffer none = list.zeroes(recording);
             // Past the screen: the window's blocks and the entities' capsules round the eye.
             CgVoxelWindow.get().useDistance();
-            CgEntityBoxes.around(grid.cameraX, grid.cameraY, grid.cameraZ, stage.host().partialTick());
-            CgEntityBoxes.upload(recording);
-            CgGraphBuffer boxes = CgEntityBoxes.buffer();
+            // The client world's entities shadow only the client world: a scene of your own has none
+            CgGraphBuffer boxes = null;
+            if (hostWorld.getAsBoolean()) {
+                CgEntityBoxes.around(grid.cameraX, grid.cameraY, grid.cameraZ, stage.host().partialTick());
+                CgEntityBoxes.upload(recording);
+                boxes = CgEntityBoxes.buffer();
+            }
             entities = boxes != null ? CgEntityBoxes.count() : 0;
             // Our meshes: the fields made since the last firing, then this firing's casters.
             casters.upload(recording);
@@ -203,7 +212,8 @@ final class CgMegaLights {
                     .bind("VIEWED", binned ? grid.viewed : none).bind("CELLS", binned ? grid.cells : none)
                     .bind("INDICES", binned ? grid.indices : none).bind("ENTITIES", boxes != null ? boxes : none).values();
             sampleValues(sample);
-            CgVoxelWindow.get().bind(sample, 0);
+            if (hostWorld.getAsBoolean()) CgVoxelWindow.get().bind(sample, 0);
+            else CgVoxelWindow.get().bindNone(sample, 0);
             sampling.end();
             lightmap = stage.host().textures().lightmapTexture();
             if (lightmap == null) lightmap = CgFallbackTextures.WHITE_1x1;

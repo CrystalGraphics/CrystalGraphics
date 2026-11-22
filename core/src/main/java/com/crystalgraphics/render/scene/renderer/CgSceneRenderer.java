@@ -229,6 +229,8 @@ public final class CgSceneRenderer {
 
     /** Engine side: the scene's. */
     public CgSceneRenderer(CgScene scene) {
+        // Read as it records: the client scene is still being made as its renderer is
+        lights.hostWorld(() -> scene == CgScene.client());
         this.scene = scene;
         texts.held(scene.primitives().texts());
         media.add(new CgSceneMedia.Injector() {

@@ -4,6 +4,7 @@ import com.crystalgraphics.mc.fluid.CgFluids;
 import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.entity.CgEntityPictures;
 import com.crystalgraphics.mc.render.world.CgHostWorld;
+import com.crystalgraphics.mc.render.world.CgPocketLevel;
 import com.crystalgraphics.mc.render.item.CgItemIcons;
 import com.crystalgraphics.mc.render.tooltip.CgTooltips;
 import com.crystalgraphics.probe.CgPicturesProbe;
@@ -163,6 +164,9 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgFluids.HOST, new Fluids1710());
             CgPlatform.provide(CgEntityPictures.HOST, new EntityPictures1710());
             CgPlatform.provide(CgHostWorld.HOST, new HostWorld1710());
+            // Blocks are ids and metadata here, and a CgBlockState has no form on this node
+            CgPlatform.provide(CgPocketLevel.HOST,
+                    CgPocketLevel.Host.absent("no pocket levels on 1.7.10: it has no block states"));
             CgPlatform.provide(CgPicturesProbe.Host.SERVICE, new PicturesProbe1710());
             CgPlatform.provide(CgKeyBindings.HOST, KeyBindings1710.INSTANCE);
             CgKeyBindings.hostProvided();
