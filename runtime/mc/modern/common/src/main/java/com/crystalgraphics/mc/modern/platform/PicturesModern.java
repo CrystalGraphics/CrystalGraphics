@@ -33,6 +33,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Matrix4f;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL30;
 *///?} elif <1.20 {
 /*import com.mojang.blaze3d.platform.GlStateManager;
@@ -42,6 +43,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL30;
 *///?} elif <1.21.2 {
 import com.mojang.blaze3d.pipeline.TextureTarget;
@@ -52,6 +54,7 @@ import com.mojang.blaze3d.vertex.VertexSorting;
 import net.minecraft.client.gui.GuiGraphics;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL30;
 //?} elif <1.21.5 {
 /*import com.mojang.blaze3d.platform.GlStateManager;
@@ -62,6 +65,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphics;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL30;
 *///?} elif <1.21.6 {
 /*import com.mojang.blaze3d.ProjectionType;
@@ -169,6 +173,10 @@ public final class PicturesModern implements CgHostPictures.Host {
      * screen clamp and a mod's window maths then land in the picture.
      */
     private static boolean window;
+    /** While a picture draws on an immediate GUI (1.15.2 - 1.21.4): GuiBlendHook pairs each blend's alpha. */
+    private static boolean pairsAlpha;
+    /** GuiBlendHook held a disable back while a picture drew: it lands as the draw ends. */
+    private static boolean blendHeld;
     /** Where the drawing cell's bottom-left is on its page, in pixels: what GuiScissorHook adds to a scissor. */
     private static int scissorX, scissorY;
     private static int windowWidth, windowHeight, windowScale, windowUnitsWidth, windowUnitsHeight;
@@ -240,6 +248,60 @@ public final class PicturesModern implements CgHostPictures.Host {
         return window;
     }
 
+    /** Whether a picture draws now on an immediate GUI, its blends' alpha to be paired (1.15.2 - 1.21.4). */
+    public static boolean pairsAlpha() {
+        return pairsAlpha;
+    }
+
+    /** GuiBlendHook kept blending on for an unblended draw: the disable is the host's to make. */
+    public static void holdBlend() {
+        blendHeld = true;
+    }
+
+    // Minecraft's draw of a picture: its blends paired, an unblended draw writing alpha 1
+    private static void startPairing() {
+        pairsAlpha = true;
+        blendAlpha(1f);
+    }
+
+    private static void endPairing() {
+        pairsAlpha = false;
+        //? if >=1.15 <1.21.5 {
+        if (blendHeld) {
+            blendHeld = false;
+            GlStateManager._disableBlend();
+        }
+        //?}
+        blendAlpha(0f);
+    }
+
+    // The blend colour's alpha, what a held blend writes; 0, GL's own, otherwise. Cached by the state manager to 1.16
+    private static void blendAlpha(float alpha) {
+        //? if >=1.15 <1.17 {
+        /*GlStateManager._blendColor(0f, 0f, 0f, alpha);
+        *///?} elif >=1.17 <1.21.5 {
+        GL14.glBlendColor(0f, 0f, 0f, alpha);
+        //?}
+    }
+
+    // Mojang's alpha factors for a colour blend from 1.21.6 (BlendFunction): TRANSLUCENT and the premultiplied over take
+    // coverage, GLINT keeps what is below; any other blend keeps its own
+    private static final int ZERO = 0, ONE = 1, SRC_COLOR = 768, SRC_ALPHA = 770, ONE_MINUS_SRC_ALPHA = 771;
+
+    /** The source alpha factor Mojang pairs with colour factors {@code (src, dst)}; {@code given} where it pairs none. */
+    public static int pairedSrcAlpha(int src, int dst, int given) {
+        if (dst == ONE_MINUS_SRC_ALPHA && (src == SRC_ALPHA || src == ONE)) return ONE;
+        if (src == SRC_COLOR && dst == ONE) return ZERO;
+        return given;
+    }
+
+    /** @see #pairedSrcAlpha */
+    public static int pairedDstAlpha(int src, int dst, int given) {
+        if (dst == ONE_MINUS_SRC_ALPHA && (src == SRC_ALPHA || src == ONE)) return ONE_MINUS_SRC_ALPHA;
+        if (src == SRC_COLOR && dst == ONE) return ONE;
+        return given;
+    }
+
     /** Pixels a scissor moves right while a page's cell draws (1.16.5 - 1.21.4); 0 otherwise. */
     public static int scissorX() {
         return scissorX;
@@ -306,12 +368,13 @@ public final class PicturesModern implements CgHostPictures.Host {
     }
 
     @Override
+    // From 1.15.2 one draw: GuiBlendHook pairs each blend's alpha as 1.21.6's pipelines do, and 1.21.5's already do
     public boolean twoClears() {
-        //? if <1.21.6 {
-        return true;
-        //?} else {
-        /*return false;
-        *///?}
+        //? if <1.15 {
+        /*return true;
+        *///?} else {
+        return false;
+        //?}
     }
 
     @Override
@@ -474,9 +537,11 @@ public final class PicturesModern implements CgHostPictures.Host {
                 zone = CgTrace.begin(CgChannels.PICTURES, "pictures.minecraft");
                 scissorX = x;
                 scissorY = height - y - h;
+                startPairing();
                 try {
                     drawAtOnce(mc, cellDrawer, context);
                 } finally {
+                    endPairing();
                     scissorX = scissorY = 0;
                     CgTrace.end(zone);
                     window = false;
@@ -620,9 +685,11 @@ public final class PicturesModern implements CgHostPictures.Host {
                 ctx.height);
         CgTrace.end(zone);
         zone = CgTrace.begin(CgChannels.PICTURES, "pictures.minecraft");
+        startPairing();
         try {
             drawAtOnce(mc, drawer, ctx);
         } finally {
+            endPairing();
             CgTrace.end(zone);
             zone = CgTrace.begin(CgChannels.PICTURES, "pictures.restore");
             window = false;

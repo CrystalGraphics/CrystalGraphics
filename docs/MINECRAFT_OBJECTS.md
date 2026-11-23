@@ -215,10 +215,12 @@ Each era fills `CgHostPictures.HOST`: a target of Minecraft's own per page, and 
 
 | Era | Page | A cell | Alpha |
 |---|---|---|---|
-| 1.7.10, legacy 1.8.9 - 1.12.2 | `Framebuffer`, bound once | its rect cleared, the viewport on it, the GUI's matrices in GL or `GlStateManager` | two clears |
-| 1.13.2 - 1.21.1 | `RenderTarget`, `TextureTarget`, bound once (`bindWrite`) | its rect cleared, the viewport on it, the GUI's projection over its units | two clears |
-| 1.21.2 - 1.21.4 | `TextureTarget`, bound once, and answered for the main target (`GuiTargetHook`): a render type's `MAIN_TARGET` binds it | as 1.13.2 | two clears |
-| 1.21.5 | `TextureTarget` | drawn into a scratch target its size, answered for the main target, then copied into the page (`copyTextureToTexture`) | two clears |
+| 1.7.10 | `Framebuffer`, bound once | its rect cleared, the viewport on it, the GUI's matrices in GL | one draw; icons two clears |
+| legacy 1.8.9 - 1.12.2 | `Framebuffer`, bound once | its rect cleared, the viewport on it, the GUI's matrices in `GlStateManager` | two clears |
+| 1.13.2 - 1.14.4 | `RenderTarget`, bound once (`bindWrite`) | its rect cleared, the viewport on it, the GUI's projection over its units | two clears |
+| 1.15.2 - 1.21.1 | `RenderTarget`, `TextureTarget`, bound once | as 1.13.2; a scissor the GUI sets moved onto the cell (`GuiScissorHook`, 1.16.5 on) | one draw, alpha paired (`GuiBlendHook`) |
+| 1.21.2 - 1.21.4 | `TextureTarget`, bound once, and answered for the main target (`GuiTargetHook`): a render type's `MAIN_TARGET` binds it | as 1.15.2 | one draw, alpha paired |
+| 1.21.5 | `TextureTarget` | drawn into a scratch target its size, answered for the main target, then copied into the page (`copyTextureToTexture`) | one draw: its pipelines pair alpha |
 | 1.21.6 on | `TextureTarget` | a `GuiRenderer` of its own into a scratch target its size, the main target and window answered for it, then copied into the page | one draw |
 
 While a cell draws, Minecraft's window is the cell's: `Window`'s size, GUI scale and scaled size answer the cell's
@@ -228,8 +230,16 @@ After each page the host binds back the framebuffer and viewport that were bound
 reached by viewport -- the encoder binds a target whole, and `GuiRenderer` opens its own passes -- hence the scratch
 target and the copy.
 
-"Two clears": where the GUI writes alpha raw, each picture draws over black and over white, and a ui material
+**One draw** over a page cleared to `(0, 0, 0, 0)` leaves premultiplied colour and coverage alpha -- what the canvas
+composites a picture as -- wherever each blend writes alpha as Minecraft's own from 1.21.6 does (`BlendFunction`):
+`TRANSLUCENT` and the premultiplied over take coverage (`ONE, ONE_MINUS_SRC_ALPHA`), the glint keeps what is below
+(`ZERO, ONE`), and an unblended draw, opaque on screen, writes 1. 1.21.5's pipelines already blend so; from 1.15.2
+to 1.21.4 `GuiBlendHook` pairs each blend `GlStateManager` is asked for while a picture draws.
+
+**Two clears** where nothing can pair it: legacy and 1.13.2 - 1.14.4 blend by calls no hook reaches every one of, and
+1.7.10's glint calls GL itself. Each picture draws over black and over white, and a ui material
 (`shaders/ui/picture_matte.shader`) takes alpha from the two as the canvas composites it (`CgPicture.Image.matted`).
+A host says which with `twoClears()`, and for the icon atlas `iconsTwoClears()`.
 
 Where no Minecraft runs, `CgStandInPictures` draws each page with the engine's own canvas into a `CgRenderTarget`,
 each cell clipped and translated, handing the canvas as `ctx.gui()`: the harness runs everything above the draw point

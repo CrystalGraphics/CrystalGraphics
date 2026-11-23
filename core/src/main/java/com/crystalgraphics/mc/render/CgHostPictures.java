@@ -84,10 +84,19 @@ public final class CgHostPictures {
         String absent();
 
         /**
-         * Whether Minecraft's GUI writes alpha raw here (every immediate-mode GUI, 1.7.10 to 1.21.5): each picture
-         * draws twice, over black and over white, and its alpha is taken from the two.
+         * Whether a picture page draws twice, over black and over white, its alpha taken from the two: where the GUI
+         * writes alpha raw so that one draw over a clear page is wrong. False where one draw is right -- a single layer's
+         * raw alpha over {@code (0, 0, 0, 0)} is its coverage -- as every modern GUI from 1.15 and 1.7.10's measure.
          */
         boolean twoClears();
+
+        /**
+         * As {@link #twoClears}, for the icon atlas's pages: an item's glint and decorations write alpha raw over the
+         * item below them on every immediate GUI, so the atlas may draw twice where pictures draw once.
+         */
+        default boolean iconsTwoClears() {
+            return twoClears();
+        }
 
         /** Whether a target's rows run bottom-up (GL). */
         boolean bottomUp();

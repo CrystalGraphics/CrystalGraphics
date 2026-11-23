@@ -436,7 +436,7 @@ public final class CgItemIcons {
         if (oldWhite != null) RELEASING.add(new Release(oldWhite, atlas.whiteTexture(), frame));
         int side = atlas.side();
         Object page = pictures.createTarget(side, side, 0f);
-        Object white = pictures.twoClears() ? pictures.createTarget(side, side, 1f) : null;
+        Object white = pictures.iconsTwoClears() ? pictures.createTarget(side, side, 1f) : null;
         atlas.targets(page, white, pictures.texture(page), white == null ? null : pictures.texture(white));
     }
 

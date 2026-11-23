@@ -48,6 +48,12 @@ final class Pictures1710 implements CgHostPictures.Host {
 
     @Override
     public boolean twoClears() {
+        return false;
+    }
+
+    // The glint blends by raw GL calls that write its alpha over the item's
+    @Override
+    public boolean iconsTwoClears() {
         return true;
     }
 

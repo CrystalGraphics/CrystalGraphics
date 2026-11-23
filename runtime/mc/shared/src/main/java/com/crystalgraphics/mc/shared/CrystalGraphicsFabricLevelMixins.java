@@ -12,6 +12,6 @@ public final class CrystalGraphicsFabricLevelMixins extends VariantMixins {
     public CrystalGraphicsFabricLevelMixins() {
         super("crystalgraphics", new String[]{"ChunkWriteHook", "EntitySaveHook"}, "FrameEndHook", "LevelViewHook", "CameraHook", "HandHook", "FovHook", "ExplosionHook", "LevelEventHook", "SoundVolumeHook",
                 "TransparentPassHook", "FirstScreenHook",
-                "EntityRendererHook", "ActorRenderHook", "WorldSubmitHook", "VanillaPoseHook", "GuiTargetHook", "GuiWindowHook", "GuiScissorHook");
+                "EntityRendererHook", "ActorRenderHook", "WorldSubmitHook", "VanillaPoseHook", "GuiTargetHook", "GuiWindowHook", "GuiScissorHook", "GuiBlendHook");
     }
 }
