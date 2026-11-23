@@ -538,10 +538,14 @@ public final class CgHostPictures {
         long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.batch");
         // The batch's own host calls are Minecraft's work too (1.21.6 - 26.1: its fog buffer's frame)
         long mark = ALLOCATION.hostBegin();
+        long step = CgTrace.begin(CgChannels.PICTURES, "pictures.begin");
         host.beginBatch(check);
+        CgTrace.end(step);
         ALLOCATION.hostEnd(mark);
         try {
+            step = CgTrace.begin(CgChannels.PICTURES, "pictures.collect");
             collectDue(host, frame);
+            CgTrace.end(step);
             for (int i = 0; i < PAGES.size(); i++) drawPage(host, PAGES.get(i), frame);
             for (int i = 0; i < BATCHES.size(); i++) {
                 Batch b = BATCHES.get(i);
@@ -549,7 +553,9 @@ public final class CgHostPictures {
             }
         } finally {
             mark = ALLOCATION.hostBegin();
+            long end = CgTrace.begin(CgChannels.PICTURES, "pictures.end");
             String leak = host.endBatch();
+            CgTrace.end(end);
             ALLOCATION.hostEnd(mark);
             CgTrace.end(zone);
             if (leak != null) leaked(leak);

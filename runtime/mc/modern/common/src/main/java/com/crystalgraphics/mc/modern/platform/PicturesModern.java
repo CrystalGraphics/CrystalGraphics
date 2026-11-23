@@ -245,9 +245,14 @@ public final class PicturesModern implements CgHostPictures.Host {
     //?} elif >=1.21.2 <1.21.6 {
     /*private ProjectionType savedType;
     *///?}
-    // What was bound as the batch began, put back after each page: the main target at a HUD, but not always
+    // What was bound as the batch began, put back after each page: the main target at a HUD, answered from Minecraft
+    // once the first CHECKED batches' glGet agreed (a glGet waits for the driver to drain, each frame); one
+    // disagreement and every batch reads
+    private static final int CHECKED = 120;
     private int boundBefore = -1;
     private final int[] viewportBefore = new int[4];
+    private int agreed;
+    private boolean reads;
     private boolean checking;
     private final Context context = new Context();
     // The page's cells while it draws, and the one drawing: what cellDrawer draws
@@ -539,7 +544,18 @@ public final class PicturesModern implements CgHostPictures.Host {
         /*if (pictures != null) pictures.frame();
         *///?}
         //? if <1.21.5 {
+        int main = Minecraft.getInstance().getMainRenderTarget().frameBufferId;
+        if (!reads && agreed >= CHECKED) {
+            boundBefore = main;
+            return;
+        }
         boundBefore = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        if (boundBefore == main) {
+            agreed++;
+            return;
+        }
+        reads = true;
+        // Not the main target: its viewport is put back too (the main one's bindWrite sets its own)
         GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewportBefore);
         //?}
     }

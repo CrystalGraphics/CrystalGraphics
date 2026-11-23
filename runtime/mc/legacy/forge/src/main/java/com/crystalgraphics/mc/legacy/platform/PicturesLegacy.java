@@ -27,9 +27,15 @@ import javax.annotation.Nullable;
 final class PicturesLegacy implements CgHostPictures.Host {
 
     // What was bound as the batch began, put back after each page
+    // What was bound as the batch began, put back after each page: Minecraft's main framebuffer at the HUD, answered
+    // from Minecraft once the first CHECKED batches' glGet agreed (a glGet is a round trip to the driver each frame);
+    // one disagreement and every batch reads
+    private static final int CHECKED = 120;
     private static final IntBuffer VIEWPORT = BufferUtils.createIntBuffer(16);
     private int boundBefore = -1;
     private final int[] viewportBefore = new int[4];
+    private int agreed;
+    private boolean reads;
     private boolean checking;
     private final Context context = new Context();
 
@@ -73,7 +79,18 @@ final class PicturesLegacy implements CgHostPictures.Host {
     @Override
     public void beginBatch(boolean check) {
         checking = check;
+        int main = Minecraft.getMinecraft().getFramebuffer().framebufferObject;
+        if (!reads && agreed >= CHECKED) {
+            boundBefore = main;
+            return;
+        }
         boundBefore = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        if (boundBefore == main) {
+            agreed++;
+            return;
+        }
+        reads = true;
+        // Not the main framebuffer: its viewport is put back too (the main one's binding sets its own)
         GL11.glGetInteger(GL11.GL_VIEWPORT, VIEWPORT);
         for (int i = 0; i < 4; i++) viewportBefore[i] = VIEWPORT.get(i);
     }

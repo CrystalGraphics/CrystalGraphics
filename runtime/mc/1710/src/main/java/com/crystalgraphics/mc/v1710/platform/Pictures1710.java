@@ -5,6 +5,8 @@ import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.CgPictureLighting;
 import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.mc.render.custom.CgPictureRenderer;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.RenderHelper;
@@ -33,10 +35,15 @@ final class Pictures1710 implements CgHostPictures.Host {
     private static final int CELL_STATE = GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_CURRENT_BIT
             | GL11.GL_LIGHTING_BIT;
 
-    // What was bound as the batch began, put back after each page
+    // What was bound as the batch began, put back after each page. Minecraft's main framebuffer at the HUD, answered
+    // from Minecraft once the first CHECKED batches' glGet agreed, as HostState1710 answers it: a glGet is a round trip
+    // to the driver each frame. One disagreement and every batch reads.
+    private static final int CHECKED = 120;
     private static final IntBuffer VIEWPORT = BufferUtils.createIntBuffer(16);
     private int boundBefore = -1;
     private final int[] viewportBefore = new int[4];
+    private int agreed;
+    private boolean reads;
     private boolean checking;
     private final Context context = new Context();
 
@@ -86,7 +93,18 @@ final class Pictures1710 implements CgHostPictures.Host {
     @Override
     public void beginBatch(boolean check) {
         checking = check;
+        int main = Minecraft.getMinecraft().getFramebuffer().framebufferObject;
+        if (!reads && agreed >= CHECKED) {
+            boundBefore = main;
+            return;
+        }
         boundBefore = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        if (boundBefore == main) {
+            agreed++;
+            return;
+        }
+        reads = true;
+        // Not the main framebuffer: its viewport is put back too (the main one's binding sets its own)
         GL11.glGetInteger(GL11.GL_VIEWPORT, VIEWPORT);
         for (int i = 0; i < 4; i++) viewportBefore[i] = VIEWPORT.get(i);
     }
@@ -104,6 +122,7 @@ final class Pictures1710 implements CgHostPictures.Host {
     @Override
     public void drawPage(Object target, int width, int height, float clear, CgHostPictures.Cells cells) {
         Framebuffer f = (Framebuffer) target;
+        long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.setup");
         f.bindFramebuffer(false);
         GL11.glClearColor(clear, clear, clear, 0f);
         GL11.glClearDepth(1.0);
@@ -112,8 +131,10 @@ final class Pictures1710 implements CgHostPictures.Host {
         GL11.glMatrixMode(GL11.GL_MODELVIEW);
         GL11.glPushMatrix();
         GL11.glPushAttrib(CELL_STATE);
+        CgTrace.end(zone);
         try {
             for (int i = 0; i < cells.count(); i++) {
+                zone = CgTrace.begin(CgChannels.PICTURES, "pictures.setup");
                 int w = cells.width(i), h = cells.height(i), x = cells.x(i), y = height - cells.y(i) - h;
                 float scale = cells.scale(i), units = w / scale, unitsHigh = h / scale;
                 GL11.glEnable(GL11.GL_SCISSOR_TEST);
@@ -134,21 +155,26 @@ final class Pictures1710 implements CgHostPictures.Host {
                 GL11.glEnable(GL12.GL_RESCALE_NORMAL);
                 RenderHelper.enableGUIStandardItemLighting();
                 context.set(units, unitsHigh, scale, partialTick);
+                CgTrace.end(zone);
+                zone = CgTrace.begin(CgChannels.PICTURES, "pictures.minecraft");
                 try {
                     cells.draw(i, context);
                 } finally {
                     RenderHelper.disableStandardItemLighting();
                     GL11.glPopAttrib();
                     GL11.glPushAttrib(CELL_STATE);
+                    CgTrace.end(zone);
                 }
             }
         } finally {
+            zone = CgTrace.begin(CgChannels.PICTURES, "pictures.restore");
             GL11.glPopAttrib();
             GL11.glMatrixMode(GL11.GL_PROJECTION);
             GL11.glPopMatrix();
             GL11.glMatrixMode(GL11.GL_MODELVIEW);
             GL11.glPopMatrix();
             rebind();
+            CgTrace.end(zone);
         }
     }
 
