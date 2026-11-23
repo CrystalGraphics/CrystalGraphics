@@ -169,6 +169,8 @@ public final class PicturesModern implements CgHostPictures.Host {
      * screen clamp and a mod's window maths then land in the picture.
      */
     private static boolean window;
+    /** Where the drawing cell's bottom-left is on its page, in pixels: what GuiScissorHook adds to a scissor. */
+    private static int scissorX, scissorY;
     private static int windowWidth, windowHeight, windowScale, windowUnitsWidth, windowUnitsHeight;
     private static double windowGuiScale;
 
@@ -236,6 +238,16 @@ public final class PicturesModern implements CgHostPictures.Host {
     /** Whether a picture draws now: {@code GuiWindowHook} answers the picture's window. */
     public static boolean answersWindow() {
         return window;
+    }
+
+    /** Pixels a scissor moves right while a page's cell draws (1.16.5 - 1.21.4); 0 otherwise. */
+    public static int scissorX() {
+        return scissorX;
+    }
+
+    /** @see #scissorX */
+    public static int scissorY() {
+        return scissorY;
     }
 
     /** The window's width in pixels while a picture draws, else {@code real}. */
@@ -427,8 +439,11 @@ public final class PicturesModern implements CgHostPictures.Host {
         RenderTarget t = (RenderTarget) target;
         Context ctx = context.set(width / scale, height / scale, scale, partialTick());
         int[] kept = clearsRects() ? rects : null;
-        if (twoClears()) immediate(mc, t, clear, kept, count, lighting, drawer, ctx);
-        else recorded(mc, t, kept, count, drawer, ctx);
+        //? if <1.21.6 {
+        immediate(mc, t, clear, kept, count, lighting, drawer, ctx);
+        //?} else {
+        /*recorded(mc, t, kept, count, drawer, ctx);
+        *///?}
     }
 
     //? if <1.21.5 {
@@ -457,9 +472,12 @@ public final class PicturesModern implements CgHostPictures.Host {
                 cell = i;
                 CgTrace.end(zone);
                 zone = CgTrace.begin(CgChannels.PICTURES, "pictures.minecraft");
+                scissorX = x;
+                scissorY = height - y - h;
                 try {
                     drawAtOnce(mc, cellDrawer, context);
                 } finally {
+                    scissorX = scissorY = 0;
                     CgTrace.end(zone);
                     window = false;
                     unlight();

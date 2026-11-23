@@ -151,6 +151,7 @@ fires on every loader, Forge's new `executeOit` hooks included.
 |---|---|---|---|---|---|
 | 50 | **`copyTextureToTexture` is wrong at an offset, on GL** | `GlCommandEncoder` hands `glBlitFramebuffer` `width, height` where it takes the far corners: a copy to a nonzero destination lands stretched (1.21.5 through 26.3's `renderpearl` GL backend); Vulkan's is right | `GlCommandEncoder.copyTextureToTexture` | `PageCopy` blits on GL itself through `GlStateManager` (`_glBindFramebuffer`, `_glBlitFrameBuffer`, `getFrameBuffer`), whose binding and scissor caches stay true; Mojang's copy on Vulkan alone | adapted |
 | 51 | **`RenderTarget.clear()` binds framebuffer 0 after** | `bindWrite`, clear, `unbindWrite` (1.14.3-1.21.4) | `RenderTarget.clear` | a picture page's cells clear by scissor on the page as bound: through `clear()` each cell cost two framebuffer switches | adapted |
+| 52 | **The GUI's scissor is in the framebuffer's pixels** | `GuiGraphics.enableScissor` (an entity drawn as the inventory draws it, from 1.20.2) sets `_scissorBox` from the window's size and scale: a viewport does not move it | `GlStateManager._scissorBox` | while a picture page's cell draws, `GuiScissorHook` (1.16.5 - 1.21.4) adds the cell's place on the page; from 1.21.5 a cell is drawn at a scratch target's origin | adapted |
 
 ### The camera a hold takes (every version, 2026-10-29)
 
