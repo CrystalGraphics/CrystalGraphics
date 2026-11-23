@@ -387,6 +387,14 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
         }
     }
 
+    /**
+     * Moves with every change to its blocks or its visible range: what a reader of its blocks (an occlusion test, a
+     * cache) compares to know it must read again. Any thread.
+     */
+    public long version() {
+        return changeCount;
+    }
+
     /** Whether {@link #close} has run: a closed level takes no changes, draws nothing and picks nothing. */
     public boolean closed() {
         return closed;
