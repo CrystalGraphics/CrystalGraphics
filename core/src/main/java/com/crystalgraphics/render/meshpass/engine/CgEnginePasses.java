@@ -106,12 +106,13 @@ public final class CgEnginePasses {
      * velocity loses the jitter it carries.
      */
     public static final CgFormat VELOCITY_FORMAT = CgFormat.RG16_UNORM;
-    public static final CgMeshPassType VELOCITY = CgMeshPassType.registerPerFrame("crystalgraphics:velocity",
-            CgPassLayout.color(VELOCITY_FORMAT).depth(CgFormat.DEPTH32_FLOAT), CgEnginePasses::velocity);
-    public static final CgMeshPassType VELOCITY_WITH_STILL = CgMeshPassType.registerPerFrame("crystalgraphics:velocity.still",
+    public static final CgMeshPassType VELOCITY = CgMeshPassType.register("crystalgraphics:velocity",
+            CgPassLayout.color(VELOCITY_FORMAT).depth(CgFormat.DEPTH32_FLOAT), CgEnginePasses::velocity,
+            CgEnginePasses::velocityThisFrame);
+    public static final CgMeshPassType VELOCITY_WITH_STILL = CgMeshPassType.register("crystalgraphics:velocity.still",
             CgPassLayout.color(VELOCITY_FORMAT).depth(CgFormat.DEPTH32_FLOAT), CgEnginePasses::velocityWithStill);
     /** The responsive target's format: 1 where a blended draw covers, 0 elsewhere. */
-    public static final CgMeshPassType TRANSLUCENT_VELOCITY = CgMeshPassType.registerPerFrame("crystalgraphics:velocity.translucent",
+    public static final CgMeshPassType TRANSLUCENT_VELOCITY = CgMeshPassType.register("crystalgraphics:velocity.translucent",
             CgPassLayout.color(VELOCITY_FORMAT).depth(CgFormat.DEPTH32_FLOAT), CgEnginePasses::translucentVelocity);
 
     public static final CgFormat RESPONSIVE_FORMAT = CgFormat.R8_UNORM;
@@ -229,17 +230,21 @@ public final class CgEnginePasses {
     }
 
     /**
-     * A solid with a velocity this frame: its material's Velocity pass (Unreal's {@code FOpaqueVelocityMeshProcessor},
-     * {@code PrimitiveHasVelocityForFrame}). What stood still writes nothing; the camera's motion over it is derived from
-     * depth by whoever reads velocity.
+     * A solid that may have a velocity: its material's Velocity pass, kept (Unreal's {@code FOpaqueVelocityMeshProcessor}
+     * caching what {@code PrimitiveCanHaveVelocity}). Which of them draw is {@link #velocityThisFrame}.
      */
     private static void velocity(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {
-        if ((batch.relevance() & CgPrimitiveRelevance.MAIN) == 0) return;
-        if (!primitive.hasVelocity()
-                && !(primitive.keepsPrevious() && CgMaterialProxy.of(batch.material()).animatesVertices())) {
-            return;
-        }
+        if ((batch.relevance() & CgPrimitiveRelevance.MAIN) == 0 || !primitive.keepsPrevious()) return;
         out.draw(batch, batch.material(), CgMeshPassCommands.pipeline(batch.material(), CgRenderPassVariant.VELOCITY));
+    }
+
+    /**
+     * Those with a velocity this frame (Unreal's {@code PrimitiveHasVelocityForFrame}, at visibility): moved, deforming or
+     * always writing, or a material moving its vertices by time. What stood still writes nothing; the camera's motion over
+     * it is derived from depth by whoever reads velocity.
+     */
+    private static boolean velocityThisFrame(CgPrimitiveInfo primitive, CgMaterialInterface material) {
+        return primitive.hasVelocity() || CgMaterialProxy.of(material).animatesVertices();
     }
 
     /** What blends and outputs velocity ({@link #TRANSLUCENT_VELOCITY}), still or moving: it writes the depth too. */

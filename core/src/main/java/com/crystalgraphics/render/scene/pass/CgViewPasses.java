@@ -23,6 +23,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.look.CgLookIds;
 import com.crystalgraphics.render.meshpass.CgMeshBatch;
 import com.crystalgraphics.render.meshpass.CgMeshPassCommands;
+import com.crystalgraphics.render.meshpass.CgMeshPassFilter;
 import com.crystalgraphics.render.meshpass.CgMeshPassType;
 import com.crystalgraphics.render.meshpass.CgPrimitiveInfo;
 import com.crystalgraphics.render.meshpass.CgPrimitiveRelevance;
@@ -70,7 +71,9 @@ import java.util.WeakHashMap;
  *   <li>A command whose program is not built yet is skipped and its build started ({@link #skipUnready}), counted
  *       {@code scene.passes.unready}: nothing compiles at a draw.</li>
  *   <li>Counted on the {@code crystalgraphics.world} channel: {@code scene.passes.built} (rows a processor ran for),
- *       {@code .kept} (rows taken from kept commands) and {@code .commands}.</li>
+ *       split by cause into {@code .built.dynamic} (the row keeps nothing) and {@code .built.stale} (its kept commands
+ *       no longer matched); {@code .kept} (rows taken from kept commands), {@code .filtered} (rows the pass's
+ *       {@link CgMeshPassFilter} left out this frame) and {@code .commands}.</li>
  * </ul>
  */
 public final class CgViewPasses {
@@ -80,7 +83,8 @@ public final class CgViewPasses {
 
     private static final int ZONE = CgTrace.name("scene.passes"), BUILT = CgTrace.name("scene.passes.built"),
             KEPT = CgTrace.name("scene.passes.kept"), COMMANDS = CgTrace.name("scene.passes.commands"),
-            UNREADY = CgTrace.name("scene.passes.unready");
+            UNREADY = CgTrace.name("scene.passes.unready"), BUILT_DYNAMIC = CgTrace.name("scene.passes.built.dynamic"),
+            BUILT_STALE = CgTrace.name("scene.passes.built.stale"), FILTERED = CgTrace.name("scene.passes.filtered");
 
     private final CgView view;
     private final CgScene scene;
@@ -317,15 +321,21 @@ public final class CgViewPasses {
     private void build(CgMeshPassType type, CgRecording recording, CgDrawCommands list, @Nullable CgCommandForm form) {
         list.clear();
         CgMeshBatches rows = seen.batches();
-        int t = type.index(), before = built, keptBefore = kept;
+        int t = type.index(), before = built, keptBefore = kept, dynamic = 0, stale = 0, filtered = 0;
+        CgMeshPassFilter filter = type.filter();
         for (int b = 0, n = rows.size(); b < n; b++) {
             CgMaterialInterface material = rows.material(b);
             CgPrimitiveInfo primitive = rows.primitive(b);
-            CgCachedCommands cache = type.perFrame() ? null : rows.cache(b);
+            CgCachedCommands cache = rows.cache(b);
+            if (filter != null && !filter.draws(primitive, material)) {
+                filtered++;
+                continue;
+            }
             if (cache == null) {
                 out.clear();
                 type.processor().add(batch.at(rows, b), primitive, out);
                 built++;
+                dynamic++;
                 for (int i = 0; i < out.size(); i++) {
                     emit(list, recording, rows, b, formed(form, rows, b, out.pipeline(i)), out.material(i), out.mesh(i), out.submesh(i));
                 }
@@ -340,6 +350,7 @@ public final class CgViewPasses {
                 type.processor().add(batch.at(rows, b), primitive, out);
                 cache.store(row, t, material, rows.mesh(b), rows.submesh(b), forward, settings, batch.relevance(), out);
                 built++;
+                stale++;
             }
             for (int i = cache.first(row, t), end = i + cache.count(row, t); i < end; i++) {
                 emit(list, recording, rows, b, formed(form, rows, b, cache.pipeline(i)), cache.material(i), cache.mesh(i), cache.submesh(i));
@@ -347,6 +358,9 @@ public final class CgViewPasses {
         }
         list.sort();
         CgTrace.add(CgChannels.WORLD, BUILT, built - before);
+        CgTrace.add(CgChannels.WORLD, BUILT_DYNAMIC, dynamic);
+        CgTrace.add(CgChannels.WORLD, BUILT_STALE, stale);
+        CgTrace.add(CgChannels.WORLD, FILTERED, filtered);
         CgTrace.add(CgChannels.WORLD, KEPT, kept - keptBefore);
         CgTrace.add(CgChannels.WORLD, COMMANDS, list.size());
     }
