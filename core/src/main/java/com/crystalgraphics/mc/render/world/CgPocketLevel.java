@@ -6,7 +6,6 @@ import com.crystalgraphics.trace.CgTrace;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -200,16 +199,24 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
      * camera or its size changed). Its size, when it last asked, what was drawn and at which change.
      */
     private static final class Ask {
+        final Object key;
         @Nullable final CgView view;
         @Nullable final CgLevelPicture picture;
         int width, height;
         long asked;
         @Nullable Drawn drawn;
         long drawnFrame = -1, drawnStamp = -1;
+        /** This draw's partial tick, for {@link #components}. */
+        float partialTick;
+        /** The view's scene's host-drawn components, drawn into its level: made once, run each draw. */
+        final Runnable components;
 
-        Ask(@Nullable CgView view, @Nullable CgLevelPicture picture) {
+        Ask(Object key, @Nullable CgView view, @Nullable CgLevelPicture picture) {
+            this.key = key;
             this.view = view;
             this.picture = picture;
+            this.components = view == null ? () -> { }
+                    : () -> CgHostWorld.drawScene(view.scene(), view.camera(), view.camera().view(), partialTick, true);
         }
 
         CgCamera camera() {
@@ -220,6 +227,8 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
     private final Map<Long, CgBlockState> blocks = new HashMap<>();
     private final ConcurrentLinkedQueue<Change> changes = new ConcurrentLinkedQueue<>();
     private final Map<Object, Ask> asks = new IdentityHashMap<>();
+    /** The same asks, walked by index each draw. */
+    private final List<Ask> askList = new ArrayList<>();
     private volatile long changeCount;
     private final Matrix4f projection = new Matrix4f();
     @Nullable private Object level;
@@ -395,6 +404,7 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
             host.close(level);
         }
         asks.clear();
+        askList.clear();
         level = null;
     }
 
@@ -416,7 +426,11 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
     @Nullable
     private synchronized Ask ask(Object key, @Nullable CgView view, @Nullable CgLevelPicture picture, int width, int height) {
         if (closed) return null;
-        Ask ask = asks.computeIfAbsent(key, k -> new Ask(view, picture));
+        Ask ask = asks.get(key);
+        if (ask == null) {
+            asks.put(key, ask = new Ask(key, view, picture));
+            askList.add(ask);
+        }
         if (ask.width != width || ask.height != height) ask.drawn = null;
         ask.width = width;
         ask.height = height;
@@ -443,7 +457,9 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
         long zone = CgTrace.begin(CgChannels.PICTURES, "pocket.drawPoint");
         ALLOCATION.begin();
         try {
-            for (CgPocketLevel level : OPEN) {
+            // By index, last first: a level failing closes and leaves the list; one made meanwhile waits a frame
+            for (int i = OPEN.size() - 1; i >= 0; i--) {
+                CgPocketLevel level = OPEN.get(i);
                 try {
                     level.draw(host, frame, partialTick);
                 } catch (RuntimeException e) {
@@ -462,12 +478,13 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
         if (drawnFrame == frame) return;
         drawnFrame = frame;
         applyChanges(host);
-        for (Iterator<Map.Entry<Object, Ask>> it = asks.entrySet().iterator(); it.hasNext(); ) {
-            Map.Entry<Object, Ask> e = it.next();
-            Ask ask = e.getValue();
+        for (int i = askList.size() - 1; i >= 0; i--) {
+            Ask ask = askList.get(i);
             if (frame - ask.asked > FORGET_FRAMES) {
-                host.forget(level, e.getKey());
-                it.remove();
+                host.forget(level, ask.key);
+                asks.remove(ask.key);
+                askList.set(i, askList.get(askList.size() - 1));
+                askList.remove(askList.size() - 1);
                 continue;
             }
             // A view every frame; a picture on a change, or every frame while its block entities animate
@@ -477,14 +494,12 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
             hostProjection(camera.projection(), projection);
             Matrix4fc cameraView = camera.view();
             double ox = camera.originX(), oy = camera.originY(), oz = camera.originZ();
-            CgView view = ask.view;
-            Runnable components = view == null ? () -> { }
-                    : () -> CgHostWorld.drawScene(view.scene(), camera, cameraView, partialTick, true);
+            ask.partialTick = partialTick;
             long zone = CgTrace.begin(CgChannels.PICTURES, "pocket.draw");
             long hostMark = ALLOCATION.hostBegin();
             try {
-                ask.drawn = host.draw(level, e.getKey(), ask.width, ask.height, cameraView, ox, oy, oz, projection,
-                        partialTick, components);
+                ask.drawn = host.draw(level, ask.key, ask.width, ask.height, cameraView, ox, oy, oz, projection,
+                        partialTick, ask.components);
             } finally {
                 ALLOCATION.hostEnd(hostMark);
                 CgTrace.end(zone);

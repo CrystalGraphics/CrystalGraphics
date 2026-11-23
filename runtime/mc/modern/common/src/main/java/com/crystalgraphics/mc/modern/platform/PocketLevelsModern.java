@@ -113,6 +113,7 @@ import net.minecraft.client.renderer.rendertype.PreparedRenderType;
 //? if >=26.2 {
 /*import net.minecraft.client.renderer.SubmitNodeStorage;
 import org.joml.Vector4f;
+import org.joml.Vector4fc;
 *///?}
 //? if >=26.1 {
 /*import com.mojang.blaze3d.vertex.QuadInstance;
@@ -346,6 +347,10 @@ public final class PocketLevelsModern implements CgPocketLevel.Host {
         RenderTarget target;
         CgTexture2D colour;
         CgHostLevel.Drawn drawn;
+        //? if >=1.21.10 {
+        /*/^* The camera its block entities and components are submitted under: one, set each draw. ^/
+        final CameraRenderState camera = new CameraRenderState();
+        *///?}
 
         void release() {
             if (colour != null) CgHostPictures.forget(colour);
@@ -396,12 +401,14 @@ public final class PocketLevelsModern implements CgPocketLevel.Host {
         }
     }
 
+    private static final Optional<Vector4fc> CLEAR = Optional.of(new Vector4f(0f));
+
     // The prepared layers and features in one pass on our target, as a picture-in-picture renderer draws on 26.3:
     // cleared as it opens (reversed depth), the opaque layers, the features, then the translucent layers
     private void drawPass(View v, int translucentFrom) {
         try (FeatureRenderDispatcher.PreparedFrame frame = preparedFrame;
              RenderPass pass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
-                     () -> "crystalgraphics pocket level", v.target.getColorTextureView(), Optional.of(new Vector4f(0f)),
+                     () -> "crystalgraphics pocket level", v.target.getColorTextureView(), CLEAR,
                      v.target.getDepthTextureView(), OptionalDouble.of(0.0))) {
             RenderSystem.bindDefaultUniforms(pass);
             for (int i = 0; i < translucentFrom; i++) pending.get(i).type.drawFromBuffer(pending.get(i).info, pass);
@@ -598,7 +605,7 @@ public final class PocketLevelsModern implements CgPocketLevel.Host {
                 if (submitStorage == null) submitStorage = new SubmitNodeStorage();
                 SubmitNodeCollector submits = submitStorage;
                 ^///?}
-                CameraRenderState camera = new CameraRenderState();
+                CameraRenderState camera = v.camera;
                 camera.pos = new Vec3(ox, oy, oz);
                 camera.blockPos = BlockPos.containing(ox, oy, oz);
                 camera.initialized = true;
