@@ -26,7 +26,7 @@ public final class CgTooltipImage extends CgHostPicture {
 
     /** The image {@code renderer} draws at the origin, {@code width} by {@code height} units. For a host. */
     public CgTooltipImage(String name, int width, int height, CgPictureRenderer renderer) {
-        super(name, CgPictureRefresh.REALTIME, CgPictureLighting.ITEMS_3D);
+        super(name, CgPictureRefresh.TICK, CgPictureLighting.ITEMS_3D);
         this.width = width;
         this.height = height;
         this.renderer = Objects.requireNonNull(renderer, "renderer");

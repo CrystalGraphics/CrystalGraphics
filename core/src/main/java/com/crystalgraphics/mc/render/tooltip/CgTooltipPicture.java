@@ -20,7 +20,8 @@ import com.crystalgraphics.platform.CgPlatform;
  *
  * <ul>
  *   <li>It knows its size from its first draw point on: until then {@link #naturalWidth} is 0 and nothing shows.</li>
- *   <li>Drawn every frame it is shown, as vanilla draws its own: a tooltip mod may animate its frame.</li>
+ *   <li>Drawn again each game tick it is shown ({@link CgPictureRefresh#TICK}): its lines and a tooltip mod's
+ *       animated frame move on a tick. {@code CgHostPictures.TICK_HZ.set(0f)} draws it every frame, as vanilla does.</li>
  *   <li>A tooltip mod's frame reaching past the box shows too: the picture holds a margin around it, drawn past the
  *       rect.</li>
  *   <li>An item the game does not know, or a stack with no tooltip, shows nothing.</li>
@@ -37,7 +38,7 @@ public final class CgTooltipPicture extends CgHostPicture {
     private volatile int width, height;
 
     CgTooltipPicture(CgItemStack stack) {
-        super("tooltip " + stack.item(), CgPictureRefresh.REALTIME, CgPictureLighting.ITEMS_3D);
+        super("tooltip " + stack.item(), CgPictureRefresh.TICK, CgPictureLighting.ITEMS_3D);
         this.stack = stack;
     }
 

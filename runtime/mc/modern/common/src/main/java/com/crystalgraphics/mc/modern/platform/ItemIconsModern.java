@@ -20,14 +20,11 @@ import net.minecraft.client.gui.GuiGraphics;
 //? if >=26.1 {
 /*import net.minecraft.client.gui.GuiGraphicsExtractor;
 *///?}
-//? if >=1.21.6 <1.21.8 {
-/*import net.minecraft.client.renderer.item.ItemStackRenderState;
-*///?}
-//? if >=1.21.8 {
-/*import net.minecraft.client.renderer.item.TrackingItemStackRenderState;
-*///?}
 //? if >=1.21.6 {
-/*import net.minecraft.world.item.ItemDisplayContext;
+/*import net.minecraft.client.renderer.item.ItemStackRenderState;
+import net.minecraft.world.item.ItemDisplayContext;
+import java.util.ArrayList;
+import java.util.List;
 *///?}
 
 /**
@@ -47,32 +44,29 @@ public final class ItemIconsModern implements CgItemIcons.Host {
         //?}
     }
 
+    private final CgItemIcons.Looks looks = new CgItemIcons.Looks();
+    //? if >=1.21.6 {
+    /*private final IdentityState state = new IdentityState();
+    *///?}
+
     @Override
     public CgItemIcons.Look look(Object hostStack) {
         ItemStack stack = (ItemStack) hostStack;
         Minecraft mc = Minecraft.getInstance();
         //? if <1.14 {
-        /*return new CgItemIcons.Look(stack, true, "unknown");
+        /*return looks.of(CgItems.stampOf(stack), 0, null, true, "unknown");
         *///?} elif <1.17 {
-        /*BakedModel model = mc.getItemRenderer().getModel(stack, mc.level, mc.player);
-        return look(stack, model, model.getParticleIcon().getFrameCount() > 1);
-        *///?} elif <1.19.3 {
-        /*// No public frame count on a vanilla sprite here: a sprite's animation is not seen
-        BakedModel model = mc.getItemRenderer().getModel(stack, mc.level, mc.player, 0);
-        return look(stack, model, false);
+        /*return look(stack, mc.getItemRenderer().getModel(stack, mc.level, mc.player));
         *///?} elif <1.21.4 {
-        BakedModel model = mc.getItemRenderer().getModel(stack, mc.level, mc.player, 0);
-        return look(stack, model, model.getParticleIcon().contents().getUniqueFrames().count() > 1);
+        return look(stack, mc.getItemRenderer().getModel(stack, mc.level, mc.player, 0));
         //?} elif <1.21.6 {
-        /*return new CgItemIcons.Look(CgItems.stampOf(stack), true, "unknown");
-        *///?} elif <1.21.8 {
-        /*ItemStackRenderState state = new ItemStackRenderState();
-        mc.getItemModelResolver().updateForTopItem(state, stack, ItemDisplayContext.GUI, mc.level, mc.player, 0);
-        return mojang(state.getModelIdentity(), state.isAnimated());
+        /*return looks.of(CgItems.stampOf(stack), 0, null, true, "unknown");
         *///?} else {
-        /*TrackingItemStackRenderState state = new TrackingItemStackRenderState();
+        /*// Mojang's own key, the model identity its GUI atlas keys by, recorded into one state: a list it fills
+        state.clear();
         mc.getItemModelResolver().updateForTopItem(state, stack, ItemDisplayContext.GUI, mc.level, mc.player, 0);
-        return mojang(state.getModelIdentity(), state.isAnimated());
+        boolean animated = state.isAnimated();
+        return looks.of(0, 0, state.identity, animated, animated ? "animated model" : null);
         *///?}
     }
 
@@ -101,8 +95,8 @@ public final class ItemIconsModern implements CgItemIcons.Host {
         float cooldown = cooldown(stack);
         boolean decorated = stack.getCount() > 1 || bar(stack) || cooldown > 0f || DECORATORS;
         if (!decorated) return null;
-        Long key = (long) CgItems.stampOf(stack) << 32 | stack.getCount() & 0xFFFFFFFFL;
-        return cooldown > 0f ? new CgItemIcons.Look(key, true, "cooldown") : CgItemIcons.Look.still(key);
+        boolean cooling = cooldown > 0f;
+        return looks.of(CgItems.stampOf(stack), stack.getCount(), null, cooling, cooling ? "cooldown" : null);
     }
 
     @Override
@@ -143,41 +137,45 @@ public final class ItemIconsModern implements CgItemIcons.Host {
     }
 
     //? if >=1.14 <1.21.4 {
-    // The stack's stamp (item and data, count left out) with the model its overrides resolve to: a clock's frame is a
-    // model of its own
-    private static CgItemIcons.Look look(ItemStack stack, BakedModel model, boolean animatedSprite) {
-        Key key = new Key(CgItems.stampOf(stack), model);
-        if (stack.hasFoil()) return new CgItemIcons.Look(key, true, "glint");
-        if (model.isCustomRenderer()) return new CgItemIcons.Look(key, true, "custom renderer");
-        if (animatedSprite) return new CgItemIcons.Look(key, true, "animated sprite");
-        return CgItemIcons.Look.still(key);
+    // The stack's stamp (item and data, count left out) with the model its overrides resolve to, which fix how it
+    // looks: a clock's frame is a model of its own
+    private CgItemIcons.Look look(ItemStack stack, BakedModel model) {
+        int stamp = CgItems.stampOf(stack);
+        CgItemIcons.Look known = looks.find(stamp, 0, model);
+        if (known != null) return known;
+        String why = stack.hasFoil() ? "glint"
+                : model.isCustomRenderer() ? "custom renderer"
+                : animatedSprite(model) ? "animated sprite"
+                : null;
+        return looks.of(stamp, 0, model, why != null, why);
     }
 
-    /** A look below 1.21.4: the model compared by identity, as a baked model has no equality of its own. */
-    private static final class Key {
-        private final int stamp;
-        private final Object model;
-
-        Key(int stamp, Object model) {
-            this.stamp = stamp;
-            this.model = model;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            return o instanceof Key && ((Key) o).stamp == stamp && ((Key) o).model == model;
-        }
-
-        @Override
-        public int hashCode() {
-            return stamp * 31 + System.identityHashCode(model);
-        }
+    private static boolean animatedSprite(BakedModel model) {
+        //? if <1.17 {
+        /*return model.getParticleIcon().getFrameCount() > 1;
+        *///?} elif <1.19.3 {
+        /*return false; // no public frame count on a vanilla sprite here
+        *///?} else {
+        return model.getParticleIcon().contents().getUniqueFrames().count() > 1;
+        //?}
     }
     //?}
 
     //? if >=1.21.6 {
-    /*private static CgItemIcons.Look mojang(Object identity, boolean animated) {
-        return new CgItemIcons.Look(identity, animated, animated ? "animated model" : null);
+    /*/^* A render state recording the model identity into a list of its own, emptied with the state: one, reused. ^/
+    private static final class IdentityState extends ItemStackRenderState {
+        final List<Object> identity = new ArrayList<>();
+
+        @Override
+        public void appendModelIdentityElement(Object element) {
+            identity.add(element);
+        }
+
+        @Override
+        public void clear() {
+            super.clear();
+            identity.clear();
+        }
     }
     *///?}
 }

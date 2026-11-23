@@ -15,7 +15,7 @@ under a scene of yours.
 | **Every version differs** | `GuiGraphics` from 1.20, a `PoseStack` before, `GlStateManager` on legacy, a recorded GUI from 1.21.6 | one `CgPictureRenderer`; the context hands it the era's own objects |
 | **Alpha comes out wrong** | the immediate GUI writes alpha raw, so a picture drawn off screen shows the background through it | handled: drawn twice over black and white where the GUI does that, composited premultiplied |
 | **One renderer crashes the screen** | an exception in a mod's renderer takes the frame with it | that picture shows the missing texture, logged once; the rest draw |
-| **It costs every frame** | drawn again each frame whether or not it changed | drawn when it changes: `ONCE`, `ON_CHANGE`, or `REALTIME` for what animates |
+| **It costs every frame** | drawn again each frame whether or not it changed | drawn when it changes: `ONCE`, `ON_CHANGE`, `TICK` for what moves on a game tick, or `REALTIME` for what animates |
 | **A hundred slots of items** | `renderItem` a hundred times a frame | one atlas cell per look, drawn once; only what animates draws again |
 
 ## Contents
@@ -87,7 +87,9 @@ picture Minecraft draws (`mc.render.CgHostPicture`) is another.
 
 - Units are the rect's: `(0, 0)` its top-left, `ctx.width()` by `ctx.height()`, `ctx.scale()` pixels a unit.
   Minecraft's own GUI scale plays no part.
-- `refresh`: `ONCE` (the default: drawn once at each size; `invalidate()` draws it again), `ON_CHANGE`, `REALTIME`.
+- `refresh`: `ONCE` (the default: drawn once at each size; `invalidate()` draws it again), `ON_CHANGE`, `TICK`
+  (each game tick while shown, every such picture on the same frames: `crystalgraphics.pictures.tickHz`,
+  `CgHostPictures.TICK_HZ`, 20 a second; 0 every frame), `REALTIME` (every frame it shows).
 - `lighting`: `ITEMS_3D` (the default, the GUI's own), `ITEMS_FLAT`, `ENTITY_IN_UI`. From 1.21.6 the GUI picks per
   element itself.
 - A throw marks the picture `FAILED`: logged once with the renderer's class, the missing texture shown, retried after a
@@ -105,10 +107,11 @@ CgItemIcons.prewarm(screenStacks, Math.round(16 * scale));   // a screen opening
 - **Keyed by look**: stacks Minecraft draws alike share one cell, whatever their count. From 1.21.6 the look is
   Mojang's own (the model identity and animated flag its GUI atlas keys by); 1.14 to 1.21.3 the stack's stamp with the
   model its overrides resolve to, so a clock's frame is a look of its own; legacy and 1.7.10 the same with their
-  models and icons.
+  models and icons. Each host answers through a `CgItemIcons.Looks`, which keeps every look it has met: a steady
+  frame asks every shown icon's look and allocates nothing.
 - **Drawn when it changes**: a cell draws when it gets a slot, and again while it shows and animates, at
-  `crystalgraphics.icons.animatedHz` (`CgItemIcons.ANIMATED_HZ`): 20 a second, the game's tick, by default; 0 draws it
-  every frame. What animates: a glint, a custom renderer (BEWLR, TEISR, `IItemRenderer`, a mod's built-in renderer), an animated sprite. A look the host
+  `crystalgraphics.icons.animatedHz` (`CgItemIcons.ANIMATED_HZ`): 20 a second, the game's tick, by default, on a
+  fixed step (`CgPace`); 0 draws it every frame. What animates: a glint, a custom renderer (BEWLR, TEISR, `IItemRenderer`, a mod's built-in renderer), an animated sprite. A look the host
   cannot classify counts as animated: never wrong, only slower. 1.21.4 and 1.21.5 have no identity to read, so every
   icon there counts as animated.
 - **The atlas**: a uniform grid per size in device pixels, laid out in GUI units (a cell every 18, one of gutter each
@@ -143,7 +146,9 @@ for (CgPicture image : data.images()) canvas.picture(image, x, y);   // a bundle
 
 - **`CgTooltipPicture`** is the whole tooltip a screen draws, through each loader's tooltip events, so a tooltip mod's
   restyle and a bundle's contents show. Its size is the host's own measure (`naturalWidth`, 0 until the first draw
-  point); a 12-unit margin around the box holds what a tooltip mod draws past it. Drawn every frame it shows.
+  point); a 12-unit margin around the box holds what a tooltip mod draws past it. Drawn again each game tick it shows
+  (`TICK`): a tooltip's lines and a tooltip mod's animated frame move on a tick, so a change shows within 50 ms;
+  `CgHostPictures.TICK_HZ.set(0f)` draws it every frame, as vanilla does.
 - **`CgItemTooltip`** reads the lines every frame it is asked for (Shift, advanced tooltips), as styled text: colour,
   bold, italic, underline, strikethrough. Its `version()` moves when they change.
 - Where Minecraft defers a tooltip to the end of its GUI (1.21.6 on), the host draws it at once into the picture.

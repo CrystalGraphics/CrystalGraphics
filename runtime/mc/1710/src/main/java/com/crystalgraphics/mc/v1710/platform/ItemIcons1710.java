@@ -24,19 +24,21 @@ public final class ItemIcons1710 implements CgItemIcons.Host {
         return null;
     }
 
+    private final CgItemIcons.Looks looks = new CgItemIcons.Looks();
+
+    /** The stack's stamp with its icon, which fix how it looks. */
     @Override
     public CgItemIcons.Look look(Object hostStack) {
         ItemStack stack = (ItemStack) hostStack;
         IIcon icon = stack.getItem().getIcon(stack, 0);
-        Key key = new Key(CgItems.stampOf(stack), icon);
-        if (stack.hasEffect(0)) return new CgItemIcons.Look(key, true, "glint");
-        if (MinecraftForgeClient.getItemRenderer(stack, IItemRenderer.ItemRenderType.INVENTORY) != null) {
-            return new CgItemIcons.Look(key, true, "custom renderer");
-        }
-        if (icon instanceof TextureAtlasSprite && ((TextureAtlasSprite) icon).getFrameCount() > 1) {
-            return new CgItemIcons.Look(key, true, "animated sprite");
-        }
-        return CgItemIcons.Look.still(key);
+        int stamp = CgItems.stampOf(stack);
+        CgItemIcons.Look known = looks.find(stamp, 0, icon);
+        if (known != null) return known;
+        String why = stack.hasEffect(0) ? "glint"
+                : MinecraftForgeClient.getItemRenderer(stack, IItemRenderer.ItemRenderType.INVENTORY) != null ? "custom renderer"
+                : icon instanceof TextureAtlasSprite && ((TextureAtlasSprite) icon).getFrameCount() > 1 ? "animated sprite"
+                : null;
+        return looks.of(stamp, 0, icon, why != null, why);
     }
 
     /** As the inventory lights and depth-tests a slot's item. */
@@ -54,34 +56,12 @@ public final class ItemIcons1710 implements CgItemIcons.Host {
         }
     }
 
-    /** A look: the icon compared by identity. */
-    private static final class Key {
-        private final int stamp;
-        private final Object icon;
-
-        Key(int stamp, Object icon) {
-            this.stamp = stamp;
-            this.icon = icon;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            return o instanceof Key && ((Key) o).stamp == stamp && ((Key) o).icon == icon;
-        }
-
-        @Override
-        public int hashCode() {
-            return stamp * 31 + System.identityHashCode(icon);
-        }
-    }
-
     /** Its decorations: the stack's data with its count; 1.7.10 has no cooldowns. */
     @Override
     public CgItemIcons.Look overlayLook(Object hostStack) {
         ItemStack stack = (ItemStack) hostStack;
         if (stack.stackSize <= 1 && !stack.getItem().showDurabilityBar(stack)) return null;
-        Long key = (long) CgItems.stampOf(stack) << 32 | stack.stackSize & 0xFFFFFFFFL;
-        return CgItemIcons.Look.still(key);
+        return looks.of(CgItems.stampOf(stack), stack.stackSize, null, false, null);
     }
 
     @Override

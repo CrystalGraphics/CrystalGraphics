@@ -82,7 +82,7 @@ public class CgIconAtlasTest {
     public void aPacedAnimatedCellDrawsOnlyWhenItsPeriodHasPassed() {
         CgIconAtlas atlas = new CgIconAtlas(16, CgIconAtlas.ICON);
         CgIconAtlas.Cell glint = atlas.cell("glint", "glint", true, "glint");
-        long tick = 50_000_000L;
+        float tick = 20f;
         int drawn = 0;
         // Sixty frames a second for a second, paced at twenty: every third frame, the first included
         for (long f = 1; f <= 60; f++) {
@@ -99,7 +99,8 @@ public class CgIconAtlasTest {
     public void unevenFramesKeepThePaceOnAverage() {
         CgIconAtlas atlas = new CgIconAtlas(16, CgIconAtlas.ICON);
         CgIconAtlas.Cell glint = atlas.cell("glint", "glint", true, "glint");
-        long tick = 50_000_000L, now = 0L;
+        float tick = 20f;
+        long now = 0L;
         int drawn = 0;
         // Frames of 30 and 90 ms in turn, 16 a second on average, for 2.4 s: slower than the pace only half the time
         for (long f = 1; f <= 40; f++) {

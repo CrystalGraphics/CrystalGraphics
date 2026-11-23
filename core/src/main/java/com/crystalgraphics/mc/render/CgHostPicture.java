@@ -169,6 +169,7 @@ public abstract class CgHostPicture implements CgPicture {
         if (s.drawnInvalidated != invalidated) return true;
         return switch (refresh) {
             case REALTIME -> s.shownFrame >= frame - 1;
+            case TICK -> s.shownFrame >= frame - 1 && CgHostPictures.ticked();
             case ON_CHANGE -> s.drawnStamp != stamp();
             case ONCE -> false;
         };

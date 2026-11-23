@@ -434,6 +434,17 @@ public final class CgHostPictures {
     private static final Budget BUDGET = new Budget();
     private static final Cells CELLS = new Cells();
     private static final CgHostAllocation ALLOCATION = new CgHostAllocation(CgChannels.PICTURES, "pictures-our-bytes");
+    /**
+     * How often a {@link CgPictureRefresh#TICK} picture is drawn again, a second: the game's tick rate by default; 0
+     * draws it every frame it shows, as vanilla draws its own:
+     * <pre>{@code
+     * CgHostPictures.TICK_HZ.set(0f);   // a pixel comparison against vanilla drawn this frame
+     * }</pre>
+     */
+    public static final CgVar.Num TICK_HZ = CgVar.number("crystalgraphics.pictures.tickHz", 20f, 0f, 1000f,
+            "How often a picture refreshed each tick is drawn again, a second; 0 every frame");
+    private static final CgPace TICKS = new CgPace();
+    private static boolean ticked;
     private static volatile Stats stats = Stats.NONE;
     private static volatile long statsRead = -STATS_READ_FRAMES - 1L;
     // The last batch's numbers, published as Stats only while something reads them
@@ -449,6 +460,11 @@ public final class CgHostPictures {
     }
 
     private CgHostPictures() {
+    }
+
+    /** Whether this draw point falls on a tick: {@link CgPictureRefresh#TICK} pictures draw again. Render thread. */
+    static boolean ticked() {
+        return ticked;
     }
 
     /**
@@ -489,6 +505,7 @@ public final class CgHostPictures {
         }
         Host host = CgPlatform.get(HOST);
         long frame = CgFrameClock.frameIndex();
+        ticked = TICKS.step(System.nanoTime(), TICK_HZ.get());
         releaseDue(host, frame);
         if (host.absent() != null) return;
         if (retry) {

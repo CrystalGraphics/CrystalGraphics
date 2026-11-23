@@ -23,6 +23,8 @@ public final class ItemIconsLegacy implements CgItemIcons.Host {
         return null;
     }
 
+    private final CgItemIcons.Looks looks = new CgItemIcons.Looks();
+
     @Override
     public CgItemIcons.Look look(Object hostStack) {
         ItemStack stack = (ItemStack) hostStack;
@@ -33,11 +35,14 @@ public final class ItemIconsLegacy implements CgItemIcons.Host {
         *///?} else {
         IBakedModel model = mc.getRenderItem().getItemModelWithOverrides(stack, ClientLegacy.world(), ClientLegacy.player());
         //?}
-        Key key = new Key(CgItems.stampOf(stack), model);
-        if (stack.hasEffect()) return new CgItemIcons.Look(key, true, "glint");
-        if (model.isBuiltInRenderer()) return new CgItemIcons.Look(key, true, "custom renderer");
-        if (model.getParticleTexture().getFrameCount() > 1) return new CgItemIcons.Look(key, true, "animated sprite");
-        return CgItemIcons.Look.still(key);
+        int stamp = CgItems.stampOf(stack);
+        CgItemIcons.Look known = looks.find(stamp, 0, model);
+        if (known != null) return known;
+        String why = stack.hasEffect() ? "glint"
+                : model.isBuiltInRenderer() ? "custom renderer"
+                : model.getParticleTexture().getFrameCount() > 1 ? "animated sprite"
+                : null;
+        return looks.of(stamp, 0, model, why != null, why);
     }
 
     @Override
@@ -52,8 +57,7 @@ public final class ItemIconsLegacy implements CgItemIcons.Host {
         int count = count(stack);
         boolean cooling = cooldown(stack) > 0f;
         if (count <= 1 && !stack.getItem().showDurabilityBar(stack) && !cooling) return null;
-        Long key = (long) CgItems.stampOf(stack) << 32 | count & 0xFFFFFFFFL;
-        return cooling ? new CgItemIcons.Look(key, true, "cooldown") : CgItemIcons.Look.still(key);
+        return looks.of(CgItems.stampOf(stack), count, null, cooling, cooling ? "cooldown" : null);
     }
 
     @Override
@@ -80,26 +84,5 @@ public final class ItemIconsLegacy implements CgItemIcons.Host {
         *///?} else {
         return ClientLegacy.player() == null ? 0f : ClientLegacy.player().getCooldownTracker().getCooldown(stack.getItem(), 0f);
         //?}
-    }
-
-    /** A look: the model compared by identity, as a baked model has no equality of its own. */
-    private static final class Key {
-        private final int stamp;
-        private final Object model;
-
-        Key(int stamp, Object model) {
-            this.stamp = stamp;
-            this.model = model;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            return o instanceof Key && ((Key) o).stamp == stamp && ((Key) o).model == model;
-        }
-
-        @Override
-        public int hashCode() {
-            return stamp * 31 + System.identityHashCode(model);
-        }
     }
 }

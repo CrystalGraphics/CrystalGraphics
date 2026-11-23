@@ -258,13 +258,14 @@ public final class CgPicturesProbe {
     private static long frameSum, frameLast;
     private static int frameCount;
     /** G4: our draw point's bytes, summed over the frames that measured them. G5: the first show's frames and worst one. */
-    private static long ourBytesSum;
-    private static int ourBytesFrames, firstShowFrames;
+    private static long ourBytesSum, ourBytesLargest;
+    private static int ourBytesFrames, ourBytesAllocating, firstShowFrames;
     private static long firstShowWorst;
     private static boolean firstShowDone;
     /** G3: frames of the empty side in which the draw point still ran a host pass. */
     private static int idleHostPasses;
-    private static long oursBytesPerFrame = -1L;
+    private static long oursBytesPerFrame = -1L, oursBytesLargest;
+    private static int oursBytesAllocating, oursBytesFrames;
     private static int oursFirstShowFrames;
     private static double oursFirstShowWorstMs;
     private static double emptyFrameMs;
@@ -607,6 +608,8 @@ public final class CgPicturesProbe {
                     if (stats.ourBytes() >= 0L && costFrames >= ICONS_SETTLE) {
                         ourBytesSum += stats.ourBytes();
                         ourBytesFrames++;
+                        if (stats.ourBytes() > 0L) ourBytesAllocating++;
+                        ourBytesLargest = Math.max(ourBytesLargest, stats.ourBytes());
                     }
                 }
                 if (!composite) return;
@@ -802,6 +805,9 @@ public final class CgPicturesProbe {
                 } else if (costSide == 0) {
                     oursFrameMs = frameMs;
                     oursBytesPerFrame = ourBytesFrames == 0 ? -1L : ourBytesSum / ourBytesFrames;
+                    oursBytesAllocating = ourBytesAllocating;
+                    oursBytesFrames = ourBytesFrames;
+                    oursBytesLargest = ourBytesLargest;
                     oursFirstShowFrames = firstShowFrames;
                     oursFirstShowWorstMs = firstShowWorst / 1e6;
                     // The icon checks read the full grid's runs
@@ -951,8 +957,8 @@ public final class CgPicturesProbe {
     private static void startCost() {
         frameSum = frameLast = 0L;
         frameCount = 0;
-        ourBytesSum = 0L;
-        ourBytesFrames = firstShowFrames = 0;
+        ourBytesSum = ourBytesLargest = 0L;
+        ourBytesFrames = ourBytesAllocating = firstShowFrames = 0;
         firstShowWorst = 0L;
         firstShowDone = false;
         idleHostPasses = 0;
@@ -1016,7 +1022,8 @@ public final class CgPicturesProbe {
                         + "vanilla's own draw %.3f ms (%d frames, %d %s); our draw point allocates %s a "
                         + "frame; first shown in %d frames, the worst %.2f ms", oursFrameMs, vanillaFrameMs,
                 referenceNanos / 1e6 / Math.max(1, referenceFrames), frameCount, run.count(),
-                run.kind().name().toLowerCase(Locale.ROOT), oursBytesPerFrame < 0 ? "unmeasured" : oursBytesPerFrame + " B",
+                run.kind().name().toLowerCase(Locale.ROOT), oursBytesPerFrame < 0 ? "unmeasured" : oursBytesPerFrame + " B ("
+                        + oursBytesAllocating + " of " + oursBytesFrames + " frames, the largest " + oursBytesLargest + " B)",
                 oursFirstShowFrames, oursFirstShowWorstMs));
     }
 

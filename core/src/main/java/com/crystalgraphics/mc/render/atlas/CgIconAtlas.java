@@ -2,11 +2,12 @@ package com.crystalgraphics.mc.render.atlas;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
 import javax.annotation.Nullable;
+
+import com.crystalgraphics.mc.render.CgPace;
 
 import com.crystalgraphics.api.canvas.CgPicture;
 import com.crystalgraphics.api.texture.CgTexture;
@@ -97,6 +98,8 @@ public final class CgIconAtlas {
      *  slot starts inside a cell. */
     public final int frame, strideUnits, slotOffset;
     private final Map<Object, Cell> byKey = new HashMap<>();
+    /** The same cells as {@link #byKey}, walked by index: a frame's loops allocate no iterator. */
+    private final List<Cell> list = new ArrayList<>();
     private Cell[] slots = new Cell[0];
     private int side, perRow;
     @Nullable private Object page, white;
@@ -116,20 +119,27 @@ public final class CgIconAtlas {
     /** The cell of {@code key}, made for {@code drawn} if new. */
     public Cell cell(Object key, Object drawn, boolean animated, @Nullable String why) {
         Cell c = byKey.get(key);
-        if (c == null) byKey.put(key, c = new Cell(key, drawn, animated, why));
+        if (c == null) {
+            byKey.put(key, c = new Cell(key, drawn, animated, why));
+            list.add(c);
+        }
         return c;
     }
 
     /** Forgets cells nobody uses, giving their slots back. */
     public void sweep() {
-        if (byKey.isEmpty()) return;
-        Iterator<Cell> it = byKey.values().iterator();
-        while (it.hasNext()) {
-            Cell c = it.next();
-            if (c.users > 0) continue;
+        if (list.isEmpty()) return;
+        int kept = 0;
+        for (int i = 0; i < list.size(); i++) {
+            Cell c = list.get(i);
+            if (c.users > 0) {
+                list.set(kept++, c);
+                continue;
+            }
             if (c.slot >= 0) slots[c.slot] = null;
-            it.remove();
+            byKey.remove(c.key);
         }
+        while (list.size() > kept) list.remove(list.size() - 1);
     }
 
     /** Whether any cell showed at or after {@code frame}. */
@@ -138,38 +148,38 @@ public final class CgIconAtlas {
     }
 
     /** When its animated cells were last drawn, nanoseconds. */
-    private long animatedAt = Long.MIN_VALUE / 2;
+    private final CgPace animation = new CgPace();
 
     public int cells() {
         return byKey.size();
     }
 
-    /** {@link #place(long, int, long, long, List)}, its animated cells drawn every frame they show. */
+    /** {@link #place(long, int, long, float, List)}, its animated cells drawn every frame they show. */
     public boolean place(long frame, int maxSide, List<Cell> due) {
-        return place(frame, maxSide, 0L, 0L, due);
+        return place(frame, maxSide, 0L, 0f, due);
     }
 
     /**
      * Gives every cell shown at {@code frame} a slot, remaking the page when they do not fit; the cells that must draw
-     * this frame into {@code due}: new to a slot, never drawn, or animated and their last drawing at least
-     * {@code animateEvery} nanoseconds before {@code now} (0 draws them every frame). True where the page was remade,
+     * this frame into {@code due}: new to a slot, never drawn, or animated and a step of {@code animateHz} due at
+     * {@code now}, nanoseconds (0 draws them every frame). True where the page was remade,
      * so the host's targets change; {@code maxSide} is the host's largest target.
      */
-    public boolean place(long frame, int maxSide, long now, long animateEvery, List<Cell> due) {
+    public boolean place(long frame, int maxSide, long now, float animateHz, List<Cell> due) {
         int shown = 0;
-        for (Cell c : byKey.values()) if (c.shownFrame == frame) shown++;
+        for (int i = 0; i < list.size(); i++) if (list.get(i).shownFrame == frame) shown++;
         if (shown == 0) return false;
         shownFrame = frame;
-        // The page's animated cells move together, at the pace asked: a glint at the game's tick rate is one redraw in three.
-        // A fixed step, as Minecraft's tick timer, so uneven frames average out; a stall of more than four periods resyncs rather than draws
-        // every frame to catch up.
-        boolean animate = animateEvery <= 0L || now - animatedAt >= animateEvery;
-        if (animate) animatedAt = animateEvery <= 0L || now - animatedAt > 4 * animateEvery ? now : animatedAt + animateEvery;
+        // The page's animated cells move together, at the pace asked
+        boolean animate = animation.step(now, animateHz);
         boolean remade = false;
         int free = 0;
         for (Cell s : slots) if (s == null || s.shownFrame != frame) free++;
         int unplaced = 0;
-        for (Cell c : byKey.values()) if (c.shownFrame == frame && c.slot < 0) unplaced++;
+        for (int i = 0; i < list.size(); i++) {
+            Cell c = list.get(i);
+            if (c.shownFrame == frame && c.slot < 0) unplaced++;
+        }
         if (unplaced > free || slots.length == 0) {
             // 1.5 times what the frame needs, to a power of two, as Mojang's atlas grows
             int need = (int) Math.ceil(shown * 1.5);
@@ -186,14 +196,15 @@ public final class CgIconAtlas {
             side = next;
             perRow = across;
             slots = new Cell[perRow * perRow];
-            for (Cell c : byKey.values()) {
-                c.slot = -1;
-                c.image = null;
+            for (int i = 0; i < list.size(); i++) {
+                list.get(i).slot = -1;
+                list.get(i).image = null;
             }
             remade = true;
         }
         int next = 0;
-        for (Cell c : byKey.values()) {
+        for (int i = 0; i < list.size(); i++) {
+            Cell c = list.get(i);
             if (c.shownFrame != frame) continue;
             if (c.slot < 0) {
                 while (slots[next] != null && slots[next].shownFrame == frame) next++;
@@ -213,7 +224,10 @@ public final class CgIconAtlas {
 
     /** Every cell shown at {@code frame} that has a slot and has not failed, into {@code out}: a page drawn whole. */
     public void placedShown(long frame, List<Cell> out) {
-        for (Cell c : byKey.values()) if (c.shownFrame == frame && c.slot >= 0 && !c.failed) out.add(c);
+        for (int i = 0; i < list.size(); i++) {
+            Cell c = list.get(i);
+            if (c.shownFrame == frame && c.slot >= 0 && !c.failed) out.add(c);
+        }
     }
 
     /** The page's side in pixels; 0 before the first {@link #place}. */
@@ -237,7 +251,7 @@ public final class CgIconAtlas {
         this.white = white;
         this.pageTexture = pageTexture;
         this.whiteTexture = whiteTexture;
-        for (Cell c : byKey.values()) c.image = null;
+        for (int i = 0; i < list.size(); i++) list.get(i).image = null;
     }
 
     @Nullable
@@ -294,6 +308,6 @@ public final class CgIconAtlas {
 
     /** Every cell, for a sweep over all of them. */
     public List<Cell> all() {
-        return new ArrayList<>(byKey.values());
+        return new ArrayList<>(list);
     }
 }
