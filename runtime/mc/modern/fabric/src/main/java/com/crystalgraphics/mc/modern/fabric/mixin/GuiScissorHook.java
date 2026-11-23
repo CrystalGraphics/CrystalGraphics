@@ -8,17 +8,17 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
 // While a picture's cell draws, a scissor Minecraft's GUI sets (in the window's pixels, the cell's) is moved to the cell
-// on its page: a scissor is in the framebuffer's pixels, which the cell's viewport does not move. com.mojang.blaze3d is
-// never obfuscated, so the name holds on every loader.
+// on its page: a scissor is in the framebuffer's pixels, which the cell's viewport does not move. Named as Mojang, SRG
+// (1.17 on, then 1.16.5's), and Fabric's intermediary name it.
 @Mixin(value = GlStateManager.class, remap = false)
 public abstract class GuiScissorHook {
 
-    @ModifyVariable(method = "_scissorBox", at = @At("HEAD"), argsOnly = true, ordinal = 0, require = 1)
+    @ModifyVariable(method = {"_scissorBox", "m_84168_", "func_244592_a", "method_31317"}, at = @At("HEAD"), argsOnly = true, ordinal = 0, require = 1)
     private static int crystalgraphics$x(int x) {
         return x + PicturesModern.scissorX();
     }
 
-    @ModifyVariable(method = "_scissorBox", at = @At("HEAD"), argsOnly = true, ordinal = 1, require = 1)
+    @ModifyVariable(method = {"_scissorBox", "m_84168_", "func_244592_a", "method_31317"}, at = @At("HEAD"), argsOnly = true, ordinal = 1, require = 1)
     private static int crystalgraphics$y(int y) {
         return y + PicturesModern.scissorY();
     }
