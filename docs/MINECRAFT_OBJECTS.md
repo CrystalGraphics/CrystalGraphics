@@ -226,14 +226,33 @@ Each era fills `CgHostPictures.HOST`: a target of Minecraft's own per page, and 
 | 1.15.2 - 1.21.1 | `RenderTarget`, `TextureTarget`, bound once | as 1.13.2; a scissor the GUI sets moved onto the cell (`GuiScissorHook`, 1.16.5 on) | one draw, alpha paired (`GuiBlendHook`) |
 | 1.21.2 - 1.21.4 | `TextureTarget`, bound once, and answered for the main target (`GuiTargetHook`): a render type's `MAIN_TARGET` binds it | as 1.15.2 | one draw, alpha paired |
 | 1.21.5 | `TextureTarget` | drawn into a scratch target its size, answered for the main target, then copied into the page (`copyTextureToTexture`) | one draw: its pipelines pair alpha |
-| 1.21.6 on | `TextureTarget` | a `GuiRenderer` of its own into a scratch target its size, the main target and window answered for it, then copied into the page | one draw |
+| 1.21.6 on | `TextureTarget`, one `GuiRenderer` render of the whole page, answered for the main target, its window the page's | recorded under its own pose and inside its scissor; its cell starts on the GUI scale's pixels (`Host.cellAlign`) | one draw |
 
 While a cell draws, Minecraft's window is the cell's: `Window`'s size, GUI scale and scaled size answer the cell's
-pixels, scale and units (`GuiWindowHook`; from 26.1 the window render state). A scissor, a tooltip's screen clamp or a
-mod's own window maths therefore land in the cell. Forge 1.13.2 loads no Mixin, so there the window stays the game's.
-After each page the host binds back the framebuffer and viewport that were bound before. From 1.21.5 a cell cannot be
-reached by viewport -- the encoder binds a target whole, and `GuiRenderer` opens its own passes -- hence the scratch
-target and the copy.
+pixels, scale and units (`GuiWindowHook`). From 1.21.6 it is the page's, from the page's first record to the end of its
+render (and from 26.1 the window render state too, which the render reads): a GUI's scissors start from the window's
+size, so a cell past the real window's would be scissored away. A scissor, a tooltip's screen clamp or a mod's own
+window maths therefore land in the cell or its page. Forge 1.13.2 loads no Mixin, so there the window stays the game's.
+After each page the host binds back the framebuffer and viewport that were bound before. On 1.21.5 a cell cannot be
+reached by viewport -- the encoder binds a target whole -- hence the scratch target and the copy.
+
+**From 1.21.6 a page is one render** (`RecordedPages`): every cell is recorded into one `GuiRenderState`, each under a
+pose that puts its units on its rect and inside a scissor of its rect, and one `GuiRenderer.render()` draws the page,
+the window the page's. A render's own cost (its mesh upload, its passes, its projection) is paid once a page, not once
+a picture. Two things a picture-in-picture element (an entity, a skin, a book) does not do on its own:
+
+- **It ignores the pose**: its box is in the window's units. The state records each as placed on its cell, its bounds
+  moved there, and its blit drawn under the cell's pose.
+- **Vanilla keeps one renderer per kind** (NeoForge pools them), so a second entity in a render overwrote the first's
+  texture. The page renderer's one picture-in-picture renderer keeps one of the loader's per kind and per element of a
+  frame, and gives back those a frame has not needed for 600 frames.
+
+The pictures' `GuiRenderer` is a second one beside the game's. Fabric API hands each one made its special-element
+renderers, and before its 16.x registry (Minecraft to about 1.21.8) throws on a second: `GuiRegistryHook` (Fabric,
+1.21.6 on, `@Pseudo`) skips that step while the pictures' renderer is made, which takes its renderers itself.
+
+Where every cell of a page draws, it is cleared once; else each cell's rect (26.3 clears only whole targets, so there a
+page redraws whole: `Host.keepsPage`).
 
 **One draw** over a page cleared to `(0, 0, 0, 0)` leaves premultiplied colour and coverage alpha -- what the canvas
 composites a picture as -- wherever each blend writes alpha as Minecraft's own from 1.21.6 does (`BlendFunction`):

@@ -150,6 +150,15 @@ public final class CgHostPictures {
         }
 
         /**
+         * The multiple of pixels a cell drawn at {@code scale} pixels per unit starts on and is sized up to, 1 by
+         * default. A host that places cells in whole GUI units answers its GUI scale for {@code scale}: a recorded GUI
+         * (1.21.6 on) scissors in whole units. A page holds cells of one alignment.
+         */
+        default int cellAlign(float scale) {
+            return 1;
+        }
+
+        /**
          * As {@link #drawPage} for the icon atlas, one drawer over the whole target's units: each of the first
          * {@code count} rects (pixels from the top-left, {@code x, y, w, h} in a row) is cleared to
          * {@code (clear, clear, clear, 0)} and its depth, then {@code drawer} runs. The rest keeps what it holds.
@@ -215,6 +224,7 @@ public final class CgHostPictures {
         private CgHostPicture.Size[] sizes = new CgHostPicture.Size[16];
         private boolean[] skipped = new boolean[16], failed = new boolean[16];
         private int count, pass;
+        private boolean whole;
 
         Cells() {
         }
@@ -222,6 +232,11 @@ public final class CgHostPictures {
         /** How many cells. */
         public int count() {
             return count;
+        }
+
+        /** Whether these are every cell the page holds: the page may be cleared whole rather than cell by cell. */
+        public boolean whole() {
+            return whole;
         }
 
         /** Cell {@code i}'s left, in pixels from the target's left. */
@@ -521,7 +536,10 @@ public final class CgHostPictures {
         budget.begin((long) (FIRST_DRAW_MS.get() * 1_000_000L));
         boolean check = check() != 0;
         long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.batch");
+        // The batch's own host calls are Minecraft's work too (1.21.6 - 26.1: its fog buffer's frame)
+        long mark = ALLOCATION.hostBegin();
         host.beginBatch(check);
+        ALLOCATION.hostEnd(mark);
         try {
             collectDue(host, frame);
             for (int i = 0; i < PAGES.size(); i++) drawPage(host, PAGES.get(i), frame);
@@ -530,7 +548,9 @@ public final class CgHostPictures {
                 if (b.due()) b.draw(host, frame, budget);
             }
         } finally {
+            mark = ALLOCATION.hostBegin();
             String leak = host.endBatch();
+            ALLOCATION.hostEnd(mark);
             CgTrace.end(zone);
             if (leak != null) leaked(leak);
         }
@@ -595,6 +615,7 @@ public final class CgHostPictures {
         }
         page.due.clear();
         if (cells.count() == 0) return;
+        cells.whole = cells.count() == page.sizes.size();
         long mark = ALLOCATION.hostBegin();
         try {
             cells.pass = 0;
@@ -610,25 +631,27 @@ public final class CgHostPictures {
         cells.clear();
     }
 
-    // A size's cell on a page: the first page it fits, else a page repacked without what was given back, else a new one
+    // A size's cell on a page of its alignment: the first it fits, else one repacked without what was given back, else
+    // a new one
     private static boolean place(Host host, CgHostPicture.Size s) {
         int w = CgHostPicture.cellWidth(s), h = CgHostPicture.cellHeight(s);
         int side = Math.min(PAGE_SIDE, host.maxTargetSize());
+        int align = Math.max(1, host.cellAlign(s.scale));
         try {
             if (w > side || h > side) {
-                Page own = new Page(host, Math.max(w, h));
+                Page own = new Page(host, Page.units(Math.max(w, h), align) * align, align);
                 PAGES.add(own);
                 return own.insert(s);
             }
             for (int i = 0; i < PAGES.size(); i++) {
                 Page page = PAGES.get(i);
-                if (page.side == side && page.insert(s)) return true;
+                if (page.side == side && page.align == align && page.insert(s)) return true;
             }
             for (int i = 0; i < PAGES.size(); i++) {
                 Page page = PAGES.get(i);
-                if (page.side == side && page.freed > 0 && page.repack(s)) return true;
+                if (page.side == side && page.align == align && page.freed > 0 && page.repack(s)) return true;
             }
-            Page page = new Page(host, side);
+            Page page = new Page(host, side, align);
             PAGES.add(page);
             return page.insert(s);
         } catch (VirtualMachineError e) {
@@ -735,6 +758,8 @@ public final class CgHostPictures {
      */
     static final class Page {
         final int side;
+        /** Every cell here starts on a multiple of this many pixels and is sized up to one: the packer counts in them. */
+        final int align;
         final Object target;
         @Nullable final Object white;
         final CgTexture targetTexture;
@@ -746,21 +771,37 @@ public final class CgHostPictures {
         /** Sizes given back since the last pack: space the packer still counts as used. */
         int freed;
 
-        Page(Host host, int side) {
+        Page(Host host, int side, int align) {
             this.side = side;
-            this.packer = new MaxRectsPacker(side, side);
+            this.align = align;
+            this.packer = packer();
             this.target = host.createTarget(side, side, 0f);
             this.white = host.twoClears() ? host.createTarget(side, side, 1f) : null;
             this.targetTexture = host.texture(target);
             this.whiteTexture = white == null ? null : host.texture(white);
         }
 
+        static int units(int pixels, int align) {
+            return (pixels + align - 1) / align;
+        }
+
+        private MaxRectsPacker packer() {
+            return new MaxRectsPacker(side / align, side / align);
+        }
+
+        // s's rect in the packer's units, its position kept in pixels
+        @Nullable
+        private MaxRectsPacker.PackedRect pack(MaxRectsPacker into, CgHostPicture.Size s) {
+            return into.insert(units(CgHostPicture.cellWidth(s), align), units(CgHostPicture.cellHeight(s), align),
+                    units(GUTTER, align), s);
+        }
+
         boolean insert(CgHostPicture.Size s) {
-            MaxRectsPacker.PackedRect r = packer.insert(CgHostPicture.cellWidth(s), CgHostPicture.cellHeight(s), GUTTER, s);
+            MaxRectsPacker.PackedRect r = pack(packer, s);
             if (r == null) return false;
             s.page = this;
-            s.x = r.x();
-            s.y = r.y();
+            s.x = r.x() * align;
+            s.y = r.y() * align;
             sizes.add(s);
             return true;
         }
@@ -772,14 +813,13 @@ public final class CgHostPictures {
             all.add(extra);
             all.sort(Comparator.comparingInt((CgHostPicture.Size s) -> CgHostPicture.cellWidth(s) * CgHostPicture.cellHeight(s))
                     .reversed());
-            MaxRectsPacker fresh = new MaxRectsPacker(side, side);
+            MaxRectsPacker fresh = packer();
             int[] at = new int[all.size() * 2];
             for (int i = 0; i < all.size(); i++) {
-                CgHostPicture.Size s = all.get(i);
-                MaxRectsPacker.PackedRect r = fresh.insert(CgHostPicture.cellWidth(s), CgHostPicture.cellHeight(s), GUTTER, s);
+                MaxRectsPacker.PackedRect r = pack(fresh, all.get(i));
                 if (r == null) return false;
-                at[2 * i] = r.x();
-                at[2 * i + 1] = r.y();
+                at[2 * i] = r.x() * align;
+                at[2 * i + 1] = r.y() * align;
             }
             packer = fresh;
             freed = 0;

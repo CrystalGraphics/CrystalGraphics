@@ -35,6 +35,8 @@ import com.crystalgraphics.serialization.nbt.CgNbtCompound;
 import com.crystalgraphics.serialization.nbt.CgNbtList;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceRun;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -251,6 +253,12 @@ public final class CgPicturesProbe {
             new CostRun("tooltips10", Kind.TOOLTIP, COST_TOOLTIPS, 1, true, 10));
     /** The runs to measure, by name ({@code -Dcrystalgraphics.pictures.cost=entities50}); empty measures every one. */
     private static final String ONLY = System.getProperty("crystalgraphics.pictures.cost", "");
+    /**
+     * Each run's sides traced apart ({@code -Dcrystalgraphics.pictures.cost.trace=true}): the ring's frames of the
+     * side, {@code pictures-cost-<run>-ours} and {@code -vanilla} in the trace's run folder.
+     */
+    private static final boolean TRACE_SIDES = Boolean.getBoolean("crystalgraphics.pictures.cost.trace");
+    private static long sideFromFrame;
 
     /** The run measured, -1 the empty frame; its side, 0 the engine's pictures, 1 vanilla's drawing. */
     private static int costRun, costSide;
@@ -791,6 +799,10 @@ public final class CgPicturesProbe {
             case COST -> {
                 if (++costFrames < COST) return;
                 double frameMs = frameSum / 1e6 / Math.max(1, frameCount);
+                if (TRACE_SIDES && costRun >= 0 && costRun < RUNS.size()) {
+                    CgTraceRun.dump("pictures-cost-" + RUNS.get(costRun).name() + (costSide == 0 ? "-ours" : "-vanilla"),
+                            sideFromFrame, CgTrace.currentFrameIndex());
+                }
                 if (costRun >= RUNS.size()) {
                     // The empty frame again, the world warm: what the runs' frames compare with
                     test.noted("pictures.cost.empty", String.format(Locale.ROOT, "%.3f ms at the end, %.3f ms at the start "
@@ -965,6 +977,7 @@ public final class CgPicturesProbe {
         unreadyPictures = -1;
         pictureNanos = referenceNanos = 0;
         costFrames = pictureFrames = referenceFrames = 0;
+        sideFromFrame = CgTrace.currentFrameIndex();
         boolean empty = costRun < 0 || costRun >= RUNS.size();
         cells = empty ? List.of() : costCells(RUNS.get(costRun));
         if (!empty && costSide == 0 && RUNS.get(costRun).kind() == Kind.ITEM) startIconCount();

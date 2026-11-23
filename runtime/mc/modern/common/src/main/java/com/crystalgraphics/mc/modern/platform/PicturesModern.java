@@ -87,10 +87,18 @@ import net.minecraft.client.gui.render.pip.GuiEntityRenderer;
 import net.minecraft.client.gui.render.pip.GuiProfilerChartRenderer;
 import net.minecraft.client.gui.render.pip.GuiSignRenderer;
 import net.minecraft.client.gui.render.pip.GuiSkinRenderer;
-import net.minecraft.client.gui.render.state.GuiRenderState;
+import net.minecraft.client.gui.render.pip.PictureInPictureRenderer;
+import net.minecraft.client.gui.render.state.pip.GuiBannerResultRenderState;
+import net.minecraft.client.gui.render.state.pip.GuiBookModelRenderState;
+import net.minecraft.client.gui.render.state.pip.GuiEntityRenderState;
+import net.minecraft.client.gui.render.state.pip.GuiProfilerChartRenderState;
+import net.minecraft.client.gui.render.state.pip.GuiSignRenderState;
+import net.minecraft.client.gui.render.state.pip.GuiSkinRenderState;
 import net.minecraft.client.renderer.fog.FogRenderer;
+import org.joml.Matrix3x2f;
 import java.util.List;
-import java.util.function.Function;
+import java.util.Map;
+import java.util.function.Supplier;
 *///?} elif <26.1 {
 /*import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.TextureTarget;
@@ -103,10 +111,18 @@ import net.minecraft.client.gui.render.pip.GuiEntityRenderer;
 import net.minecraft.client.gui.render.pip.GuiProfilerChartRenderer;
 import net.minecraft.client.gui.render.pip.GuiSignRenderer;
 import net.minecraft.client.gui.render.pip.GuiSkinRenderer;
-import net.minecraft.client.gui.render.state.GuiRenderState;
+import net.minecraft.client.gui.render.pip.PictureInPictureRenderer;
+import net.minecraft.client.gui.render.state.pip.GuiBannerResultRenderState;
+import net.minecraft.client.gui.render.state.pip.GuiBookModelRenderState;
+import net.minecraft.client.gui.render.state.pip.GuiEntityRenderState;
+import net.minecraft.client.gui.render.state.pip.GuiProfilerChartRenderState;
+import net.minecraft.client.gui.render.state.pip.GuiSignRenderState;
+import net.minecraft.client.gui.render.state.pip.GuiSkinRenderState;
 import net.minecraft.client.renderer.fog.FogRenderer;
+import org.joml.Matrix3x2f;
 import java.util.List;
-import java.util.function.Function;
+import java.util.Map;
+import java.util.function.Supplier;
 *///?} elif <26.2 {
 /*import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.TextureTarget;
@@ -120,10 +136,18 @@ import net.minecraft.client.gui.render.pip.GuiProfilerChartRenderer;
 import net.minecraft.client.gui.render.pip.GuiSignRenderer;
 import net.minecraft.client.gui.render.pip.GuiSkinRenderer;
 import net.minecraft.client.renderer.fog.FogRenderer;
+import net.minecraft.client.gui.render.pip.PictureInPictureRenderer;
 import net.minecraft.client.renderer.state.WindowRenderState;
-import net.minecraft.client.renderer.state.gui.GuiRenderState;
+import net.minecraft.client.renderer.state.gui.pip.GuiBannerResultRenderState;
+import net.minecraft.client.renderer.state.gui.pip.GuiBookModelRenderState;
+import net.minecraft.client.renderer.state.gui.pip.GuiEntityRenderState;
+import net.minecraft.client.renderer.state.gui.pip.GuiProfilerChartRenderState;
+import net.minecraft.client.renderer.state.gui.pip.GuiSignRenderState;
+import net.minecraft.client.renderer.state.gui.pip.GuiSkinRenderState;
+import org.joml.Matrix3x2f;
 import java.util.List;
-import java.util.function.Function;
+import java.util.Map;
+import java.util.function.Supplier;
 *///?} else {
 /*import com.crystalgraphics.mc.modern.platform.vulkan.Blaze3dVulkanHost;
 import com.mojang.blaze3d.GpuFormat;
@@ -137,13 +161,20 @@ import net.minecraft.client.gui.render.pip.GuiBookModelRenderer;
 import net.minecraft.client.gui.render.pip.GuiEntityRenderer;
 import net.minecraft.client.gui.render.pip.GuiProfilerChartRenderer;
 import net.minecraft.client.gui.render.pip.GuiSkinRenderer;
+import net.minecraft.client.gui.render.pip.PictureInPictureRenderer;
 import net.minecraft.client.renderer.state.WindowRenderState;
-import net.minecraft.client.renderer.state.gui.GuiRenderState;
+import net.minecraft.client.renderer.state.gui.pip.GuiBannerResultRenderState;
+import net.minecraft.client.renderer.state.gui.pip.GuiBookModelRenderState;
+import net.minecraft.client.renderer.state.gui.pip.GuiEntityRenderState;
+import net.minecraft.client.renderer.state.gui.pip.GuiProfilerChartRenderState;
+import net.minecraft.client.renderer.state.gui.pip.GuiSkinRenderState;
+import org.joml.Matrix3x2f;
 import org.joml.Vector4f;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
-import java.util.function.Function;
+import java.util.function.Supplier;
 *///?}
 
 /**
@@ -157,9 +188,9 @@ import java.util.function.Function;
  *       answers.</li>
  *   <li>1.21.5: a cell cannot be reached by viewport (the encoder binds a target whole): each is drawn into a scratch
  *       target its size, answered rather than bound, and copied into the page.</li>
- *   <li>1.21.6 on: a {@code GuiRenderer} of the host's own over a {@code GuiRenderState} of its own, as vanilla's GUI,
- *       into a scratch target the cell's size, its window sized to the cell, then copied into the page. One draw: it
- *       keeps alpha.</li>
+ *   <li>1.21.6 on: a {@code GuiRenderer} of the host's own, one render a page straight into it: each cell recorded
+ *       under its pose and inside its scissor ({@link RecordedPages}), the window the page's at the cells' GUI scale.
+ *       One draw: it keeps alpha.</li>
  * </ul>
  */
 public final class PicturesModern implements CgHostPictures.Host {
@@ -183,9 +214,24 @@ public final class PicturesModern implements CgHostPictures.Host {
     private static double windowGuiScale;
 
     //? if >=1.21.6 {
-    /*private static Function<Minecraft, List<?>> pictureInPicture = PicturesModern::vanillaPictureInPicture;
-    private GuiRenderState state;
+    /*private static PictureInPicture pictureInPicture = new PictureInPicture() {
+        @Override
+        public Map<Class<?>, Supplier<PictureInPictureRenderer<?>>> factories(Minecraft mc) {
+            return vanillaPictureInPicture(mc);
+        }
+
+        @Override
+        public List<?> list(PictureInPictureRenderer<?> ours) {
+            return List.of(ours);
+        }
+    };
+    private static boolean makingRenderer;
+    private RecordedPages.State state;
+    private RecordedPages.Pictures pictures;
     private GuiRenderer renderer;
+    // The pose of the cell recording, while a page records
+    private final Matrix3x2f cellPose = new Matrix3x2f();
+    private int[] pageRects = new int[64];
     *///?}
     //? if >=1.21.6 <26.2 {
     /*private FogRenderer fog;
@@ -209,7 +255,7 @@ public final class PicturesModern implements CgHostPictures.Host {
     private CgHostPictures.Cells cells;
     private int cell;
     private final CgPictureRenderer cellDrawer = ctx -> cells.draw(cell, ctx);
-    //? if >=1.21.5 {
+    //? if >=1.21.5 <1.21.6 {
     /*// Scratch targets by size, a cell drawn into one its size; given back once unused for SCRATCH_KEPT cell draws
     private static final int SCRATCH_KEPT = 4096;
     private final PageCopy copy = new PageCopy();
@@ -354,10 +400,35 @@ public final class PicturesModern implements CgHostPictures.Host {
     }
 
     //? if >=1.21.6 {
-    /*// A loader whose GuiRenderer takes something else than vanilla's list says what as its client starts: NeoForge's
-    // registrations, every mod's gathered.
-    public static void pictureInPicture(Function<Minecraft, List<?>> renderers) {
-        pictureInPicture = renderers;
+    /*/^*
+     * A loader's picture-in-picture renderers for the pictures' {@code GuiRenderer}: vanilla's by default. A loader whose
+     * {@code GuiRenderer} takes something else says what as its client starts (NeoForge: registrations, every mod's).
+     ^/
+    public interface PictureInPicture {
+        /^* Each state kind's factory, a new renderer each call. ^/
+        Map<Class<?>, Supplier<PictureInPictureRenderer<?>>> factories(Minecraft mc);
+
+        /^* What the loader's {@code GuiRenderer} takes for its picture-in-picture renderers, holding {@code ours} alone. ^/
+        List<?> list(PictureInPictureRenderer<?> ours);
+    }
+
+    public static void pictureInPicture(PictureInPicture source) {
+        pictureInPicture = source;
+    }
+
+    /^* Whether the pictures' own {@code GuiRenderer} is being made: Fabric API's registry hook stands aside. ^/
+    public static boolean makingRenderer() {
+        return makingRenderer;
+    }
+
+    private void ensureRenderer(Minecraft mc) {
+        if (renderer != null) return;
+        makingRenderer = true;
+        try {
+            makeRenderer(mc);
+        } finally {
+            makingRenderer = false;
+        }
     }
     *///?}
 
@@ -464,6 +535,9 @@ public final class PicturesModern implements CgHostPictures.Host {
     @Override
     public void beginBatch(boolean check) {
         checking = check;
+        //? if >=1.21.6 {
+        /*if (pictures != null) pictures.frame();
+        *///?}
         //? if <1.21.5 {
         boundBefore = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
         GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewportBefore);
@@ -490,8 +564,10 @@ public final class PicturesModern implements CgHostPictures.Host {
         Minecraft mc = Minecraft.getInstance();
         //? if <1.21.5 {
         immediatePage(mc, (RenderTarget) target, height, clear, cells, partialTick());
-        //?} else {
+        //?} elif <1.21.6 {
         /*scratchPage(mc, (RenderTarget) target, height, clear, cells, partialTick());
+        *///?} else {
+        /*recordedPage(mc, (RenderTarget) target, width, cells, partialTick());
         *///?}
     }
 
@@ -597,9 +673,9 @@ public final class PicturesModern implements CgHostPictures.Host {
     }
     //?}
 
-    //? if >=1.21.5 {
-    /*// Each cell drawn as a picture of its own into a scratch target its size -- the GUI's window, scissors and
-    // picture-in-picture as vanilla's -- then copied into its rect of the page (the device's rect is bottom-up)
+    //? if >=1.21.5 <1.21.6 {
+    /*// 1.21.5: each cell drawn as a picture of its own into a scratch target its size (the encoder binds a target
+    // whole), then copied into its rect of the page (the device's rect is bottom-up)
     private void scratchPage(Minecraft mc, RenderTarget page, int height, float clear, CgHostPictures.Cells cells,
                              float partialTick) {
         this.cells = cells;
@@ -610,11 +686,7 @@ public final class PicturesModern implements CgHostPictures.Host {
                 RenderTarget scratch = scratch(w, h);
                 context.set(w / scale, h / scale, scale, partialTick);
                 cell = i;
-                //? if <1.21.6 {
                 immediate(mc, scratch, clear, null, 0, cells.lighting(i), cellDrawer, context);
-                //?} else {
-                /^recorded(mc, scratch, null, 0, cellDrawer, context);
-                ^///?}
                 long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.copy");
                 copy.copy(scratch, page, cells.x(i), height - cells.y(i) - h, w, h);
                 CgTrace.end(zone);
@@ -654,6 +726,24 @@ public final class PicturesModern implements CgHostPictures.Host {
         scratchTargets[scratchCount] = found;
         scratchUsed[scratchCount++] = now;
         return found;
+    }
+    *///?}
+
+    // A recorded page clears cell by cell where the device clears a rect (26.3's render passes clear a whole target)
+    @Override
+    public boolean keepsPage() {
+        //? if >=26.3 {
+        /*return false;
+        *///?} else {
+        return true;
+        //?}
+    }
+
+    //? if >=1.21.6 {
+    /*// A recorded GUI scissors and places in whole GUI units: a cell starts on its GUI scale's pixels
+    @Override
+    public int cellAlign(float scale) {
+        return guiScale(scale);
     }
     *///?}
 
@@ -920,14 +1010,13 @@ public final class PicturesModern implements CgHostPictures.Host {
 
     // ── The recorded GUI, 1.21.6 on ──────────────────────────────────────
 
-    // Drawn into a state of our own, rendered by a GuiRenderer of our own whose main target and window are the
-    // picture's for the call. The window is sized so its projection spans the picture's units at an integer GUI scale.
+    // The icon atlas's draw: one drawer over the target, rendered by a GuiRenderer of our own whose main target and
+    // window are the target's for the call, its projection spanning the drawer's units at an integer GUI scale
     private void recorded(Minecraft mc, RenderTarget t, @Nullable int[] rects, int count, CgPictureRenderer drawer,
                           Context ctx) {
-        int guiScale = Math.max(1, (int) Math.ceil(ctx.scale));
-        int pixelsWide = Math.round(ctx.width * guiScale), pixelsHigh = Math.round(ctx.height * guiScale);
-        //? if >=1.21.6 <26.1 {
-        /*if (renderer == null) makeRenderer(mc);
+        //? if >=1.21.6 {
+        /*ensureRenderer(mc);
+        int guiScale = guiScale(ctx.scale);
         ctx.gui = guiGraphics(mc);
         long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.record");
         drawer.draw(ctx);
@@ -935,10 +1024,87 @@ public final class PicturesModern implements CgHostPictures.Host {
         zone = CgTrace.begin(CgChannels.PICTURES, "pictures.clear");
         clearRecorded(t, rects, count);
         CgTrace.end(zone);
-        drawing = t;
-        answerWindow(pixelsWide, pixelsHigh, guiScale, guiScale, ctx.width, ctx.height);
+        renderInto(t, Math.round(ctx.width * guiScale), Math.round(ctx.height * guiScale), guiScale, ctx.width, ctx.height);
+        *///?}
+    }
+
+    //? if >=1.21.6 {
+    /*// A page in one render: each cell recorded under its pose and inside its scissor, its picture-in-picture elements
+    // placed on it (RecordedPages); the page cleared whole where every cell draws, else cell by cell
+    private void recordedPage(Minecraft mc, RenderTarget page, int side, CgHostPictures.Cells cells, float partialTick) {
+        ensureRenderer(mc);
+        int guiScale = guiScale(cells.scale(0));
+        float units = (float) side / guiScale;
+        // The window the page's from the first record: a GUI's scissors start from the window's size
+        answerWindow(side, side, guiScale, guiScale, units, units);
         try {
-            zone = CgTrace.begin(CgChannels.PICTURES, "pictures.render");
+            long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.record");
+            this.cells = cells;
+            try {
+                for (int i = 0; i < cells.count(); i++) {
+                    float scale = cells.scale(i), cellUnits = cells.width(i) / scale, cellUnitsHigh = cells.height(i) / scale;
+                    context.set(cellUnits, cellUnitsHigh, scale, partialTick);
+                    context.gui = cellGui(mc, (float) cells.x(i) / guiScale, (float) cells.y(i) / guiScale,
+                            scale / guiScale, (int) Math.ceil(cellUnits - 1e-3f), (int) Math.ceil(cellUnitsHigh - 1e-3f));
+                    state.cell(cellPose);
+                    cell = i;
+                    cellDrawer.draw(context);
+                }
+            } finally {
+                state.cell(null);
+                this.cells = null;
+                CgTrace.end(zone);
+            }
+            zone = CgTrace.begin(CgChannels.PICTURES, "pictures.clear");
+            if (cells.whole() || !clearsRects()) {
+                clearRecorded(page, null, 0);
+            } else {
+                clearRecorded(page, cellRects(cells, guiScale), cells.count());
+            }
+            CgTrace.end(zone);
+            renderInto(page, side, side, guiScale, units, units);
+        } finally {
+            window = false;
+        }
+    }
+
+    // A cell's GUI: its pose on the page (kept in cellPose) and its scissor, in the cell's units
+    private Object cellGui(Minecraft mc, float x, float y, float scale, int unitsWide, int unitsHigh) {
+        var gui = guiGraphics(mc);
+        gui.pose().translate(x, y).scale(scale);
+        cellPose.set(gui.pose());
+        gui.enableScissor(0, 0, unitsWide, unitsHigh);
+        return gui;
+    }
+
+    // Each cell's rect as it is packed: whole GUI units, the scissor's
+    private int[] cellRects(CgHostPictures.Cells cells, int guiScale) {
+        int n = cells.count();
+        if (pageRects.length < n * 4) pageRects = new int[Math.max(n * 4, pageRects.length * 2)];
+        for (int i = 0; i < n; i++) {
+            int k = i * 4;
+            pageRects[k] = cells.x(i);
+            pageRects[k + 1] = cells.y(i);
+            pageRects[k + 2] = (cells.width(i) + guiScale - 1) / guiScale * guiScale;
+            pageRects[k + 3] = (cells.height(i) + guiScale - 1) / guiScale * guiScale;
+        }
+        return pageRects;
+    }
+
+    // A GuiRenderer's GUI scale for a picture's pixels per unit: whole, rounded up
+    private static int guiScale(float scale) {
+        return Math.max(1, (int) Math.ceil(scale - 1e-3f));
+    }
+    *///?}
+
+    // The state rendered into t: its main target answered as t, the window t's at guiScale
+    //? if >=1.21.6 <26.1 {
+    /*private void renderInto(RenderTarget t, int pixelsWide, int pixelsHigh, int guiScale, float unitsWide,
+                            float unitsHigh) {
+        drawing = t;
+        answerWindow(pixelsWide, pixelsHigh, guiScale, guiScale, unitsWide, unitsHigh);
+        try {
+            long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.render");
             renderer.render(fog.getBuffer(FogRenderer.FogMode.NONE));
             CgTrace.end(zone);
         } finally {
@@ -946,60 +1112,50 @@ public final class PicturesModern implements CgHostPictures.Host {
             window = false;
         }
         renderer.incrementFrameNumber();
-        *///?} elif >=26.1 <26.2 {
-        /*if (renderer == null) makeRenderer(mc);
-        ctx.gui = new GuiGraphicsExtractor(mc, state, -1, -1);
-        long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.record");
-        drawer.draw(ctx);
-        CgTrace.end(zone);
-        zone = CgTrace.begin(CgChannels.PICTURES, "pictures.clear");
-        clearRecorded(t, rects, count);
-        CgTrace.end(zone);
-        WindowRenderState state = mc.gameRenderer.getGameRenderState().windowRenderState;
-        int realWidth = state.width, realHeight = state.height, realScale = state.guiScale;
-        state.width = pixelsWide;
-        state.height = pixelsHigh;
-        state.guiScale = guiScale;
+    }
+    *///?} elif >=26.1 <26.2 {
+    /*private void renderInto(RenderTarget t, int pixelsWide, int pixelsHigh, int guiScale, float unitsWide,
+                            float unitsHigh) {
+        WindowRenderState win = Minecraft.getInstance().gameRenderer.getGameRenderState().windowRenderState;
+        int realWidth = win.width, realHeight = win.height, realScale = win.guiScale;
+        win.width = pixelsWide;
+        win.height = pixelsHigh;
+        win.guiScale = guiScale;
         drawing = t;
         try {
-            zone = CgTrace.begin(CgChannels.PICTURES, "pictures.render");
+            long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.render");
             renderer.render(fog.getBuffer(FogRenderer.FogMode.NONE));
             CgTrace.end(zone);
         } finally {
             drawing = null;
-            state.width = realWidth;
-            state.height = realHeight;
-            state.guiScale = realScale;
+            win.width = realWidth;
+            win.height = realHeight;
+            win.guiScale = realScale;
         }
         renderer.endFrame();
-        *///?} elif >=26.2 {
-        /*if (renderer == null) makeRenderer(mc);
-        ctx.gui = new GuiGraphicsExtractor(mc, state, -1, -1);
-        long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.record");
-        drawer.draw(ctx);
-        CgTrace.end(zone);
-        zone = CgTrace.begin(CgChannels.PICTURES, "pictures.clear");
-        clearRecorded(t, rects, count);
-        CgTrace.end(zone);
-        WindowRenderState state = mc.gameRenderer.gameRenderState().windowRenderState;
-        int realWidth = state.width, realHeight = state.height, realScale = state.guiScale;
-        state.width = pixelsWide;
-        state.height = pixelsHigh;
-        state.guiScale = guiScale;
+    }
+    *///?} elif >=26.2 {
+    /*private void renderInto(RenderTarget t, int pixelsWide, int pixelsHigh, int guiScale, float unitsWide,
+                            float unitsHigh) {
+        WindowRenderState win = Minecraft.getInstance().gameRenderer.gameRenderState().windowRenderState;
+        int realWidth = win.width, realHeight = win.height, realScale = win.guiScale;
+        win.width = pixelsWide;
+        win.height = pixelsHigh;
+        win.guiScale = guiScale;
         drawing = t;
         try {
-            zone = CgTrace.begin(CgChannels.PICTURES, "pictures.render");
+            long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.render");
             renderer.render();
             CgTrace.end(zone);
         } finally {
             drawing = null;
-            state.width = realWidth;
-            state.height = realHeight;
-            state.guiScale = realScale;
+            win.width = realWidth;
+            win.height = realHeight;
+            win.guiScale = realScale;
         }
         renderer.endFrame();
-        *///?}
     }
+    *///?}
 
     //? if >=1.21.6 <1.21.11 {
     /*private GuiGraphics guiGraphics(Minecraft mc) {
@@ -1008,6 +1164,10 @@ public final class PicturesModern implements CgHostPictures.Host {
     *///?} elif >=1.21.11 <26.1 {
     /*private GuiGraphics guiGraphics(Minecraft mc) {
         return new GuiGraphics(mc, state, -1, -1);
+    }
+    *///?} elif >=26.1 {
+    /*private GuiGraphicsExtractor guiGraphics(Minecraft mc) {
+        return new GuiGraphicsExtractor(mc, state, -1, -1);
     }
     *///?}
 
@@ -1049,46 +1209,64 @@ public final class PicturesModern implements CgHostPictures.Host {
     }
     *///?}
 
+    // The pictures' GuiRenderer over a page state, its one picture-in-picture renderer RecordedPages' over the loader's
     //? if >=1.21.6 <1.21.10 {
     /*@SuppressWarnings({"unchecked", "rawtypes"})
     private void makeRenderer(Minecraft mc) {
-        state = new GuiRenderState();
+        var buffers = mc.renderBuffers().bufferSource();
+        state = new RecordedPages.State();
         fog = new FogRenderer();
-        renderer = new GuiRenderer(state, mc.renderBuffers().bufferSource(), (List) pictureInPicture.apply(mc));
+        pictures = new RecordedPages.Pictures(pictureInPicture.factories(mc), state, buffers);
+        renderer = new GuiRenderer(state, buffers, (List) pictureInPicture.list(pictures));
     }
 
     // Vanilla's picture-in-picture renderers, as GameRenderer makes its own
-    private static List<?> vanillaPictureInPicture(Minecraft mc) {
+    private static Map<Class<?>, Supplier<PictureInPictureRenderer<?>>> vanillaPictureInPicture(Minecraft mc) {
         var buffers = mc.renderBuffers().bufferSource();
-        return List.of(new GuiEntityRenderer(buffers, mc.getEntityRenderDispatcher()), new GuiSkinRenderer(buffers),
-                new GuiBookModelRenderer(buffers), new GuiBannerResultRenderer(buffers), new GuiSignRenderer(buffers),
-                new GuiProfilerChartRenderer(buffers));
+        return Map.<Class<?>, Supplier<PictureInPictureRenderer<?>>>of(
+                GuiEntityRenderState.class, () -> new GuiEntityRenderer(buffers, mc.getEntityRenderDispatcher()),
+                GuiSkinRenderState.class, () -> new GuiSkinRenderer(buffers),
+                GuiBookModelRenderState.class, () -> new GuiBookModelRenderer(buffers),
+                GuiBannerResultRenderState.class, () -> new GuiBannerResultRenderer(buffers),
+                GuiSignRenderState.class, () -> new GuiSignRenderer(buffers),
+                GuiProfilerChartRenderState.class, () -> new GuiProfilerChartRenderer(buffers));
     }
     *///?} elif >=1.21.10 <26.2 {
     /*@SuppressWarnings({"unchecked", "rawtypes"})
     private void makeRenderer(Minecraft mc) {
-        state = new GuiRenderState();
+        var buffers = mc.renderBuffers().bufferSource();
+        state = new RecordedPages.State();
         fog = new FogRenderer();
-        renderer = new GuiRenderer(state, mc.renderBuffers().bufferSource(), mc.gameRenderer.getSubmitNodeStorage(),
-                mc.gameRenderer.getFeatureRenderDispatcher(), (List) pictureInPicture.apply(mc));
+        pictures = new RecordedPages.Pictures(pictureInPicture.factories(mc), state, buffers);
+        renderer = new GuiRenderer(state, buffers, mc.gameRenderer.getSubmitNodeStorage(),
+                mc.gameRenderer.getFeatureRenderDispatcher(), (List) pictureInPicture.list(pictures));
     }
 
-    private static List<?> vanillaPictureInPicture(Minecraft mc) {
+    private static Map<Class<?>, Supplier<PictureInPictureRenderer<?>>> vanillaPictureInPicture(Minecraft mc) {
         var buffers = mc.renderBuffers().bufferSource();
-        return List.of(new GuiEntityRenderer(buffers, mc.getEntityRenderDispatcher()), new GuiSkinRenderer(buffers),
-                new GuiBookModelRenderer(buffers), new GuiBannerResultRenderer(buffers, mc.getAtlasManager()),
-                new GuiSignRenderer(buffers, mc.getAtlasManager()), new GuiProfilerChartRenderer(buffers));
+        return Map.<Class<?>, Supplier<PictureInPictureRenderer<?>>>of(
+                GuiEntityRenderState.class, () -> new GuiEntityRenderer(buffers, mc.getEntityRenderDispatcher()),
+                GuiSkinRenderState.class, () -> new GuiSkinRenderer(buffers),
+                GuiBookModelRenderState.class, () -> new GuiBookModelRenderer(buffers),
+                GuiBannerResultRenderState.class, () -> new GuiBannerResultRenderer(buffers, mc.getAtlasManager()),
+                GuiSignRenderState.class, () -> new GuiSignRenderer(buffers, mc.getAtlasManager()),
+                GuiProfilerChartRenderState.class, () -> new GuiProfilerChartRenderer(buffers));
     }
     *///?} elif >=26.2 {
     /*@SuppressWarnings({"unchecked", "rawtypes"})
     private void makeRenderer(Minecraft mc) {
-        state = new GuiRenderState();
-        renderer = new GuiRenderer(state, mc.gameRenderer.featureRenderDispatcher(), (List) pictureInPicture.apply(mc));
+        state = new RecordedPages.State();
+        pictures = new RecordedPages.Pictures(pictureInPicture.factories(mc), state);
+        renderer = new GuiRenderer(state, mc.gameRenderer.featureRenderDispatcher(), (List) pictureInPicture.list(pictures));
     }
 
-    private static List<?> vanillaPictureInPicture(Minecraft mc) {
-        return List.of(new GuiEntityRenderer(mc.getEntityRenderDispatcher()), new GuiSkinRenderer(),
-                new GuiBookModelRenderer(), new GuiBannerResultRenderer(mc.getAtlasManager()), new GuiProfilerChartRenderer());
+    private static Map<Class<?>, Supplier<PictureInPictureRenderer<?>>> vanillaPictureInPicture(Minecraft mc) {
+        return Map.<Class<?>, Supplier<PictureInPictureRenderer<?>>>of(
+                GuiEntityRenderState.class, () -> new GuiEntityRenderer(mc.getEntityRenderDispatcher()),
+                GuiSkinRenderState.class, GuiSkinRenderer::new,
+                GuiBookModelRenderState.class, GuiBookModelRenderer::new,
+                GuiBannerResultRenderState.class, () -> new GuiBannerResultRenderer(mc.getAtlasManager()),
+                GuiProfilerChartRenderState.class, GuiProfilerChartRenderer::new);
     }
     *///?}
 

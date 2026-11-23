@@ -38,7 +38,7 @@ public abstract class GuiWindowHook {
         if (PicturesModern.answersWindow()) cir.setReturnValue(PicturesModern.windowUnitsHeight(0));
     }
 }
-//?} elif <26.1 {
+//?} else {
 /*import com.crystalgraphics.mc.modern.platform.PicturesModern;
 import com.mojang.blaze3d.platform.Window;
 import org.spongepowered.asm.mixin.Mixin;
@@ -46,8 +46,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-// While a picture draws, Minecraft's window is the picture's: its pixels, its GUI scale, its size in units. A scissor,
-// a tooltip's clamp and a GuiRenderer's projection then land in the picture (26.1 on sets the window state instead).
+// While a picture page records and draws, Minecraft's window is the page's: its pixels, its GUI scale, its size in
+// units. The GUI's scissors, a tooltip's clamp and a mod's window maths then reach every cell (from 26.1 the render
+// reads the window state, set beside).
 @Mixin(value = Window.class, remap = false)
 public abstract class GuiWindowHook {
 
@@ -75,13 +76,5 @@ public abstract class GuiWindowHook {
     private void crystalgraphics$unitsHigh(CallbackInfoReturnable<Integer> cir) {
         if (PicturesModern.answersWindow()) cir.setReturnValue(PicturesModern.windowUnitsHeight(0));
     }
-}
-*///?} else {
-/*import net.minecraft.client.Camera;
-import org.spongepowered.asm.mixin.Mixin;
-
-// Empty from 26.1: the window state's fields are set while a picture draws.
-@Mixin(value = Camera.class, remap = false)
-public abstract class GuiWindowHook {
 }
 *///?}
