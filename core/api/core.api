@@ -14470,9 +14470,13 @@ com/crystalgraphics/render/scene/component/CgHostDrawnComponent
   access public,abstract
   extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent
   method protected <init> (Lcom/crystalgraphics/render/scene/CgScene;)V
+  method protected hostBounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Z
+  method protected hostInRange (D)Z
   method protected hostRelease ()V
   method protected,abstract hostDraw (Lorg/joml/Matrix4fc;)V
+  method protected,final hostBoundsChanged ()V
   method public,final drawHosted (Lorg/joml/Matrix4fc;)V
+  method public,final inRangeHosted (D)Z
 com/crystalgraphics/render/scene/component/CgInstancedMeshComponent
   access public,final
   extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent

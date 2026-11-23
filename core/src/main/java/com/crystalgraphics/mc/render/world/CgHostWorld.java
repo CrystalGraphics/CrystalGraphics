@@ -12,6 +12,7 @@ import org.apache.logging.log4j.Logger;
 
 import org.joml.Matrix4d;
 import org.joml.Matrix4f;
+import org.joml.FrustumIntersection;
 import org.joml.Matrix4fc;
 
 import com.crystalgraphics.camera.CgCamera;
@@ -23,6 +24,8 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgService;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.component.CgHostDrawnComponent;
+import com.crystalgraphics.shape.bounds.CgAABB;
+import com.crystalgraphics.shape.bounds.CgAABBc;
 
 /**
  * The world draw point: Minecraft draws the client scene's {@link CgHostDrawnComponent}s with its own renderers, into its
@@ -66,6 +69,20 @@ public final class CgHostWorld {
         /** A block, its corner at the origin, and its block entity. */
         void drawBlock(Object block, Matrix4fc model);
 
+        /**
+         * The box Minecraft culls {@code drawn} (what {@link #entity} or {@link #block} answered) by, relative to its
+         * origin: an entity's culling box inflated as its renderer inflates it, a block's cube. False where Minecraft
+         * never culls it (an entity drawn whole wherever it is, a block entity drawn past its block). Render thread.
+         */
+        default boolean bounds(Object drawn, CgAABB out) {
+            return false;
+        }
+
+        /** Whether Minecraft draws {@code drawn} {@code distanceSq} from the camera, as it decides for its own. */
+        default boolean inRange(Object drawn, double distanceSq) {
+            return true;
+        }
+
         /** Closes the draw point: what was drawn is flushed into Minecraft's targets. */
         void end();
 
@@ -89,8 +106,10 @@ public final class CgHostWorld {
     private static final CgHostAllocation ALLOCATION = new CgHostAllocation(CgChannels.PICTURES, "host-world-our-bytes");
     private static final Matrix4d relative = new Matrix4d();
     private static final Matrix4f model = new Matrix4f();
+    private static final Matrix4f viewProjection = new Matrix4f();
+    private static final FrustumIntersection frustum = new FrustumIntersection();
     private static boolean absentSaid;
-    private static volatile int drawn;
+    private static volatile int drawn, lastCulled;
 
     private CgHostWorld() {
     }
@@ -105,28 +124,36 @@ public final class CgHostWorld {
         return drawn;
     }
 
-    /**
-     * Host side, render thread, outside any device section: draws every spawned, visible host-drawn component of the
-     * client scene under the level's {@code camera}, which the host frame holds once its opaque hook has captured it.
-     */
-    public static void drawPoint(CgCamera camera, float partialTick) {
-        drawPoint(camera.x(), camera.y(), camera.z(), camera.view(), partialTick);
+    /** How many the last draw left out, outside the frustum or Minecraft's range. */
+    public static int culled() {
+        return lastCulled;
     }
 
     /**
-     * The same, the camera given as Minecraft holds it where its own entities are drawn: at {@code camX, camY, camZ},
-     * turned by {@code view}. What a host calls where it submits into Minecraft's own frame (1.21.10 on).
+     * Host side, render thread, outside any device section: draws every spawned, visible host-drawn component of the
+     * client scene in the level's {@code camera}'s view and range, the camera the host frame holds once its opaque hook
+     * has captured it.
      */
-    public static void drawPoint(double camX, double camY, double camZ, Matrix4fc view, float partialTick) {
-        drawn = drawScene(CgScene.client(), camX, camY, camZ, view, partialTick, false);
+    public static void drawPoint(CgCamera camera, float partialTick) {
+        drawPoint(camera, camera.view(), partialTick);
+    }
+
+    /**
+     * The same, drawn under {@code view} rather than the camera's own: what a host passes where it submits into
+     * Minecraft's own frame (1.21.10 on), which turns what is submitted itself. {@code camera} places and culls.
+     */
+    public static void drawPoint(CgCamera camera, Matrix4fc view, float partialTick) {
+        drawn = drawScene(CgScene.client(), camera, view, partialTick, false);
     }
 
     /**
      * Host side: {@code scene}'s host-drawn components drawn where Minecraft is drawing that scene's world (a pocket
-     * level's, into its view's target), and how many drew.
+     * level's, into its view's target), and how many drew: those in {@code camera}'s frustum and Minecraft's range,
+     * drawn under {@code view} at the camera's origin.
      */
-    public static int drawScene(CgScene scene, double camX, double camY, double camZ, Matrix4fc view, float partialTick,
-                                boolean fullLight) {
+    public static int drawScene(CgScene scene, CgCamera camera, Matrix4fc view, float partialTick, boolean fullLight) {
+        double camX = camera.originX(), camY = camera.originY(), camZ = camera.originZ();
+        double eyeX = camera.x(), eyeY = camera.y(), eyeZ = camera.z();
         List<CgHostDrawnComponent<?>> all = scene.primitives().hostDrawn();
         if (all.isEmpty()) return 0;
         int drew = 0;
@@ -141,10 +168,32 @@ public final class CgHostWorld {
         host.begin(view, camX, camY, camZ, partialTick, fullLight);
         ALLOCATION.hostEnd(hostMark);
         long zone = CgTrace.begin(CgChannels.PICTURES, "hostWorld.draw");
+        // Camera-relative, as the engine's own primitives are culled (CgSceneGather)
+        frustum.set(viewProjection.set(camera.projection()).mul(camera.view()));
+        int culled = 0;
         try {
             for (int i = 0; i < all.size(); i++) {
                 CgHostDrawnComponent<?> c = all.get(i);
                 if (!c.visible()) continue;
+                CgAABBc box = c.worldBounds();
+                if (box != null && !frustum.testAab((float) (box.minX() - camX), (float) (box.minY() - camY),
+                        (float) (box.minZ() - camZ), (float) (box.maxX() - camX), (float) (box.maxY() - camY),
+                        (float) (box.maxZ() - camZ))) {
+                    culled++;
+                    continue;
+                }
+                double dx = c.x() - eyeX, dy = c.y() - eyeY, dz = c.z() - eyeZ;
+                long rangeMark = ALLOCATION.hostBegin();
+                boolean inRange;
+                try {
+                    inRange = c.inRangeHosted(dx * dx + dy * dy + dz * dz);
+                } finally {
+                    ALLOCATION.hostEnd(rangeMark);
+                }
+                if (!inRange) {
+                    culled++;
+                    continue;
+                }
                 // Camera-relative in doubles, so a far world keeps its precision in the float the host draws with
                 relative.set(c.worldTransform());
                 relative.m30(relative.m30() - camX).m31(relative.m31() - camY).m32(relative.m32() - camZ);
@@ -169,6 +218,8 @@ public final class CgHostWorld {
             ALLOCATION.end();
         }
         CgTrace.add(CgChannels.PICTURES, "host-drawn-components", drew);
+        CgTrace.add(CgChannels.PICTURES, "host-drawn-culled", culled);
+        lastCulled = culled;
         return drew;
     }
 }

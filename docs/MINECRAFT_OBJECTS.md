@@ -284,7 +284,15 @@ A sequence places an entity with its `entity` spawnable ([sequences](vfx/sequenc
   age runs from its spawn, so a mob's idle animation plays.
 - What the game lacks (an unknown item, block or property) is logged once as the component first draws, and the
   component hides; the rest draw.
-- `CgHostWorld.drawn()` is the last frame's count. Where no Minecraft runs (the harness), nothing draws.
+- **Culled as Minecraft culls its own**: by the view, each component's box tested against the frame camera's frustum
+  as the engine's own primitives are, and past the distance Minecraft draws the object at. An entity by its culling
+  box (an entity Minecraft draws whole wherever it is, never) and its own render distance, which follows the player's
+  entity distance; a block by its cube with a block around it (a banner draws above its block), a block entity past
+  its renderer's view distance, and one drawn past its block never; an item stack by a cube two blocks across, and at
+  any distance, as it may ride a character drawn far off. The host answers each (`CgHostWorld.Host.bounds`,
+  `inRange`); a host that does not, culls nothing.
+- `CgHostWorld.drawn()` and `culled()` are the last frame's counts. Where no Minecraft runs (the harness), nothing
+  draws.
 
 | Era | Where they draw | How |
 |---|---|---|

@@ -15,6 +15,7 @@ import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.mc.render.entity.CgEntityPose;
 import com.crystalgraphics.mc.render.world.CgHostWorld;
 import com.crystalgraphics.mc.render.world.CgItemDisplay;
+import com.crystalgraphics.shape.bounds.CgAABB;
 
 import net.minecraft.client.Minecraft;
 //? if >=1.15 {
@@ -26,7 +27,12 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
+import net.minecraft.world.phys.AABB;
 //?}
+//? if >=1.15 <1.17 {
+/*import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
+*///?}
 //? if >=1.15 <26.2 {
 import net.minecraft.client.renderer.LevelRenderer;
 //?} elif >=26.2 {
@@ -50,7 +56,6 @@ import net.minecraft.world.item.ItemDisplayContext;
 //?}
 //? if >=1.21.10 {
 /*import net.minecraft.client.renderer.SubmitNodeCollector;
-import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.block.MovingBlockRenderState;
 import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
@@ -313,6 +318,85 @@ public final class HostWorldModern implements CgHostWorld.Host {
         pose.popPose();
         //?}
     }
+
+    /**
+     * An entity's box as its renderer culls it, inflated by half a block, around its feet; a block's cube with a block
+     * around it, as a banner draws above its block and Minecraft culls block entities by their section.
+     */
+    @Override
+    public boolean bounds(Object drawn, CgAABB out) {
+        //? if >=1.15 {
+        if (drawn instanceof Entity) {
+            Entity e = (Entity) drawn;
+            //? if <1.21.3 {
+            if (e.noCulling) return false;
+            AABB box = e.getBoundingBoxForCulling();
+            //?} else {
+            /*// The renderer's culling box is its own (protected), Entity's box by default
+            AABB box = e.getBoundingBox();
+            *///?}
+            if (box.hasNaN() || box.getSize() == 0.0) {
+                out.set(-2, -2, -2, 2, 2, 2);
+                return true;
+            }
+            out.set(box);
+            out.set(out.minX() - e.getX() - 0.5, out.minY() - e.getY() - 0.5, out.minZ() - e.getZ() - 0.5,
+                    out.maxX() - e.getX() + 0.5, out.maxY() - e.getY() + 0.5, out.maxZ() - e.getZ() + 0.5);
+            return true;
+        }
+        if (drawn instanceof Block) {
+            Object be = ((Block) drawn).blockEntity;
+            if (be != null && offScreen((BlockEntity) be)) return false;
+            out.set(-1, -1, -1, 2, 2, 2);
+            return true;
+        }
+        //?}
+        return false;
+    }
+
+    /** An entity's own render distance (its size and the player's entity distance); a block entity's renderer's. */
+    @Override
+    @SuppressWarnings("rawtypes")
+    public boolean inRange(Object drawn, double distanceSq) {
+        //? if >=1.15 {
+        if (drawn instanceof Entity) return ((Entity) drawn).shouldRenderAtSqrDistance(distanceSq);
+        if (drawn instanceof Block && ((Block) drawn).blockEntity != null) {
+            BlockEntityRenderer renderer = renderer((BlockEntity) ((Block) drawn).blockEntity);
+            if (renderer == null) return true;
+            //? if >=1.17 {
+            double far = renderer.getViewDistance();
+            //?} else {
+            /*double far = 64;
+            *///?}
+            return distanceSq < far * far;
+        }
+        //?}
+        return true;
+    }
+
+    //? if >=1.15 {
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static boolean offScreen(BlockEntity be) {
+        BlockEntityRenderer renderer = renderer(be);
+        if (renderer == null) return false;
+        //? if <1.21.6 {
+        return renderer.shouldRenderOffScreen(be);
+        //?} else {
+        /*return renderer.shouldRenderOffScreen();
+        *///?}
+    }
+
+    // Raw: one type argument to 1.21.11, two from 26.1
+    @Nullable
+    @SuppressWarnings("rawtypes")
+    private static BlockEntityRenderer renderer(BlockEntity be) {
+        //? if <1.17 {
+        /*return BlockEntityRenderDispatcher.instance.getRenderer(be);
+        *///?} else {
+        return Minecraft.getInstance().getBlockEntityRenderDispatcher().getRenderer(be);
+        //?}
+    }
+    //?}
 
     @Override
     public void end() {

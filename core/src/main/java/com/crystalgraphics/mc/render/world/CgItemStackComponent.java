@@ -10,6 +10,7 @@ import com.crystalgraphics.mc.item.CgItemStack;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.component.CgHostDrawnComponent;
+import com.crystalgraphics.shape.bounds.CgAABB;
 
 /**
  * An item stack in a scene, drawn by Minecraft's item renderer as it draws a held or dropped item: a mod's item model,
@@ -26,6 +27,7 @@ import com.crystalgraphics.render.scene.component.CgHostDrawnComponent;
  * <ul>
  *   <li>Lit by Minecraft's light at its position, and by the engine's lights as Minecraft's entities are.</li>
  *   <li>An item the game does not know draws nothing.</li>
+ *   <li>Culled by the view, within a cube two blocks across about its origin.</li>
  * </ul>
  */
 public final class CgItemStackComponent extends CgHostDrawnComponent<CgItemStackComponent> {
@@ -70,6 +72,16 @@ public final class CgItemStackComponent extends CgHostDrawnComponent<CgItemStack
         CgHostWorld.Host host = CgPlatform.get(CgHostWorld.HOST);
         hostStack = host.item(stack, hostStack);
         if (hostStack != null) host.drawItem(hostStack, display, model);
+    }
+
+    /**
+     * A cube two blocks across about its origin, past what any display's model reaches: culled by the view alone, with
+     * no distance of its own, as an item riding a character's socket must draw as far as the character.
+     */
+    @Override
+    protected boolean hostBounds(CgAABB out) {
+        out.set(-1, -1, -1, 1, 1, 1);
+        return true;
     }
 
     @Override

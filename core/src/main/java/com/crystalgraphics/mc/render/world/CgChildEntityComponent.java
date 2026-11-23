@@ -12,6 +12,7 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.component.CgHostDrawnComponent;
+import com.crystalgraphics.shape.bounds.CgAABB;
 
 /**
  * An entity in a scene that is the scene's, not the level's: Unreal's {@code UChildActorComponent}. Made client-side as it
@@ -30,6 +31,7 @@ import com.crystalgraphics.render.scene.component.CgHostDrawnComponent;
  * <ul>
  *   <li>Its age runs from its spawn on the frame clock, so its idle animation (arms, tail, breathing) plays.</li>
  *   <li>A type the game does not know draws nothing.</li>
+ *   <li>Culled as Minecraft culls the entity: by its culling box against the view, and past its render distance.</li>
  * </ul>
  */
 public final class CgChildEntityComponent extends CgHostDrawnComponent<CgChildEntityComponent> {
@@ -65,11 +67,25 @@ public final class CgChildEntityComponent extends CgHostDrawnComponent<CgChildEn
     @Override
     protected void hostDraw(Matrix4fc model) {
         CgHostWorld.Host host = CgPlatform.get(CgHostWorld.HOST);
+        Object was = entity;
         entity = host.entity(ref, entity);
+        if (entity != was) hostBoundsChanged();
         if (entity == null) return;
         double now = CgFrameClock.seconds();
         if (Double.isNaN(spawnedAt)) spawnedAt = now;
         host.drawEntity(entity, pose, (float) ((now - spawnedAt) * 20), model);
+    }
+
+    /** Minecraft's culling box for the entity, once made; until then it is never culled. */
+    @Override
+    protected boolean hostBounds(CgAABB out) {
+        return entity != null && CgPlatform.get(CgHostWorld.HOST).bounds(entity, out);
+    }
+
+    /** The entity's own render distance: its size, and the player's entity distance. */
+    @Override
+    protected boolean hostInRange(double distanceSq) {
+        return entity == null || CgPlatform.get(CgHostWorld.HOST).inRange(entity, distanceSq);
     }
 
     @Override

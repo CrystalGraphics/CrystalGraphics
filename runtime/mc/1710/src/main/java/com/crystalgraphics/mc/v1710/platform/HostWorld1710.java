@@ -16,6 +16,7 @@ import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.mc.render.entity.CgEntityPose;
 import com.crystalgraphics.mc.render.world.CgHostWorld;
 import com.crystalgraphics.mc.render.world.CgItemDisplay;
+import com.crystalgraphics.shape.bounds.CgAABB;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.WorldClient;
@@ -70,6 +71,24 @@ public final class HostWorld1710 implements CgHostWorld.Host {
     @Override
     public Object block(CgBlockState state, @Nullable Object previous) {
         return null;
+    }
+
+    /** An entity's box inflated by half a block, around its feet, as 1.7.10's renderer culls it. */
+    @Override
+    public boolean bounds(Object drawn, CgAABB out) {
+        if (!(drawn instanceof Entity)) return false;
+        Entity e = (Entity) drawn;
+        if (e.ignoreFrustumCheck) return false;
+        out.set(e.boundingBox);
+        out.set(out.minX() - e.posX - 0.5, out.minY() - e.posY - 0.5, out.minZ() - e.posZ - 0.5,
+                out.maxX() - e.posX + 0.5, out.maxY() - e.posY + 0.5, out.maxZ() - e.posZ + 0.5);
+        return true;
+    }
+
+    /** An entity's own render distance. */
+    @Override
+    public boolean inRange(Object drawn, double distanceSq) {
+        return !(drawn instanceof Entity) || ((Entity) drawn).isInRangeToRenderDist(distanceSq);
     }
 
     @Override

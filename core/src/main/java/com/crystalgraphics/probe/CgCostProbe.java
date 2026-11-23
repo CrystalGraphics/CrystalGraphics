@@ -52,13 +52,17 @@ public final class CgCostProbe {
 
     private enum Kind { COMPONENTS, LEVELS }
 
-    /** A workload: {@code count} of a kind. */
-    private record Run(String name, Kind kind, int count) {
+    /** A workload: {@code count} of a kind; {@code around}: three in four behind the player, where vanilla culls. */
+    private record Run(String name, Kind kind, int count, boolean around) {
+        Run(String name, Kind kind, int count) {
+            this(name, kind, count, false);
+        }
     }
 
     private static final List<Run> RUNS = List.of(
             new Run("components1", Kind.COMPONENTS, 1), new Run("components10", Kind.COMPONENTS, 10),
             new Run("components50", Kind.COMPONENTS, 50), new Run("components200", Kind.COMPONENTS, 200),
+            new Run("around200", Kind.COMPONENTS, 200, true),
             new Run("levels1", Kind.LEVELS, 1), new Run("levels8", Kind.LEVELS, 8));
 
     /** Ticks a side settles before it is measured, and measures for; stands spawned a tick. */
@@ -81,6 +85,7 @@ public final class CgCostProbe {
     private static long bytesSum;
     private static int bytesFrames;
     private static double emptyMs = -1, oursMs, oursBytes;
+    private static int oursDrawn, oursCulled;
     private static boolean installed;
     private static final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
     @Nullable private static volatile Test active;
@@ -198,7 +203,7 @@ public final class CgCostProbe {
                         && spawned < RUNS.get(run).count()) {
                     // Vanilla's side: the stands spawned a few a tick, the measure starting once all stand
                     for (int i = 0; i < SPAWN_PER_TICK && spawned < RUNS.get(run).count(); i++, spawned++) {
-                        double[] p = at(spawned);
+                        double[] p = at(spawned, RUNS.get(run).around());
                         stimulus.stand(p[0], ay, p[2]);
                     }
                     ticks = 0;
@@ -213,7 +218,15 @@ public final class CgCostProbe {
 
     // Grid position i ahead of the player: COLUMNS across, rows going away
     private static double[] at(int i) {
-        double across = (i % COLUMNS - (COLUMNS - 1) / 2.0) * SPACING, ahead = AHEAD + (i / COLUMNS) * SPACING;
+        return at(i, false);
+    }
+
+    // Around: one in four on the grid ahead, the rest on the same grid behind the player, out of view
+    private static double[] at(int i, boolean around) {
+        boolean behind = around && i % 4 != 0;
+        int k = !around ? i : behind ? i - i / 4 - 1 : i / 4;
+        double across = (k % COLUMNS - (COLUMNS - 1) / 2.0) * SPACING, rows = AHEAD + (k / COLUMNS) * SPACING;
+        double ahead = behind ? -rows : rows;
         return new double[]{ax + fx * ahead + rx * across, ay, az + fz * ahead + rz * across};
     }
 
@@ -254,7 +267,7 @@ public final class CgCostProbe {
         if (r.kind() == Kind.COMPONENTS && standType != null) {
             CgEntityRef ref = CgEntityRef.of(CgEntityData.parse(standType));
             for (int i = 0; i < r.count(); i++) {
-                double[] p = at(i);
+                double[] p = at(i, r.around());
                 components.add(CgChildEntityComponent.of(CgScene.client(), ref).at(p[0], ay, p[2]).spawn());
             }
         } else if (r.kind() == Kind.LEVELS) {
@@ -287,13 +300,16 @@ public final class CgCostProbe {
             if (side == 0) {
                 oursMs = ms;
                 oursBytes = bytesFrames == 0 ? -1 : (double) bytesSum / bytesFrames;
+                oursDrawn = CgHostWorld.drawn();
+                oursCulled = CgHostWorld.culled();
             }
             boolean vanillaSide = r.kind() == Kind.COMPONENTS && standType != null;
             if (side == 1 || !vanillaSide) {
                 test.noted("cost." + r.name(), String.format(Locale.ROOT, "ours %.3f ms a frame, vanilla %s (%d frames); our "
-                                + "draw point allocates %s a frame", oursMs,
+                                + "draw point allocates %s a frame%s", oursMs,
                         vanillaSide ? String.format(Locale.ROOT, "%.3f ms", ms) : "none to compare", frameCount,
-                        oursBytes < 0 ? "unmeasured" : String.format(Locale.ROOT, "%.0f B", oursBytes)));
+                        oursBytes < 0 ? "unmeasured" : String.format(Locale.ROOT, "%.0f B", oursBytes),
+                        r.kind() == Kind.COMPONENTS ? "; " + oursDrawn + " drawn, " + oursCulled + " culled" : ""));
             }
         }
         // Tidy the side just measured

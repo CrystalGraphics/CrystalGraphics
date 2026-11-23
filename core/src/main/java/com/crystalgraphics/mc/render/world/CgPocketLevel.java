@@ -479,7 +479,7 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
             double ox = camera.originX(), oy = camera.originY(), oz = camera.originZ();
             CgView view = ask.view;
             Runnable components = view == null ? () -> { }
-                    : () -> CgHostWorld.drawScene(view.scene(), ox, oy, oz, cameraView, partialTick, true);
+                    : () -> CgHostWorld.drawScene(view.scene(), camera, cameraView, partialTick, true);
             long zone = CgTrace.begin(CgChannels.PICTURES, "pocket.draw");
             long hostMark = ALLOCATION.hostBegin();
             try {

@@ -34,7 +34,7 @@ import org.lwjgl.glfw.GLFW;
 //?}
 //? if >=1.21.10 {
 /*import net.minecraft.client.renderer.SubmitNodeCollector;
-import net.minecraft.world.phys.Vec3;
+import com.crystalgraphics.camera.CgCamera;
 import org.joml.Matrix4f;
 *///?}
 //? if >=1.21.10 <26.1 {
@@ -96,12 +96,15 @@ public final class LifecycleModern {
         CgHostWorld.Host host = CgPlatform.get(CgHostWorld.HOST);
         if (!(host instanceof HostWorldModern)) return;
         ((HostWorldModern) host).submitting(collector, level.cameraRenderState);
-        Vec3 at = level.cameraRenderState.pos;
-        CgHostWorld.drawPoint(at.x, at.y, at.z, IDENTITY,
-                Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true));
+        // Culled by this frame's camera, which the opaque hook captures only after: one of its own, the frame's untouched
+        Minecraft mc = Minecraft.getInstance();
+        float partialTick = mc.getDeltaTracker().getGameTimeDeltaPartialTick(true);
+        HostCameraModern.capture(mc, partialTick, SUBMIT_CAMERA);
+        CgHostWorld.drawPoint(SUBMIT_CAMERA, IDENTITY, partialTick);
     }
 
     private static final Matrix4fc IDENTITY = new Matrix4f();
+    private static final CgCamera SUBMIT_CAMERA = new CgCamera();
     *///?}
 
     /**

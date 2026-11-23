@@ -21,6 +21,7 @@ import com.crystalgraphics.mc.render.entity.CgEntityPose;
 import com.crystalgraphics.mc.render.world.CgHostWorld;
 import com.crystalgraphics.mc.render.world.CgItemDisplay;
 import com.crystalgraphics.serialization.nbt.CgNbt;
+import com.crystalgraphics.shape.bounds.CgAABB;
 
 import net.minecraft.block.ITileEntityProvider;
 import net.minecraft.block.state.IBlockState;
@@ -117,6 +118,48 @@ public final class HostWorldLegacy implements CgHostWorld.Host {
             }
         }
         return new Block(s, tile);
+    }
+
+    /**
+     * An entity's render box (Forge's from 1.10, its box before) inflated by half a block, around its feet, as its
+     * renderer culls it; a tile's
+     * render box, which a tile drawn past its block makes infinite.
+     */
+    @Override
+    public boolean bounds(Object drawn, CgAABB out) {
+        if (drawn instanceof Entity) {
+            Entity e = (Entity) drawn;
+            if (e.ignoreFrustumCheck) return false;
+            //? if <1.10 {
+            /*out.set(e.getEntityBoundingBox());
+            *///?} else {
+            out.set(e.getRenderBoundingBox());
+            //?}
+            out.set(out.minX() - e.posX - 0.5, out.minY() - e.posY - 0.5, out.minZ() - e.posZ - 0.5,
+                    out.maxX() - e.posX + 0.5, out.maxY() - e.posY + 0.5, out.maxZ() - e.posZ + 0.5);
+            return true;
+        }
+        if (drawn instanceof Block) {
+            TileEntity tile = ((Block) drawn).tile;
+            if (tile == null) {
+                out.set(0, 0, 0, 1, 1, 1);
+                return true;
+            }
+            out.set(tile.getRenderBoundingBox());
+            // At the origin, where it was made: its box is already its own
+            return !Double.isInfinite(out.minX()) && !Double.isInfinite(out.maxX()) && !Double.isInfinite(out.maxY());
+        }
+        return false;
+    }
+
+    /** An entity's own render distance; a tile's. */
+    @Override
+    public boolean inRange(Object drawn, double distanceSq) {
+        if (drawn instanceof Entity) return ((Entity) drawn).isInRangeToRenderDist(distanceSq);
+        if (drawn instanceof Block && ((Block) drawn).tile != null) {
+            return distanceSq < ((Block) drawn).tile.getMaxRenderDistanceSquared();
+        }
+        return true;
     }
 
     @Override

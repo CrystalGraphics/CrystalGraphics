@@ -70,7 +70,33 @@ public abstract class CgHostDrawnComponent<T extends CgHostDrawnComponent<T>> ex
 
     @Override
     final boolean kindBounds(CgAABB out) {
+        return hostBounds(out);
+    }
+
+    /**
+     * Its bounds in object space, what the world draw point culls it by against the camera's frustum, as Minecraft culls
+     * its own: false for none, never culled. Asked again only after it moves or {@link #hostBoundsChanged}.
+     */
+    protected boolean hostBounds(CgAABB out) {
         return false;
+    }
+
+    /**
+     * Whether it draws {@code distanceSq} (blocks, squared) from the camera, as Minecraft decides for its own: an
+     * entity's render distance, a block entity's view distance. True by default: no distance of its own.
+     */
+    protected boolean hostInRange(double distanceSq) {
+        return true;
+    }
+
+    /** What {@link #hostBounds} answers changed: the game's object for it was made or replaced. */
+    protected final void hostBoundsChanged() {
+        boundsChanged();
+    }
+
+    /** Called by the world draw point, so a kind's range needs no package access. */
+    public final boolean inRangeHosted(double distanceSq) {
+        return hostInRange(distanceSq);
     }
 
     @Override
