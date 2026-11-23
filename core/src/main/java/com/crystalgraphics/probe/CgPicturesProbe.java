@@ -43,6 +43,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -171,6 +172,15 @@ public final class CgPicturesProbe {
             return true;
         }
 
+        /**
+         * Whether vanilla's GUI entity draw resolves coplanar faces by where on screen it is drawn, so that an entity
+         * picture may differ from the reference at an isolated pixel: below 1.20 translucent quads sort by distance from
+         * the origin, and 1.19.4 puts the screen position into the vertices sorted.
+         */
+        default boolean entityTies() {
+            return false;
+        }
+
 
         /**
          * From the host's HUD hook: fills {@code w x h} at ({@code x}, {@code y}) and at ({@code bx}, {@code by}) with the
@@ -218,6 +228,13 @@ public final class CgPicturesProbe {
      * target and is composited after, a rounding a layer more than vanilla's straight blend (a tooltip's fill and border).
      */
     private static final int LAYER_SLACK = 2;
+    /**
+     * The most isolated pixels an entity cell may differ by where the host has {@link Host#entityTies}: a skin's outer
+     * layers meet coplanar (a jacket's top and a sleeve's), and either may win the tie. Web reftests' {@code fuzzy}.
+     */
+    private static final int ENTITY_TIES = 2;
+    /** Panel pixels a cell's check excused, left out of the whole panel's: {@code y << 16 | x}. */
+    private static final Set<Integer> EXCUSED = new HashSet<>();
     /** Client ticks: in the world before drawing; parity frames before the shot; frames a cost is measured over. */
     private static final int SETTLE = 60, WARM = 20, COST = 60;
     /** Ticks past WARM a parity shot waits for the panel's pictures to draw: a slow client spreads first draws. */
@@ -1138,13 +1155,21 @@ public final class CgPicturesProbe {
     /** Each cell's panel against the reference's, then the whole: checks named {@code pictures.parity.<prefix>...}. */
     private static void parity(Test test, BufferedImage image, float s, String prefix) {
         List<int[]> slack = new ArrayList<>();
+        boolean ties = CgPlatform.get(Host.SERVICE).entityTies();
+        EXCUSED.clear();
         for (Cell cell : cells) {
             int[] r = cell.rect();
             int[] own = {r[0], r[1], r[2], r[3], cell.slack()};
             slack.add(own);
             int[] d = diff(image, r[0], r[1], r[2], r[3], s, false, List.of(own));
+            String excused = "";
+            if (d[0] != 0 && ties && cell.kind() == Kind.ENTITY) {
+                excused = excuseTies(image, r, s, own);
+                if (!excused.isEmpty()) d = diff(image, r[0], r[1], r[2], r[3], s, false, List.of(own));
+            }
             test.stated("pictures.parity." + prefix + cell.name(), d[0] == 0, d[0] + " of " + d[2] + " pixels differ by more than "
-                    + cell.slack() + "; max " + d[1] + (d[1] > 1 && d[0] == 0 ? " (" + cell.slackReason() + ")" : "") + where(d));
+                    + cell.slack() + "; max " + d[1] + (d[1] > 1 && d[0] == 0 && excused.isEmpty() ? " (" + cell.slackReason() + ")" : "") + where(d)
+                    + excused);
         }
         int[] whole = diff(image, 0, 0, W, H, s, false, slack);
         test.stated(prefix.isEmpty() ? "pictures.parity" : "pictures.parity." + prefix + "panel", whole[0] == 0,
@@ -1154,6 +1179,32 @@ public final class CgPicturesProbe {
         if (!prefix.isEmpty()) return;
         int[] blank = diff(image, 0, 0, W, H, s, true, List.of());
         test.stated("pictures.drawn", blank[0] > 0, blank[0] + " of the reference panel's pixels are not the background");
+    }
+
+    // An entity cell's failing pixels excused when at most ENTITY_TIES, none beside another: a coplanar tie, not a
+    // misdrawn region. Empty where they are not; else what was excused, for the cell's line
+    private static String excuseTies(BufferedImage image, int[] r, float s, int[] own) {
+        int x0 = Math.round(Math.max(0, r[0]) * s), y0 = Math.round(Math.max(0, r[1]) * s);
+        int x1 = Math.round(Math.min(W, r[0] + r[2]) * s), y1 = Math.round(Math.min(H, r[1] + r[3]) * s);
+        List<int[]> over = new ArrayList<>();
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x++) {
+                if (delta(image, x, y, s, false) <= allowed(List.of(own), x / s, y / s)) continue;
+                if (over.size() == ENTITY_TIES) return "";
+                over.add(new int[]{x, y});
+            }
+        }
+        for (int i = 0; i < over.size(); i++) {
+            for (int j = i + 1; j < over.size(); j++) {
+                if (Math.abs(over.get(i)[0] - over.get(j)[0]) <= 1 && Math.abs(over.get(i)[1] - over.get(j)[1]) <= 1) return "";
+            }
+        }
+        StringBuilder b = new StringBuilder("; excused as a coplanar tie (vanilla's own order here moves with screen position):");
+        for (int[] p : over) {
+            EXCUSED.add(p[1] << 16 | p[0]);
+            b.append(' ').append(p[0] - x0).append(',').append(p[1] - y0);
+        }
+        return b.toString();
     }
 
     // Where a diff's failing pixels lie in its rect: an edge row or column is sampling, a band is placement
@@ -1194,11 +1245,9 @@ public final class CgPicturesProbe {
                 if (Math.abs(rx - cx) <= ch && Math.abs(ry - cy) <= ch || Math.abs(px - cx) <= ch && Math.abs(py - cy) <= ch) {
                     continue;
                 }
-                int a = image.getRGB(rx, ry), b = againstBackground ? BACKGROUND : image.getRGB(px, py);
-                int d = Math.max(Math.abs((a >> 16 & 255) - (b >> 16 & 255)),
-                        Math.max(Math.abs((a >> 8 & 255) - (b >> 8 & 255)), Math.abs((a & 255) - (b & 255))));
+                int d = delta(image, x, y, s, againstBackground);
                 n++;
-                if (d > allowed(slack, x / s, y / s)) {
+                if (d > allowed(slack, x / s, y / s) && !EXCUSED.contains(y << 16 | x)) {
                     over++;
                     left = Math.min(left, x - x0);
                     top = Math.min(top, y - y0);
@@ -1209,6 +1258,14 @@ public final class CgPicturesProbe {
             }
         }
         return new int[]{over, max, n, left, top, right, bottom, x1 - x0, y1 - y0};
+    }
+
+    // Panel pixel (x, y): the reference's against the picture's (or the background), the largest channel's difference
+    private static int delta(BufferedImage image, int x, int y, float s, boolean againstBackground) {
+        int a = image.getRGB(Math.round(REF_X * s) + x, Math.round(REF_Y * s) + y);
+        int b = againstBackground ? BACKGROUND : image.getRGB(Math.round(PIC_X * s) + x, Math.round(PIC_Y * s) + y);
+        return Math.max(Math.abs((a >> 16 & 255) - (b >> 16 & 255)),
+                Math.max(Math.abs((a >> 8 & 255) - (b >> 8 & 255)), Math.abs((a & 255) - (b & 255))));
     }
 
     private static int allowed(List<int[]> rects, float gx, float gy) {

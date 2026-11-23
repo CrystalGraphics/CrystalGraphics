@@ -12020,6 +12020,7 @@ com/crystalgraphics/probe/CgPicturesProbe$Host
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   method public cooldown (Ljava/lang/String;)V
   method public draws (Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;)Z
+  method public entityTies ()Z
   method public hudContext (Ljava/lang/Object;)Lcom/crystalgraphics/mc/render/custom/CgHostDrawContext;
   method public,abstract absent ()Ljava/lang/String;
   method public,abstract cells (Lcom/crystalgraphics/mc/render/custom/CgHostDrawContext;Ljava/util/List;Lcom/crystalgraphics/probe/CgPicturesProbe$Drawn;)V

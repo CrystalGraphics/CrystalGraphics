@@ -96,6 +96,15 @@ public final class PicturesProbeModern implements CgPicturesProbe.Host {
     }
 
     @Override
+    public boolean entityTies() {
+        //? if <1.20 {
+        /*return true;
+        *///?} else {
+        return false;
+        //?}
+    }
+
+    @Override
     public boolean draws(Kind kind) {
         //? if <1.20 {
         /*return kind != Kind.PLAYER && kind != Kind.TOOLTIP;
