@@ -29,7 +29,8 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 /*import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
 *///?}
 //? if >=1.15 <1.19.3 {
-/*import com.mojang.math.Vector3f;
+/*import com.mojang.math.Matrix3f;
+import com.mojang.math.Vector3f;
 *///?}
 //? if >=1.19.3 <1.21.9 {
 import com.mojang.math.Axis;
@@ -131,6 +132,7 @@ public final class BlockPicturesModern implements CgBlockPictures.Host {
         pose.pushPose();
         pose.translate(x + size / 2, y + size / 2, 100);
         pose.scale(size, -size, size);
+        unflipNormals(pose);
         rotate(pose);
         pose.scale(0.625f, 0.625f, 0.625f);
         pose.translate(-0.5, -0.5, -0.5);
@@ -145,6 +147,15 @@ public final class BlockPicturesModern implements CgBlockPictures.Host {
     }
 
     //? if >=1.15 <1.21.9 {
+    // The GUI's y flip is the pose's alone, as in vanilla's item view: its normals keep up, so light falls from above
+    private static void unflipNormals(PoseStack pose) {
+        //? if <1.19.3 {
+        /*pose.last().normal().mul(Matrix3f.createScaleMatrix(1f, -1f, 1f));
+        *///?} else {
+        pose.last().normal().scale(1f, -1f, 1f);
+        //?}
+    }
+
     private static void rotate(PoseStack pose) {
         //? if <1.19.3 {
         /*pose.mulPose(Vector3f.XP.rotationDegrees(30));
