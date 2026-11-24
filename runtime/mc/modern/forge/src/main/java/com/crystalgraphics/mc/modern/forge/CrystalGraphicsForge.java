@@ -115,10 +115,8 @@ import net.minecraftforge.client.event.ScreenEvent;
 *///?} elif <1.19 {
 /*import net.minecraftforge.client.event.ScreenOpenEvent;
 *///?}
-//? if <1.20.1 {
-/*import com.crystalgraphics.mc.modern.platform.HeldFirstScreen;
+import com.crystalgraphics.mc.modern.platform.ScreensModern;
 import net.minecraft.client.gui.screens.Screen;
-*///?}
 //? if >=1.17 {
 import net.minecraftforge.fml.CrashReportCallables;
 //?} else {
@@ -370,11 +368,13 @@ public final class CrystalGraphicsForge implements VariantEntry {
             MinecraftForge.EVENT_BUS.addListener(Events::onScreenRender);
             //?}
             ScreenInputForge.register();
-            // The first screen held behind our loading screen: set in Minecraft's constructor below 1.20.1, swapped as
-            // it opens. From 1.20.1 the FirstScreenHook node mixin holds it once the load finishes.
-            //? if <1.20.1 {
-            /*MinecraftForge.EVENT_BUS.addListener(Events::onScreenOpen);
-            *///?}
+            // A screen swapped as it opens (ScreensModern.instead): the first screen held behind our loading screen below
+            // 1.20.1 (from 1.20.1 the FirstScreenHook node mixin holds it), and a menu's screen the engine draws.
+            //? if >=1.21.6 {
+            /*ScreenEvent.Opening.BUS.addListener(Events::onScreenOpen);
+            *///?} else {
+            MinecraftForge.EVENT_BUS.addListener(Events::onScreenOpen);
+            //?}
             // Forge 53 (1.21.3) removed the render-stage event; from there the passes are a mixin's.
             // @see com.crystalgraphics.mc.modern.forge.mixin.OpaquePassHook
             //? if >=1.21.3 {
@@ -421,20 +421,20 @@ public final class CrystalGraphicsForge implements VariantEntry {
 
         //? if <1.18 {
         /*private static void onScreenOpen(GuiOpenEvent event) {
-            Screen instead = HeldFirstScreen.instead(event.getGui());
+            Screen instead = ScreensModern.instead(event.getGui());
             if (instead != null) event.setGui(instead);
         }
         *///?} elif <1.19 {
         /*private static void onScreenOpen(ScreenOpenEvent event) {
-            Screen instead = HeldFirstScreen.instead(event.getScreen());
+            Screen instead = ScreensModern.instead(event.getScreen());
             if (instead != null) event.setScreen(instead);
         }
-        *///?} elif <1.20.1 {
-        /*private static void onScreenOpen(ScreenEvent.Opening event) {
-            Screen instead = HeldFirstScreen.instead(event.getNewScreen());
+        *///?} else {
+        private static void onScreenOpen(ScreenEvent.Opening event) {
+            Screen instead = ScreensModern.instead(event.getNewScreen());
             if (instead != null) event.setNewScreen(instead);
         }
-        *///?}
+        //?}
 
         //? if >=1.17 {
         private static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {

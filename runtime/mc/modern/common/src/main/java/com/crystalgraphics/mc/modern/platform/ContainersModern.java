@@ -15,6 +15,7 @@ import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.FurnaceResultSlot;
+import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.MerchantResultSlot;
 import net.minecraft.world.inventory.ResultContainer;
 import net.minecraft.world.inventory.ResultSlot;
@@ -34,6 +35,7 @@ import net.minecraft.world.inventory.BeaconMenu;
 import net.minecraft.world.inventory.BrewingStandMenu;
 import net.minecraft.world.inventory.EnchantmentMenu;
 import net.minecraft.world.inventory.LecternMenu;
+import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.MerchantMenu;
 import net.minecraft.world.inventory.StonecutterMenu;
 import net.minecraft.world.item.trading.MerchantOffer;
@@ -275,13 +277,27 @@ public final class ContainersModern implements CgContainers.Host {
     /** The menu's registry name; the player's own menu has no type, and neither does anything before 1.14.3. */
     @Override
     public String type() {
-        AbstractContainerMenu menu = menu();
-        if (menu == player().inventoryMenu) return CgContainers.Menu.PLAYER;
+        return typeOf(menu());
+    }
+
+    /**
+     * {@code menu}'s type as vanilla names it, {@code minecraft:furnace}; {@link CgContainers.Menu#PLAYER} for the
+     * player's own; {@code unknown} for any other menu built without one (creative's, a mod's), and before 1.14.3.
+     */
+    static String typeOf(AbstractContainerMenu menu) {
+        if (menu instanceof InventoryMenu) return CgContainers.Menu.PLAYER;
         //? if >=1.14.3 {
+        MenuType<?> type;
+        try {
+            type = menu.getType();
+        } catch (UnsupportedOperationException typeless) {
+            // getType's only answer for a menu built with no type: there is no other way to ask
+            return "unknown";
+        }
         //? if >=1.19.3 {
-        Object key = BuiltInRegistries.MENU.getKey(menu.getType());
+        Object key = BuiltInRegistries.MENU.getKey(type);
         //?} else {
-        /*Object key = Registry.MENU.getKey(menu.getType());
+        /*Object key = Registry.MENU.getKey(type);
         *///?}
         if (key != null) return key.toString();
         //?}

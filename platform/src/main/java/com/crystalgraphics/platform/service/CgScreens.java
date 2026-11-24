@@ -1,5 +1,9 @@
 package com.crystalgraphics.platform.service;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgService;
 import com.crystalgraphics.platform.input.CgSystemInput;
@@ -74,6 +78,25 @@ public final class CgScreens {
         default boolean textInputArea(float[] out) {
             return false;
         }
+
+        /**
+         * Where its container panel is, in the game's GUI units, into {@code out} as x, y, width, height: what a host
+         * container screen reports as its own ({@code leftPos}, {@code topPos}, the image size), so a mod reading vanilla's
+         * geometry finds ours. False while it has none laid out.
+         */
+        default boolean panel(float[] out) {
+            return false;
+        }
+
+        /** The menu slot under its pointer, as a host container screen's hovered slot; -1 for none. */
+        default int hoveredSlot() {
+            return -1;
+        }
+    }
+
+    /** Makes the owner of a screen for a menu of a registered type, as the server opens it. Client thread. */
+    public interface MenuScreen {
+        Owner open(String menuType);
     }
 
     /** What a host answers: its screen of the engine's, one class per era, {@code Screens<Era>}. */
@@ -118,11 +141,38 @@ public final class CgScreens {
     /** The slot a host fills, on a client. */
     public static final CgService<Host> HOST = CgService.of("crystalgraphics:screens", Host.NONE);
 
+    private static final Map<String, MenuScreen> MENU_SCREENS = new ConcurrentHashMap<>();
+
     private CgScreens() {
     }
 
     private static Host host() {
         return CgPlatform.get(HOST);
+    }
+
+    /**
+     * Shows the engine's screen instead of the game's whenever the server opens a menu of {@code menuType}: the host
+     * opens its own container screen over that menu (vanilla's slots, so its gestures and every mod reading its slots
+     * work) and {@code screen}'s owner draws it. Null removes it.
+     *
+     * <pre>{@code
+     * CgScreens.replaceMenu("minecraft:furnace", type -> new FurnaceUi().owner());
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code menuType} is vanilla's id, {@code minecraft:generic_9x3}; legacy and 1.7.10 have no menu types and keep
+     *       their own screens.</li>
+     *   <li>The owner's slots must sit where the menu's are: {@link Owner#panel} places the host's.</li>
+     * </ul>
+     */
+    public static void replaceMenu(String menuType, MenuScreen screen) {
+        if (screen == null) MENU_SCREENS.remove(menuType);
+        else MENU_SCREENS.put(menuType, screen);
+    }
+
+    /** What shows a menu of {@code menuType} instead of the game's screen; null for the game's own. Hosts. */
+    public static MenuScreen menuScreen(String menuType) {
+        return MENU_SCREENS.get(menuType);
     }
 
     /** Puts {@code owner}'s screen up in front of whatever is there; nothing if it is up already. */

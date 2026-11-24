@@ -27,8 +27,8 @@ import net.minecraft.client.input.KeyEvent;
 *///?}
 //? if >=26.3 {
 /*import net.minecraft.client.input.PreeditEvent;
-import javax.annotation.Nullable;
 *///?}
+import javax.annotation.Nullable;
 
 /**
  * {@link CgScreens} on the modern tree: the engine's screen is one empty {@code Screen} holding its owner, which draws
@@ -59,14 +59,35 @@ public final class ScreensModern implements CgScreens.Host {
 
     @Override
     public void close(CgScreens.Owner owner) {
-        Screen screen = screen();
-        if (screen instanceof Owned && ((Owned) screen).owner == owner) ((Owned) screen).closing = true;
+        OwnedState state = state(screen());
+        if (state != null && state.owner == owner) state.closing = true;
     }
 
     @Override
     public CgScreens.Owner front() {
-        Screen screen = screen();
-        return screen instanceof Owned ? ((Owned) screen).owner : null;
+        OwnedState state = state(screen());
+        return state == null ? null : state.owner;
+    }
+
+    /**
+     * The screen to open instead of {@code opening}, or null to let it open: each loader's one screen-opening hook. Below
+     * 1.20.1 the first screen held while our loading screen is up ({@code HeldFirstScreen}); then the engine's container
+     * screen over a menu whose type has an engine screen ({@link CgScreens#replaceMenu}).
+     */
+    @Nullable
+    public static Screen instead(@Nullable Screen opening) {
+        //? if <1.20.1 {
+        /*Screen held = HeldFirstScreen.instead(opening);
+        if (held != null) return held;
+        *///?}
+        return OwnedContainer.instead(opening);
+    }
+
+    // The engine's state of an engine screen, whichever class; null for the host's own
+    @Nullable
+    private static OwnedState state(@Nullable Screen screen) {
+        if (screen instanceof Owned) return ((Owned) screen).state;
+        return OwnedContainer.state(screen);
     }
 
     @Override
@@ -77,8 +98,9 @@ public final class ScreensModern implements CgScreens.Host {
     @Override
     public void giveBack(CgSystemInput.Keyboard.Event key) {
         Screen screen = screen();
-        if (screen instanceof Owned) {
-            if (key.pressed() && key.key() == CgKeyCodes.KEY_ESCAPE) ((Owned) screen).owner.escape();
+        OwnedState state = state(screen);
+        if (state != null) {
+            if (key.pressed() && key.key() == CgKeyCodes.KEY_ESCAPE) state.owner.escape();
         } else if (screen != null) {
             give(screen, key);
         }
@@ -115,13 +137,8 @@ public final class ScreensModern implements CgScreens.Host {
     /** The engine's screen: empty, its owner's. */
     private static final class Owned extends Screen {
 
+        final OwnedState state;
         final CgScreens.Owner owner;
-        /** Set by a close: taken down at the next tick. */
-        boolean closing;
-        //? if >=1.21.6 <26.1 {
-        /*/^* The player's own HUD setting, kept once an opening: init runs again on every resize. ^/
-        private Boolean hudHiddenBefore;
-        *///?}
         //? if >=26.3 {
         /*private final float[] area = new float[4];
         private int placedLeft = -1, placedTop, placedRight, placedBottom;
@@ -136,40 +153,23 @@ public final class ScreensModern implements CgScreens.Host {
             /*super();
             *///?}
             this.owner = owner;
+            this.state = new OwnedState(owner);
         }
 
         @Override
         protected void init() {
-            //? if >=26.3 {
-            /*minecraft.onTextInputFocusChange(this, true);
-            *///?}
-            //? if >=1.21.6 <26.1 {
-            /*if (owner.hidesHud()) {
-                if (hudHiddenBefore == null) hudHiddenBefore = CgMinecraftClient.hudHidden(minecraft);
-                CgMinecraftClient.setHudHidden(minecraft, true);
-            }
-            *///?}
-            owner.shown();
+            state.init(this, Minecraft.getInstance());
         }
 
         @Override
         public void removed() {
-            //? if >=26.3 {
-            /*minecraft.onTextInputFocusChange(this, false);
-            *///?}
-            //? if >=1.21.6 <26.1 {
-            /*if (hudHiddenBefore != null) CgMinecraftClient.setHudHidden(minecraft, hudHiddenBefore);
-            hudHiddenBefore = null;
-            *///?}
-            owner.hidden();
+            state.removed(this, Minecraft.getInstance());
         }
 
         @Override
         public void tick() {
             super.tick();
-            if (!closing) return;
-            closing = false;
-            onClose();
+            if (state.takeClose()) onClose();
         }
 
         /** Escape that no input listener took: its owner's. {@link #shouldCloseOnEsc} keeps vanilla from closing first. */
@@ -180,9 +180,7 @@ public final class ScreensModern implements CgScreens.Host {
         *///?} else {
         public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         //?}
-            if (CgInput.key(keyCode) != CgKeyCodes.KEY_ESCAPE) return false;
-            owner.escape();
-            return true;
+            return state.escape(keyCode);
         }
 
         @Override

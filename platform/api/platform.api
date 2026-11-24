@@ -3180,9 +3180,11 @@ com/crystalgraphics/platform/service/CgScreens
   method public,static closeFront ()V
   method public,static giveBack (Lcom/crystalgraphics/platform/input/CgSystemInput$Keyboard$Event;)V
   method public,static isOpen (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)Z
+  method public,static menuScreen (Ljava/lang/String;)Lcom/crystalgraphics/platform/service/CgScreens$MenuScreen;
   method public,static open (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
   method public,static openChat ()V
   method public,static openInventory ()V
+  method public,static replaceMenu (Ljava/lang/String;Lcom/crystalgraphics/platform/service/CgScreens$MenuScreen;)V
 com/crystalgraphics/platform/service/CgScreens$Host
   access public,abstract,interface
   extends java/lang/Object
@@ -3195,12 +3197,18 @@ com/crystalgraphics/platform/service/CgScreens$Host
   method public,abstract open (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
   method public,abstract openChat ()V
   method public,abstract openInventory ()V
+com/crystalgraphics/platform/service/CgScreens$MenuScreen
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract open (Ljava/lang/String;)Lcom/crystalgraphics/platform/service/CgScreens$Owner;
 com/crystalgraphics/platform/service/CgScreens$Owner
   access public,abstract,interface
   extends java/lang/Object
   method public escape ()V
   method public hidden ()V
   method public hidesHud ()Z
+  method public hoveredSlot ()I
+  method public panel ([F)Z
   method public pausesGame ()Z
   method public shown ()V
   method public textInputArea ([F)Z

@@ -448,6 +448,8 @@ public final class CgHostPictures {
     private static final List<CgHostPicture> HELD = new ArrayList<>();
     private static final List<Page> PAGES = new ArrayList<>();
     private static final CgHostPicture.Size[] DUE = new CgHostPicture.Size[CgHostPicture.MAX_SIZES];
+    /** This frame's due sizes, every picture's, gathered before the batch opens. */
+    private static final List<CgHostPicture.Size> GATHERED = new ArrayList<>();
     private static final List<Batch> BATCHES = new CopyOnWriteArrayList<>();
     private static final Budget BUDGET = new Budget();
     private static final Cells CELLS = new Cells();
@@ -487,7 +489,8 @@ public final class CgHostPictures {
 
     /**
      * Draws every picture due: shown for the first time, or due by its refresh. Render thread, at the head of a GUI
-     * firing, before {@code CgDeviceSection.begin}. Nothing is due most frames, and then it costs a queue poll.
+     * firing, before {@code CgDeviceSection.begin}. Nothing is due most frames, and then it walks the held pictures and
+     * asks the host nothing.
      */
     public static void drawPoint() {
         long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.drawPoint");
@@ -549,20 +552,25 @@ public final class CgHostPictures {
             }
         }
         long start = System.nanoTime();
+        long step = CgTrace.begin(CgChannels.PICTURES, "pictures.collect");
+        gatherDue(frame);
+        CgTrace.end(step);
+        if (GATHERED.isEmpty() && !batchDue() && !anyPageMoved()) {
+            idle(frame, start);
+            return;
+        }
         Budget budget = BUDGET;
         budget.begin((long) (FIRST_DRAW_MS.get() * 1_000_000L));
         boolean check = check() != 0;
         long zone = CgTrace.begin(CgChannels.PICTURES, "pictures.batch");
         // The batch's own host calls are Minecraft's work too (1.21.6 - 26.1: its fog buffer's frame)
         long mark = ALLOCATION.hostBegin();
-        long step = CgTrace.begin(CgChannels.PICTURES, "pictures.begin");
+        step = CgTrace.begin(CgChannels.PICTURES, "pictures.begin");
         host.beginBatch(check);
         CgTrace.end(step);
         ALLOCATION.hostEnd(mark);
         try {
-            step = CgTrace.begin(CgChannels.PICTURES, "pictures.collect");
-            collectDue(host, frame);
-            CgTrace.end(step);
+            placeDue(host);
             for (int i = 0; i < PAGES.size(); i++) drawPage(host, PAGES.get(i), frame);
             for (int i = 0; i < BATCHES.size(); i++) {
                 Batch b = BATCHES.get(i);
@@ -578,21 +586,37 @@ public final class CgHostPictures {
             CgTrace.end(zone);
             if (leak != null) leaked(leak);
         }
+        published(frame, start, budget.drawn, budget.firstDraws, budget.deferred);
+    }
+
+    // A frame with every held picture kept: nothing drawn, nothing asked of the host
+    private static void idle(long frame, long start) {
+        CgTrace.add(CgChannels.PICTURES, "pictures-idle-frames", 1);
+        published(frame, start, 0, 0, 0);
+    }
+
+    private static void published(long frame, long start, int drawn, int firstDraws, int deferred) {
         lastFrame = frame;
         lastNanos = System.nanoTime() - start;
         lastHeld = HELD.size();
-        lastDrawn = budget.drawn;
-        lastFirst = budget.firstDraws;
-        lastDeferred = budget.deferred;
-        CgTrace.counter(CgChannels.PICTURES, "pictures-drawn", budget.drawn);
-        CgTrace.counter(CgChannels.PICTURES, "pictures-first-draws", budget.firstDraws);
-        CgTrace.counter(CgChannels.PICTURES, "pictures-deferred", budget.deferred);
+        lastDrawn = drawn;
+        lastFirst = firstDraws;
+        lastDeferred = deferred;
+        CgTrace.counter(CgChannels.PICTURES, "pictures-drawn", drawn);
+        CgTrace.counter(CgChannels.PICTURES, "pictures-first-draws", firstDraws);
+        CgTrace.counter(CgChannels.PICTURES, "pictures-deferred", deferred);
         CgTrace.counter(CgChannels.PICTURES, "pictures-held", HELD.size());
         CgTrace.counter(CgChannels.PICTURES, "pictures-pages", PAGES.size());
     }
 
-    // Each held picture's sizes due this frame, placed on a page and listed there; sizes unshown long enough given back
-    private static void collectDue(Host host, long frame) {
+    private static boolean anyPageMoved() {
+        for (int i = 0; i < PAGES.size(); i++) if (PAGES.get(i).anyMoved()) return true;
+        return false;
+    }
+
+    // Each held picture's sizes due this frame, into GATHERED; sizes unshown long enough given back. Needs no host
+    private static void gatherDue(long frame) {
+        GATHERED.clear();
         for (int i = HELD.size() - 1; i >= 0; i--) {
             CgHostPicture p = HELD.get(i);
             int due = 0;
@@ -615,12 +639,20 @@ public final class CgHostPictures {
                 }
             }
             for (int k = 0; k < due; k++) {
-                CgHostPicture.Size s = DUE[k];
+                GATHERED.add(DUE[k]);
                 DUE[k] = null;
-                if (s.page == null && !place(host, s)) continue;
-                s.page.due.add(s);
             }
         }
+    }
+
+    // The gathered sizes placed on pages and listed there: inside the batch, as a placement may make a page
+    private static void placeDue(Host host) {
+        for (int i = 0; i < GATHERED.size(); i++) {
+            CgHostPicture.Size s = GATHERED.get(i);
+            if (s.page == null && !place(host, s)) continue;
+            s.page.due.add(s);
+        }
+        GATHERED.clear();
     }
 
     // One host call a page (two where the GUI writes alpha raw): its due cells, the cells a repack moved, and every

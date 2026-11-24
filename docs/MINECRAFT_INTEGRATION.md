@@ -294,6 +294,13 @@ after the hooks (26.1 even extracts it before the level), so a stage drawn from 
 (`ScreensModern`, `ScreensLegacy`, `Screens1710`), a screen of Minecraft's that draws nothing, frees the cursor,
 stops the player and gives Escape to its owner.
 
+**A menu the server opens can show the engine's screen instead of the game's**: `CgScreens.replaceMenu(menuType,
+type -> owner)` names the menu type, and each loader's open hook (Forge's and NeoForge's `ScreenEvent.Opening`, Fabric's
+`ScreenOpenHook` on `setScreen`) swaps the game's container screen for `OwnedContainer`. It is a real
+`AbstractContainerScreen` over the same menu, its `leftPos`, `topPos`, image size and hovered slot set each frame from
+the owner's `panel` and `hoveredSlot`, so a sorting mod reading container geometry finds the engine's slots. 1.13.2,
+legacy Forge and 1.7.10 have no menu types and keep the game's screens.
+
 The exact version splits are in each loader branch's `AGENTS.md`. **The frame ends after the GUI**, from
 a loader frame event or, on Fabric, a mixin — `runtime/mc/modern/common/CLAUDE.md` § *The frame end*,
 which also covers 26.1's own main-target framebuffer and 26.2 under Vulkan.

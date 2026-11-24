@@ -13,6 +13,8 @@ import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.modern.platform.ServerModern;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
+import com.crystalgraphics.mc.modern.platform.ScreensModern;
+import net.minecraft.client.gui.screens.Screen;
 import com.crystalgraphics.mc.modern.platform.command.CommandsModern;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
@@ -219,6 +221,8 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                 // drawn. Client-only types: NeoForge 1.20.4 refuses ScreenEvent on a dedicated server.
                 NeoForge.EVENT_BUS.addListener(ModBus::onRenderGui);
                 NeoForge.EVENT_BUS.addListener(ModBus::onScreenRender);
+                // A menu's screen the engine draws, swapped as it opens (ScreensModern.instead)
+                NeoForge.EVENT_BUS.addListener(ModBus::onScreenOpen);
                 ScreenInputNeoForge.register();
                 // The camera hooks a shake and an FOV kick are added at (HostCameraModern): game-bus events, but
                 // client-only types, so they live here.
@@ -264,6 +268,11 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
 
             private static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
                 KeyBindingsModern.INSTANCE.register(event::register, false);
+            }
+
+            private static void onScreenOpen(ScreenEvent.Opening event) {
+                Screen instead = ScreensModern.instead(event.getNewScreen());
+                if (instead != null) event.setNewScreen(instead);
             }
 
             private static void onScreenRender(ScreenEvent.Render.Post event) {
