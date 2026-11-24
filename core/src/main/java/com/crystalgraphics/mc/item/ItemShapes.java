@@ -37,11 +37,11 @@ final class ItemShapes {
     private ItemShapes() {
     }
 
-    static CgItemStack fromSaved(CgNbtCompound saved, CgItems.Shape shape, int maxDamage) {
+    static CgItemStack fromSaved(CgNbtCompound saved, CgItems.Shape shape, int maxDamage, int maxStackSize) {
         String id = saved.getString("id");
         if (id.isEmpty() || id.equals("minecraft:air")) return CgItemStack.EMPTY;
         if (shape == CgItems.Shape.COMPONENTS) {
-            return new CgItemStack(id, saved.getInt("count", 1), maxDamage, saved.getCompound("components"));
+            return new CgItemStack(id, saved.getInt("count", 1), maxDamage, maxStackSize, saved.getCompound("components"));
         }
         boolean legacy = shape == CgItems.Shape.LEGACY;
         CgNbtCompound tag = saved.getCompound("tag").copy();
@@ -79,7 +79,7 @@ final class ItemShapes {
             tag.remove("RepairCost");
         }
         if (!tag.isEmpty()) out.put(CUSTOM_DATA, tag);
-        return new CgItemStack(id, saved.getInt("Count", 1), maxDamage, out);
+        return new CgItemStack(id, saved.getInt("Count", 1), maxDamage, maxStackSize, out);
     }
 
     private static CgNbtTag text(String old, boolean legacy) {

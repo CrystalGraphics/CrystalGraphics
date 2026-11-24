@@ -52,6 +52,11 @@ public final class Items1710 implements CgItems.Host {
     }
 
     @Override
+    public int maxStackSize(Object stack) {
+        return ((ItemStack) stack).getMaxStackSize();
+    }
+
+    @Override
     public int stamp(Object stack) {
         ItemStack s = (ItemStack) stack;
         int h = 31 * Item.getIdFromItem(s.getItem()) + s.getItemDamage();

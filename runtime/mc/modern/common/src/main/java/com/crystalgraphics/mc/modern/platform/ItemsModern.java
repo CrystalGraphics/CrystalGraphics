@@ -114,6 +114,11 @@ public final class ItemsModern implements CgItems.Host {
     }
 
     @Override
+    public int maxStackSize(Object stack) {
+        return ((ItemStack) stack).getMaxStackSize();
+    }
+
+    @Override
     public int stamp(Object stack) {
         ItemStack s = (ItemStack) stack;
         //? if >=1.20.6 {

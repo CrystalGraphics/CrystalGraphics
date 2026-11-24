@@ -31,6 +31,7 @@ public class CgItemStackTest {
             @Override public CgNbtCompound save(Object stack) { return ((Fake) stack).saved().copy(); }
             @Override public Object load(CgNbtCompound saved) { return new Fake(saved.copy()); }
             @Override public int maxDamage(Object stack) { return 1561; }
+            @Override public int maxStackSize(Object stack) { return 1; }
             @Override public int stamp(Object stack) { return ((Fake) stack).saved().hashCode(); }
             @Override public CgItems.Shape shape() { return shape; }
             @Override public String name(int itemId) { return null; }
@@ -73,6 +74,7 @@ public class CgItemStackTest {
             assertEquals(shape.name(), 1, s.count());
             assertEquals(shape.name(), 5, s.damage());
             assertEquals(shape.name(), 1561, s.maxDamage());
+            assertEquals(shape.name(), 1, s.maxStackSize());
             assertTrue(shape.name(), s.isDamaged());
             assertEquals(shape.name(), shape == CgItems.Shape.LEGACY ? "§bExcalibur" : "Excalibur", s.name());
             assertEquals(shape.name(), List.of("first", "second"), s.lore());

@@ -64,12 +64,12 @@ import java.util.function.Consumer;
  *   <li>A name is a chat component, kept whole; {@link #name} is its text. Older versions' JSON text is projected into
  *       the same tag, and {@code §} codes before 1.13 stay in the text.</li>
  *   <li>Enchantments are {@code {id: level}}; before 1.13 the id is the game's number, as text ({@code "16"}).</li>
- *   <li>{@link #maxDamage} is the item's, not data: {@code 0} on a stack built in Java or by a codec, filled in by
- *       {@link #of(Object)}.</li>
+ *   <li>{@link #maxDamage} and {@link #maxStackSize} are the item's, not data: {@code 0} on a stack built in Java or
+ *       by a codec, filled in by {@link #of(Object)}.</li>
  * </ul>
  *
  * <ul>
- *   <li><b>Equal when the item, count and data are</b>; the max damage is left out. Every empty stack is equal.</li>
+ *   <li><b>Equal when the item, count and data are</b>; the max damage and stack size are left out. Every empty stack is equal.</li>
  *   <li>{@link #stamp} is a hash of item and data, for noticing change; {@link CgItems#stampOf} is the game's own, taken
  *       without building a copy.</li>
  *   <li>It is a copy: editing the game's stack afterwards does not change it, and {@link #components} answers a copy.</li>
@@ -78,36 +78,39 @@ import java.util.function.Consumer;
 public final class CgItemStack {
 
     /** Nothing in a slot. */
-    public static final CgItemStack EMPTY = new CgItemStack("", 0, 0, new CgNbtCompound());
+    public static final CgItemStack EMPTY = new CgItemStack("", 0, 0, 0, new CgNbtCompound());
 
     /** A stack as {@code {id, count, components}}, the modern shape: for a file, the wire or a data pack. */
     public static final CgCodec<CgItemStack> CODEC = CgCodecs.record(
             CgCodecs.field("id", CgCodecs.STRING, CgItemStack::item),
             CgCodecs.optionalField("count", CgCodecs.INT, CgItemStack::count, 1),
             CgCodecs.optionalField("components", CgNbtCompound.CODEC, CgItemStack::components, new CgNbtCompound()),
-            (id, count, components) -> new CgItemStack(id, count, 0, components));
+            (id, count, components) -> new CgItemStack(id, count, 0, 0, components));
 
     private final String item;
     private final int count;
     private final int maxDamage;
+    private final int maxStackSize;
     private final CgNbtCompound components;
 
     /**
      * @param item       the registry name, {@code namespace:path}; {@code ""} for an empty stack
      * @param count      how many; {@code 0} or less is empty
-     * @param maxDamage  the item's durability, {@code 0} for one that does not wear or is not known
-     * @param components the data, copied
+     * @param maxDamage    the item's durability, {@code 0} for one that does not wear or is not known
+     * @param maxStackSize the most of the item one stack holds, {@code 0} where not known
+     * @param components   the data, copied
      */
-    public CgItemStack(String item, int count, int maxDamage, CgNbtCompound components) {
+    public CgItemStack(String item, int count, int maxDamage, int maxStackSize, CgNbtCompound components) {
         this.item = item;
         this.count = count;
         this.maxDamage = maxDamage;
+        this.maxStackSize = maxStackSize;
         this.components = components.copy();
     }
 
     /** A stack of {@code count} of {@code item} with no data: what a test builds. */
     public static CgItemStack of(String item, int count) {
-        return new CgItemStack(item, count, 0, new CgNbtCompound());
+        return new CgItemStack(item, count, 0, 0, new CgNbtCompound());
     }
 
     /**
@@ -154,14 +157,14 @@ public final class CgItemStack {
             CgNbtCompound saved = new CgNbtCompound().put("id", id).putByte("Count", count).putShort("Damage", damage);
             if (r.peek() == '{') saved.put("tag", compound(r));
             r.expectEnd();
-            return ItemShapes.fromSaved(saved, CgItems.Shape.LEGACY, 0);
+            return ItemShapes.fromSaved(saved, CgItems.Shape.LEGACY, 0, 0);
         }
         r.expectEnd();
         if (oldTag != null) {
             CgNbtCompound saved = new CgNbtCompound().put("id", id).putByte("Count", count).put("tag", oldTag);
-            return ItemShapes.fromSaved(saved, CgItems.Shape.TAG, 0);
+            return ItemShapes.fromSaved(saved, CgItems.Shape.TAG, 0, 0);
         }
-        return new CgItemStack(id, count, 0, components);
+        return new CgItemStack(id, count, 0, 0, components);
     }
 
     private static boolean isNumber(CgCommandReader r) {
@@ -198,6 +201,14 @@ public final class CgItemStack {
     /** The item's durability, {@code 0} when it has none or this stack was not read from the game. */
     public int maxDamage() {
         return maxDamage;
+    }
+
+    /**
+     * The most of the item one stack holds, as the game says ({@code 64}, an ender pearl's {@code 16}, a sword's
+     * {@code 1}); {@code 0} when this stack was not read from the game.
+     */
+    public int maxStackSize() {
+        return maxStackSize;
     }
 
     /** No item, none of it, or air: what the game counts as an empty slot. */
@@ -288,15 +299,15 @@ public final class CgItemStack {
     // ---- edits: each answers a new stack ----
 
     public CgItemStack withItem(String item) {
-        return new CgItemStack(item, count, maxDamage, components);
+        return new CgItemStack(item, count, maxDamage, maxStackSize, components);
     }
 
     public CgItemStack withCount(int count) {
-        return new CgItemStack(item, count, maxDamage, components);
+        return new CgItemStack(item, count, maxDamage, maxStackSize, components);
     }
 
     public CgItemStack withMaxDamage(int maxDamage) {
-        return new CgItemStack(item, count, maxDamage, components);
+        return new CgItemStack(item, count, maxDamage, maxStackSize, components);
     }
 
     public CgItemStack withDamage(int damage) {
@@ -371,7 +382,7 @@ public final class CgItemStack {
     private CgItemStack edit(Consumer<CgNbtCompound> edit) {
         CgNbtCompound c = components.copy();
         edit.accept(c);
-        return new CgItemStack(item, count, maxDamage, c);
+        return new CgItemStack(item, count, maxDamage, maxStackSize, c);
     }
 
     // ---- comparing ----

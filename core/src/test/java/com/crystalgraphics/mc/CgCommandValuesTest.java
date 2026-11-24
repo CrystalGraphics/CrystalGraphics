@@ -148,6 +148,7 @@ public class CgCommandValuesTest {
             @Override public CgNbtCompound save(Object stack) { throw new UnsupportedOperationException(); }
             @Override public Object load(CgNbtCompound saved) { throw new UnsupportedOperationException(); }
             @Override public int maxDamage(Object stack) { return 0; }
+            @Override public int maxStackSize(Object stack) { return 64; }
             @Override public int stamp(Object stack) { return 0; }
             @Override public CgItems.Shape shape() { return shape; }
             @Override public String name(int itemId) { return null; }

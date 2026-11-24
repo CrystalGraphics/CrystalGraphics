@@ -61,6 +61,9 @@ public final class CgItems {
         /** The item's durability, {@code 0} for one that does not wear. */
         int maxDamage(Object stack);
 
+        /** The most of the item one stack holds: {@code ItemStack.getMaxStackSize()}. */
+        int maxStackSize(Object stack);
+
         /** The game's own hash of a stack's item and data, count left out, taken without a copy. */
         int stamp(Object stack);
 
@@ -83,6 +86,7 @@ public final class CgItems {
             @Override public CgNbtCompound save(Object stack) { throw absent(); }
             @Override public Object load(CgNbtCompound saved) { throw absent(); }
             @Override public int maxDamage(Object stack) { throw absent(); }
+            @Override public int maxStackSize(Object stack) { throw absent(); }
             @Override public int stamp(Object stack) { throw absent(); }
             @Override public Shape shape() { return Shape.COMPONENTS; }
             @Override public String name(int itemId) { return null; }
@@ -133,7 +137,7 @@ public final class CgItems {
         if (!host.isStack(hostStack)) {
             throw new IllegalArgumentException("Not the game's item stack: " + hostStack.getClass().getName());
         }
-        return ItemShapes.fromSaved(host.save(hostStack), host.shape(), host.maxDamage(hostStack));
+        return ItemShapes.fromSaved(host.save(hostStack), host.shape(), host.maxDamage(hostStack), host.maxStackSize(hostStack));
     }
 
     /** The game's own stack, built from {@code stack}; the game's empty stack (null before 1.11) for an empty one. */
