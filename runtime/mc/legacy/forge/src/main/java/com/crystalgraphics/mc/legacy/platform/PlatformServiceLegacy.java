@@ -69,6 +69,7 @@ import com.crystalgraphics.mc.render.world.CgHostWorld;
 import com.crystalgraphics.mc.render.entity.CgEntityPictures;
 import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.item.CgItemIcons;
+import com.crystalgraphics.mc.render.label.CgLabels;
 import com.crystalgraphics.mc.render.tooltip.CgTooltips;
 import com.crystalgraphics.probe.CgPicturesProbe;
 import com.crystalgraphics.probe.CgValuesProbe;
@@ -147,6 +148,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgHostPictures.HOST, new PicturesLegacy());
         CgPlatform.provide(CgItemIcons.HOST, new ItemIconsLegacy());
         CgPlatform.provide(CgTooltips.HOST, new TooltipsLegacy());
+        CgPlatform.provide(CgLabels.HOST, new LabelsLegacy());
         CgPlatform.provide(CgFluids.HOST, new FluidsLegacy());
         CgPlatform.provide(CgEntityPictures.HOST, new EntityPicturesLegacy());
         CgPlatform.provide(CgBlockPictures.HOST, new BlockPicturesLegacy());

@@ -6,6 +6,7 @@ import com.crystalgraphics.mc.render.entity.CgEntityPictures;
 import com.crystalgraphics.mc.render.world.CgHostWorld;
 import com.crystalgraphics.mc.render.world.CgPocketLevel;
 import com.crystalgraphics.mc.render.item.CgItemIcons;
+import com.crystalgraphics.mc.render.label.CgLabels;
 import com.crystalgraphics.mc.render.tooltip.CgTooltips;
 import com.crystalgraphics.probe.CgPicturesProbe;
 import com.crystalgraphics.probe.CgValuesProbe;
@@ -161,6 +162,7 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgHostPictures.HOST, new Pictures1710());
             CgPlatform.provide(CgItemIcons.HOST, new ItemIcons1710());
             CgPlatform.provide(CgTooltips.HOST, new Tooltips1710());
+            CgPlatform.provide(CgLabels.HOST, new Labels1710());
             CgPlatform.provide(CgFluids.HOST, new Fluids1710());
             CgPlatform.provide(CgEntityPictures.HOST, new EntityPictures1710());
             CgPlatform.provide(CgHostWorld.HOST, new HostWorld1710());

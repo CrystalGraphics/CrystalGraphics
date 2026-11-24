@@ -155,6 +155,18 @@ for (CgPicture image : data.images()) canvas.picture(image, x, y);   // a bundle
 - Before 1.20 a tooltip is drawn by a screen that is never shown, sized as the game's GUI: a tooltip wraps only where
   vanilla's would, never to the picture it is drawn into.
 
+### Labels
+
+```java
+canvas.picture(CgLabelPicture.translated("container.crafting", 0xFF404040, false), 97, 8);   // vanilla's grey, no shadow
+canvas.picture(CgLabelPicture.of("Crusher", 0xFFFFFFFF, true), 8, 6);                        // literal, with shadow
+```
+
+- **`CgLabelPicture`** is a line in Minecraft's own font, resource pack included: what a vanilla screen's title is, so a
+  screen built elsewhere matches its pixels. Sized by the font's measure, 0 until the first draw point; drawn once
+  (`ONCE`). One handle for the same text, colour and shadow.
+- The era's `CgLabels.Host` measures, translates and draws; 1.7.10 and legacy Forge draw through their `FontRenderer`.
+
 ## 5. Entities and blocks
 
 ```java

@@ -75,6 +75,7 @@ import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.item.CgItemIcons;
 import com.crystalgraphics.mc.render.block.CgBlockPictures;
 import com.crystalgraphics.mc.render.entity.CgEntityPictures;
+import com.crystalgraphics.mc.render.label.CgLabels;
 import com.crystalgraphics.mc.render.tooltip.CgTooltips;
 import com.crystalgraphics.mc.render.world.CgHostWorld;
 import com.crystalgraphics.mc.render.world.CgPocketLevel;
@@ -160,6 +161,7 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgHostPictures.HOST, PicturesModern.create());
         CgPlatform.provide(CgItemIcons.HOST, new ItemIconsModern());
         CgPlatform.provide(CgTooltips.HOST, new TooltipsModern());
+        CgPlatform.provide(CgLabels.HOST, new LabelsModern());
         CgPlatform.provide(CgEntityPictures.HOST, new EntityPicturesModern());
         CgPlatform.provide(CgBlockPictures.HOST, new BlockPicturesModern());
         //? if <1.15 {
