@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.v1710.platform;
 
+import com.crystalgraphics.mc.item.CgCreativeTabs;
 import com.crystalgraphics.mc.fluid.CgFluids;
 import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.entity.CgEntityPictures;
@@ -163,6 +164,7 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgItemIcons.HOST, new ItemIcons1710());
             CgPlatform.provide(CgTooltips.HOST, new Tooltips1710());
             CgPlatform.provide(CgLabels.HOST, new Labels1710());
+            CgPlatform.provide(CgCreativeTabs.HOST, CreativeTabs1710.INSTANCE);
             CgPlatform.provide(CgFluids.HOST, new Fluids1710());
             CgPlatform.provide(CgEntityPictures.HOST, new EntityPictures1710());
             CgPlatform.provide(CgHostWorld.HOST, new HostWorld1710());

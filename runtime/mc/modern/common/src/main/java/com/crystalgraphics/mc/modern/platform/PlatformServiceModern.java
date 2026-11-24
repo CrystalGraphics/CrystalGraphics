@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.platform;
 
+import com.crystalgraphics.mc.item.CgCreativeTabs;
 import com.crystalgraphics.mc.model.CgVanillaPoses;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.modern.platform.gl.GLDeviceModern;
@@ -162,6 +163,7 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgItemIcons.HOST, new ItemIconsModern());
         CgPlatform.provide(CgTooltips.HOST, new TooltipsModern());
         CgPlatform.provide(CgLabels.HOST, new LabelsModern());
+        CgPlatform.provide(CgCreativeTabs.HOST, CreativeTabsModern.INSTANCE);
         CgPlatform.provide(CgEntityPictures.HOST, new EntityPicturesModern());
         CgPlatform.provide(CgBlockPictures.HOST, new BlockPicturesModern());
         //? if <1.15 {

@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.legacy.platform;
 
+import com.crystalgraphics.mc.item.CgCreativeTabs;
 import com.crystalgraphics.mc.fluid.CgFluids;
 import com.crystalgraphics.mc.legacy.platform.world.EntitySavesLegacy;
 import com.crystalgraphics.world.CgEntitySaves;
@@ -149,6 +150,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgItemIcons.HOST, new ItemIconsLegacy());
         CgPlatform.provide(CgTooltips.HOST, new TooltipsLegacy());
         CgPlatform.provide(CgLabels.HOST, new LabelsLegacy());
+        CgPlatform.provide(CgCreativeTabs.HOST, CreativeTabsLegacy.INSTANCE);
         CgPlatform.provide(CgFluids.HOST, new FluidsLegacy());
         CgPlatform.provide(CgEntityPictures.HOST, new EntityPicturesLegacy());
         CgPlatform.provide(CgBlockPictures.HOST, new BlockPicturesLegacy());
