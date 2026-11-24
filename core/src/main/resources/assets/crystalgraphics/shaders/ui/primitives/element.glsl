@@ -70,11 +70,17 @@ float cg_element_shadow(vec2 p, vec2 halfSize, vec4 rx, vec4 ry, float sigma, bo
     return 0.5 - 0.5 * rect_blur_erf(d / (sigma * 1.41421356));
 }
 
-// The border colour of the side p is nearest, the sides top, right, bottom, left.
-vec4 cg_element_side(uvec4 colors, vec2 p, vec2 halfSize) {
+// The border colour of the side p lies in, the colours top, right, bottom, left and the widths left, top, right,
+// bottom; that side's width into width. A corner splits as CSS splits it, on the line from its outer to its inner
+// corner: a side with no width takes no pixel of it.
+vec4 cg_element_side(uvec4 colors, vec4 w, vec2 p, vec2 halfSize, out float width) {
     float dx = halfSize.x - abs(p.x);
     float dy = halfSize.y - abs(p.y);
-    uint c = dy < dx ? (p.y < 0.0 ? colors.x : colors.z) : (p.x < 0.0 ? colors.w : colors.y);
+    float wx = p.x < 0.0 ? w.x : w.z;
+    float wy = p.y < 0.0 ? w.y : w.w;
+    bool topOrBottom = wx <= 0.0 || (wy > 0.0 && dy * wx < dx * wy);
+    width = topOrBottom ? wy : wx;
+    uint c = topOrBottom ? (p.y < 0.0 ? colors.x : colors.z) : (p.x < 0.0 ? colors.w : colors.y);
     return cg_element_unpack(c);
 }
 #endif

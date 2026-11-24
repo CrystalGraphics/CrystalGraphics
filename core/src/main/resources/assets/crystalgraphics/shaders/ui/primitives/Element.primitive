@@ -123,8 +123,10 @@ void fragment(in v2f i, out vec4 fragColor) {
         vec4 innerRx = max(rx - vec4(w.x, w.z, w.z, w.x), vec4(0.0));
         vec4 innerRy = max(ry - vec4(w.y, w.y, w.w, w.w), vec4(0.0));
         float inner = sdf_coverage(sdf_rounded_box(p - innerShift, innerHalf, innerRx, innerRy), ramp);
-        vec4 edge = cg_element_side(CG_ELEMENT(n).borderColor, p, halfSize);
-        fill = mix(vec4(edge.rgb * edge.a, edge.a), fill, inner);
+        float sideWidth;
+        vec4 edge = cg_element_side(CG_ELEMENT(n).borderColor, w, p, halfSize, sideWidth);
+        // A side with no width paints nothing, its edge's antialiasing included
+        if (sideWidth > 0.0) fill = mix(vec4(edge.rgb * edge.a, edge.a), fill, inner);
     }
 
     CgUiInput _cg_ui;
