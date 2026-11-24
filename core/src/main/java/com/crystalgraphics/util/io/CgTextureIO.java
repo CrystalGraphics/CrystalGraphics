@@ -5,8 +5,10 @@ import com.github.bsideup.jabel.Desugar;
 
 import javax.imageio.ImageIO;
 
+import java.awt.color.ColorSpace;
 import java.awt.image.BufferedImage;
 import java.awt.image.ColorModel;
+import java.awt.image.Raster;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -66,10 +68,12 @@ public final class CgTextureIO {
      * the source's native channel count (1 = grayscale, 3 = RGB, 4 = RGBA).
      * Rows top first unless {@link #FOLLOW_MC_CONVENTION} is off. Always 8-bit per channel (GL_UNSIGNED_BYTE).
      */
-    private static CgImageData convertNative(BufferedImage src) {
+    static CgImageData convertNative(BufferedImage src) {
         int w = src.getWidth();
         int h = src.getHeight();
         int channels = determineChannelCount(src.getColorModel());
+        // getRGB converts a gray image from linear gray to sRGB (a stored 85 reads as 156): its samples are read as stored
+        boolean gray = src.getColorModel().getColorSpace().getType() == ColorSpace.TYPE_GRAY;
 
         ByteBuffer buf = ByteBuffer.allocateDirect(w * h * channels).order(ByteOrder.nativeOrder());
         int[] rowPixels = new int[w];
@@ -79,7 +83,8 @@ public final class CgTextureIO {
             int y = FOLLOW_MC_CONVENTION ? i : (h - 1 - i);
 
             // Extract directly into our reusable row array
-            src.getRGB(0, y, w, 1, rowPixels, 0, w);
+            if (gray) grayRow(src, y, rowPixels);
+            else src.getRGB(0, y, w, 1, rowPixels, 0, w);
 
             // Write the converted bytes to the buffer
             writeRowToBuffer(buf, rowPixels, w, channels);
@@ -87,6 +92,29 @@ public final class CgTextureIO {
 
         buf.flip();
         return new CgImageData(buf, w, h, channels);
+    }
+
+    /**
+     * One row of a gray image as ARGB, each sample as stored, as stb_image (Minecraft's decoder) reads it: the second
+     * band, where there is one (an alpha channel or a {@code tRNS} colour), is alpha.
+     */
+    private static void grayRow(BufferedImage src, int y, int[] out) {
+        Raster raster = src.getRaster();
+        ColorModel cm = src.getColorModel();
+        int bands = raster.getNumBands();
+        int grayBits = cm.getComponentSize(0), alphaBits = bands > 1 ? cm.getComponentSize(1) : 8;
+        for (int x = 0; x < out.length; x++) {
+            int g = to8(raster.getSample(x, y, 0), grayBits);
+            int a = bands > 1 ? to8(raster.getSample(x, y, 1), alphaBits) : 255;
+            out[x] = a << 24 | g << 16 | g << 8 | g;
+        }
+    }
+
+    // A sample of `bits` bits as 8: a 16-bit one's high byte, a 1-, 2- or 4-bit one spread over 0-255
+    private static int to8(int sample, int bits) {
+        if (bits == 8) return sample;
+        if (bits > 8) return sample >>> (bits - 8);
+        return sample * 255 / ((1 << bits) - 1);
     }
 
     /**
