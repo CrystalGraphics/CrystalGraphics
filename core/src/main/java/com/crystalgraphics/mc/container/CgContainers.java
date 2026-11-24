@@ -59,8 +59,12 @@ public final class CgContainers {
      * @param x              its place in the menu's picture, in vanilla's GUI units from the panel's corner
      * @param kind           what the slot is
      * @param maxStack       the most its container holds in it
+     * @param emptyIcon      the picture vanilla draws in it while it is empty (an armour slot's outline), as a texture
+     *                       {@code CgIO} reads ({@code minecraft:textures/item/empty_armor_slot_helmet.png}), so a
+     *                       pack's shows; null for none
      */
-    public record Layout(int container, int containerIndex, int x, int y, SlotKind kind, int maxStack) {
+    public record Layout(int container, int containerIndex, int x, int y, SlotKind kind, int maxStack,
+                         @Nullable String emptyIcon) {
     }
 
     /** One slot at {@code index} of the menu, what it holds, and whether the player may take it. */

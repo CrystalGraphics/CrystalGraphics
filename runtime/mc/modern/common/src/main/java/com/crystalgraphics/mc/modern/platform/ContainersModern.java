@@ -19,6 +19,10 @@ import net.minecraft.world.inventory.MerchantResultSlot;
 import net.minecraft.world.inventory.ResultContainer;
 import net.minecraft.world.inventory.ResultSlot;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.resources.ResourceLocation;
+//? if >=1.15 <1.21.4 {
+import com.mojang.datafixers.util.Pair;
+//?}
 //? if >=1.14.3 {
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -113,7 +117,27 @@ public final class ContainersModern implements CgContainers.Host {
             }
         }
         int inContainer = containerSlot(menu, index);
-        return new CgContainers.Layout(group, inContainer, slot.x, slot.y, kind(slot, inContainer), slot.getMaxStackSize());
+        return new CgContainers.Layout(group, inContainer, slot.x, slot.y, kind(slot, inContainer), slot.getMaxStackSize(),
+                emptyIcon(slot));
+    }
+
+    // AbstractContainerScreen.renderSlot's sprite for an empty slot, as its texture; null for none
+    private static String emptyIcon(Slot slot) {
+        //? if >=1.21.4 {
+        /*// A GUI sprite: ns:container/slot/helmet is ns:textures/gui/sprites/container/slot/helmet.png
+        ResourceLocation sprite = slot.getNoItemIcon();
+        return sprite == null ? null : sprite.getNamespace() + ":textures/gui/sprites/" + sprite.getPath() + ".png";
+        *///?} elif >=1.15 {
+        // A sprite on an atlas, ns:item/x, which is the texture ns:textures/item/x.png
+        Pair<ResourceLocation, ResourceLocation> icon = slot.getNoItemIcon();
+        if (icon == null) return null;
+        return icon.getSecond().getNamespace() + ":textures/" + icon.getSecond().getPath() + ".png";
+        //?} else {
+        /*String name = slot.getNoItemIcon();
+        if (name == null) return null;
+        ResourceLocation sprite = ResourceIds.parse(name);
+        return sprite.getNamespace() + ":textures/" + sprite.getPath() + ".png";
+        *///?}
     }
 
     //? if >=1.17.1 {

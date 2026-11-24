@@ -36,7 +36,7 @@ public class CgContainersTest {
         @Override public String title() { return title; }
         @Override public int size() { return stacks.length; }
         @Override public CgContainers.Layout layout(int slot) {
-            return new CgContainers.Layout(0, slot, 8, 18 * slot, slot == 2 ? SlotKind.RESULT : SlotKind.CONTAINER, 64);
+            return new CgContainers.Layout(0, slot, 8, 18 * slot, slot == 2 ? SlotKind.RESULT : SlotKind.CONTAINER, 64, null);
         }
         @Override public int stamp(int slot) { return stacks[slot].hashCode(); }
         @Override public CgItemStack stack(int slot) { copies++; return stacks[slot]; }

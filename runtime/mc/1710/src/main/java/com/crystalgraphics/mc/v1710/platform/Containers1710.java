@@ -23,7 +23,10 @@ import net.minecraft.inventory.Slot;
 import net.minecraft.inventory.SlotCrafting;
 import net.minecraft.inventory.SlotFurnace;
 import net.minecraft.inventory.SlotMerchantResult;
+import net.minecraft.client.renderer.texture.TextureMap;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.IIcon;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.tileentity.TileEntityFurnace;
 import net.minecraft.util.StatCollector;
 
@@ -83,7 +86,22 @@ public final class Containers1710 implements CgContainers.Host {
             }
         }
         int inContainer = slot.getSlotIndex();
-        return new CgContainers.Layout(group, inContainer, slot.xDisplayPosition, slot.yDisplayPosition, kind(slot, inContainer), slot.getSlotStackLimit());
+        return new CgContainers.Layout(group, inContainer, slot.xDisplayPosition, slot.yDisplayPosition, kind(slot, inContainer), slot.getSlotStackLimit(),
+                emptyIcon(slot));
+    }
+
+    // GuiContainer.func_146977_a's icon for an empty slot, as its texture; one on a sheet of a mod's own has none
+    private static String emptyIcon(Slot slot) {
+        IIcon icon = slot.getBackgroundIconIndex();
+        if (icon == null) return null;
+        ResourceLocation sheet = slot.getBackgroundIconTexture();
+        String folder = TextureMap.locationItemsTexture.equals(sheet) ? "items"
+                : TextureMap.locationBlocksTexture.equals(sheet) ? "blocks" : null;
+        if (folder == null) return null;
+        String name = icon.getIconName();
+        int colon = name.indexOf(':');
+        String ns = colon < 0 ? "minecraft" : name.substring(0, colon);
+        return ns + ":textures/" + folder + "/" + name.substring(colon + 1) + ".png";
     }
 
     private static SlotKind kind(Slot slot, int inContainer) {

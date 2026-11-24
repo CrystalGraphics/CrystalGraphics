@@ -89,10 +89,21 @@ public final class ContainersLegacy implements CgContainers.Host {
         }
         int inContainer = slot.getSlotIndex();
         //? if >=1.10 {
-        return new CgContainers.Layout(group, inContainer, slot.xPos, slot.yPos, kind(slot, inContainer), slot.getSlotStackLimit());
+        return new CgContainers.Layout(group, inContainer, slot.xPos, slot.yPos, kind(slot, inContainer), slot.getSlotStackLimit(),
+                emptyIcon(slot));
         //?} else {
-        /*return new CgContainers.Layout(group, inContainer, slot.xDisplayPosition, slot.yDisplayPosition, kind(slot, inContainer), slot.getSlotStackLimit());
+        /*return new CgContainers.Layout(group, inContainer, slot.xDisplayPosition, slot.yDisplayPosition, kind(slot, inContainer), slot.getSlotStackLimit(),
+                emptyIcon(slot));
         *///?}
+    }
+
+    // GuiContainer.drawSlot's sprite for an empty slot, as its texture: ns:items/x is ns:textures/items/x.png
+    private static String emptyIcon(Slot slot) {
+        String name = slot.getSlotTexture();
+        if (name == null) return null;
+        int colon = name.indexOf(':');
+        String ns = colon < 0 ? "minecraft" : name.substring(0, colon);
+        return ns + ":textures/" + name.substring(colon + 1) + ".png";
     }
 
     private static SlotKind kind(Slot slot, int inContainer) {
