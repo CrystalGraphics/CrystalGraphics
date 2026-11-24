@@ -729,21 +729,34 @@ public final class CgCanvas {
      * }</pre>
      */
     public CgCanvas picture(CgPicture picture, float x, float y, float w, float h) {
+        return picture(picture, x, y, w, h, 1f);
+    }
+
+    /**
+     * {@code picture} over a rect, each of its units {@code zoom} units now: what it draws is that much larger in the
+     * same rect, and as crisp, as Minecraft draws it at that size. A 16-unit item filling a 64-unit rect:
+     *
+     * <pre>{@code
+     * canvas.picture(strip, x, y, 64, 64, 4f);   // the picture is 16 by 16 of its units
+     * }</pre>
+     */
+    public CgCanvas picture(CgPicture picture, float x, float y, float w, float h, float zoom) {
         int pw = Math.max(1, Math.round(w * (float) Math.hypot(a, b)));
         int ph = Math.max(1, Math.round(h * (float) Math.hypot(c, d)));
-        CgPicture.Image image = picture.image(pw, ph, deviceScale());
+        float scale = deviceScale() * zoom;
+        CgPicture.Image image = picture.image(pw, ph, scale);
         if (image == null) {
-            keptLayers.pictured(picture, x, y, w, h, pw, ph);
+            keptLayers.pictured(picture, x, y, w, h, pw, ph, scale);
             return this;
         }
         if (image == CgPicture.Image.MISSING) {
-            keptLayers.pictured(picture, x, y, w, h, pw, ph);
+            keptLayers.pictured(picture, x, y, w, h, pw, ph, scale);
             return fill(x, y, w, h, CgGrid.checker(MISSING_MAGENTA, 0xFF000000).cell(w * 0.5f, h * 0.5f));
         }
         // What it draws past its rect (count text, a tooltip's frame) widens the quad and what a kept layer damages
         float bx = x - image.left * w, by = y - image.top * h;
         float bw = w * (1f + image.left + image.right), bh = h * (1f + image.top + image.bottom);
-        keptLayers.pictured(picture, bx, by, bw, bh, pw, ph);
+        keptLayers.pictured(picture, bx, by, bw, bh, pw, ph, scale);
         CgCanvasBox box = box(bx, by, bw, bh).fill(image.texture).premultiplied().region(image.u0, image.v0, image.u1, image.v1);
         if (image.matte != null) box.material(image.matte);
         return box.draw();

@@ -119,16 +119,16 @@ final class CgCanvasKeptLayers {
 
     /**
      * Records {@code picture}, drawn over a rect in the units now at its version, in the innermost walk drawing on this
-     * canvas, if any: that layer follows it from then on.
+     * canvas, if any: that layer follows it from then on, asking for it at {@code scale} pixels a unit.
      */
-    void pictured(CgPicture picture, float x, float y, float w, float h, int deviceWidth, int deviceHeight) {
+    void pictured(CgPicture picture, float x, float y, float w, float h, int deviceWidth, int deviceHeight, float scale) {
         CgCanvasLayers layers = canvas.layers;
         for (int i = layers.count - 1; i >= 0; i--) {
             CgKeptLayer.Walk walk = layers.at(i).kept;
             if (walk == null || !walk.live) continue;
             float[] r = rect(walk, x, y, w, h);
             walk.layer().pictured(picture, picture.version(), r[0], r[1], r[2], r[3], deviceWidth, deviceHeight,
-                    canvas.deviceScale());
+                    scale);
             return;
         }
     }
