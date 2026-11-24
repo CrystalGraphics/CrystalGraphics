@@ -624,6 +624,8 @@ target.drawMaterial(SPLASH);                                            // a CgR
   their order, so interleaving boxes and text costs nothing where they do not touch.
 - **Edges snap to whole pixels** when the transform is straight (translation and positive scale), so boxes stay crisp.
   `pixelSnap(false)` turns it off, for something sliding smoothly; rotated items antialias instead.
+- **A square-cornered box on whole pixels draws with no edge ramp**, as Skia's pixel-aligned rects do: the ramp's
+  corner would reach a pixel past it, a faint halo where an image's edge texels touch its rect.
 - **Rotation and skew cost a node**, up to 4096 a recording: draw a rotated group under one `rotate`, not each item
   under its own.
 - **Square clips are free; rounded or rotated ones nest**, at most `CgClipTree.MAX_DEPTH` deep past the square ones.

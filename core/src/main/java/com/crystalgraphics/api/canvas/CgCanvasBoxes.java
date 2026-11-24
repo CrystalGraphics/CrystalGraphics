@@ -183,13 +183,13 @@ final class CgCanvasBoxes {
             if (brush.texture().isArray()) CgUiElements.layer(record, 0, brush.layer());
             CgUiElements.uv(record, 0, u0, v0, u1, v1);
             float e = 1e-3f;
-            CgUiElements.flag(record, 0, CgUiElements.FLAG_HARD_LEFT, x > x0 + e);
-            CgUiElements.flag(record, 0, CgUiElements.FLAG_HARD_TOP, y > y0 + e);
-            CgUiElements.flag(record, 0, CgUiElements.FLAG_HARD_RIGHT, x + w < x1 - e);
-            CgUiElements.flag(record, 0, CgUiElements.FLAG_HARD_BOTTOM, y + h < y1 - e);
             int at = cv.spatial();
             float[] r = cv.rect(at, x, y, w, h, true, 0f);
             if (r == null) return;
+            // Inner sides meet the next piece; outer ones are hard too where they lie on whole pixels
+            boolean aligned = at == cv.base && onPixels(r);
+            hardSides(record, aligned || x > x0 + e, aligned || y > y0 + e, aligned || x + w < x1 - e,
+                    aligned || y + h < y1 - e);
             cv.finish(at, 1f);
             cv.element(material, brush.texture(), brush.sampler(), at, r[0], r[1], r[2], r[3]);
         }
@@ -236,6 +236,9 @@ final class CgCanvasBoxes {
         int at = cv.spatial();
         float[] r = cv.rect(at, x, y, w, h, snapIt, 0f);
         if (r == null) return;
+        if (at == cv.base && (box.radii == null || box.radii.isNone()) && onPixels(r)) {
+            hardSides(cv.record, true, true, true, true);
+        }
         radii(box, at, 0f);
         if (box.borderTop + box.borderRight + box.borderBottom + box.borderLeft > 0f) {
             float kx = cv.kx(at), ky = cv.ky(at);
@@ -245,6 +248,23 @@ final class CgCanvasBoxes {
         }
         cv.finish(at, gain);
         cv.element(material, texture, sampler, at, r[0], r[1], r[2], r[3]);
+    }
+
+    /**
+     * Whether {@code r}, in device pixels at the base node, lies on whole pixels. Such a rect has no edge to smooth, and
+     * a ramp's corner would reach a pixel past it (about 2 % beside a square corner): Skia draws it without AA
+     * ({@code GrQuadUtils}' pixel-aligned quads), and so does this.
+     */
+    private static boolean onPixels(float[] r) {
+        for (int i = 0; i < 4; i++) if (Math.abs(r[i] - Math.round(r[i])) > 1e-3f) return false;
+        return true;
+    }
+
+    private static void hardSides(float[] record, boolean left, boolean top, boolean right, boolean bottom) {
+        CgUiElements.flag(record, 0, CgUiElements.FLAG_HARD_LEFT, left);
+        CgUiElements.flag(record, 0, CgUiElements.FLAG_HARD_TOP, top);
+        CgUiElements.flag(record, 0, CgUiElements.FLAG_HARD_RIGHT, right);
+        CgUiElements.flag(record, 0, CgUiElements.FLAG_HARD_BOTTOM, bottom);
     }
 
     /** The box's corners into the record, grown by a shadow's spread. */
