@@ -69,6 +69,12 @@ public final class CgInput {
         /** Puts the pointer at {@code (x, y)}, the window's pixels from its top left. */
         void movePointer(int x, int y);
 
+        /**
+         * Where the pointer is, the window's pixels from its top left, into {@code out[0]} and {@code out[1]}; false
+         * where the toolkit cannot say.
+         */
+        boolean pointerPosition(float[] out);
+
         Host NONE = new Host() {
             @Override public boolean isKeyDown(int key) { return false; }
             @Override public boolean isMouseDown(int button) { return false; }
@@ -79,6 +85,7 @@ public final class CgInput {
             @Override public int mouseButton(int toolkitButton) { return CgMouseCodes.NONE; }
             @Override public void grabPointer() { }
             @Override public void movePointer(int x, int y) { }
+            @Override public boolean pointerPosition(float[] out) { return false; }
         };
     }
 
@@ -135,5 +142,18 @@ public final class CgInput {
     /** Puts the pointer at the window's {@code (x, y)}, from its top left: an unattended run clicking somewhere. */
     public static void movePointer(int x, int y) {
         host().movePointer(x, y);
+    }
+
+    /**
+     * Where the pointer is now, the window's pixels from its top left, without waiting for it to move: what a screen
+     * that opens under it needs to hover and look at it. False where there is no toolkit.
+     *
+     * <pre>{@code
+     * float[] at = new float[2];
+     * if (CgInput.pointerPosition(at)) hover(at[0], at[1]);
+     * }</pre>
+     */
+    public static boolean pointerPosition(float[] out) {
+        return host().pointerPosition(out);
     }
 }

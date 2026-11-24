@@ -9,9 +9,11 @@ import org.lwjgl.sdl.SDLInit;
 import org.lwjgl.sdl.SDLKeyboard;
 import org.lwjgl.sdl.SDLKeycode;
 import org.lwjgl.sdl.SDLMouse;
+import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
 import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
 
 /**
  * {@link CgInput} over SDL3, for a host SDL windows (Minecraft 26.3 on). SDL's keyboard and mouse state are
@@ -85,6 +87,19 @@ public final class InputSdl implements CgInput.Host {
         if (!videoUp()) return;
         long window = SDLMouse.SDL_GetMouseFocus();
         if (window != MemoryUtil.NULL) SDLMouse.SDL_WarpMouseInWindow(window, x, y);
+    }
+
+    // Relative to the window the mouse is over: none, and SDL cannot say where it is in ours
+    @Override
+    public boolean pointerPosition(float[] out) {
+        if (!videoUp() || SDLMouse.SDL_GetMouseFocus() == MemoryUtil.NULL) return false;
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            FloatBuffer x = stack.mallocFloat(1), y = stack.mallocFloat(1);
+            SDLMouse.SDL_GetMouseState(x, y);
+            out[0] = x.get(0);
+            out[1] = y.get(0);
+        }
+        return true;
     }
 
     @Override

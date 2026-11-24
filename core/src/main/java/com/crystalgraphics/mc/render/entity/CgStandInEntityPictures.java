@@ -36,9 +36,10 @@ public final class CgStandInEntityPictures implements CgEntityPictures.Host {
     }
 
     @Override
-    public void draw(CgHostDrawContext ctx, Object entity, CgEntityPose pose, float scale, float x, float y, float w, float h) {
+    public void draw(CgHostDrawContext ctx, Object entity, CgEntityPose pose, float scale, float x, float y, float w, float h,
+                     float centreY) {
         CgCanvas canvas = (CgCanvas) ctx.gui();
-        float tall = height(entity) * scale, cx = x + w / 2, top = y + h / 2 - tall / 2;
+        float tall = height(entity) * scale, cx = x + w / 2, top = y + centreY - tall / 2;
         int colour = colour(entity.toString());
         float body = scale * (0.3f + 0.3f * Math.abs((float) Math.cos(pose.bodyYaw() * DEG)));
         canvas.fill(cx - body / 2, top + tall * 0.3f, body, tall * 0.7f, colour);
@@ -46,6 +47,22 @@ public final class CgStandInEntityPictures implements CgEntityPictures.Host {
         float hx = cx - head / 2 - (float) Math.sin(pose.headYaw() * DEG) * head * 0.5f;
         float hy = top + (float) Math.sin(pose.pitch() * DEG) * head * 0.3f;
         canvas.fill(hx, hy, head, head, colour | 0x00404040);
+    }
+
+    @Override
+    public String name(Object entity) {
+        return entity.toString();
+    }
+
+    /** As the newest versions' inventory: the middle 1/16 block below the box's. */
+    @Override
+    public float inventoryCentreY(float h, float entityHeight, float scale) {
+        return h / 2 + scale / 16;
+    }
+
+    @Override
+    public float inventoryLookY(float h) {
+        return h / 2;
     }
 
     // Opaque, the entity's own, the same each run

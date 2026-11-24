@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.input.CgInputStage;
 import com.crystalgraphics.platform.input.CgKeyCodes;
 import com.crystalgraphics.platform.input.CgMouseCodes;
 import com.crystalgraphics.platform.input.CgSystemInput;
+import com.mojang.blaze3d.platform.Window;
 import net.minecraft.client.Minecraft;
 
 /**
@@ -83,12 +84,29 @@ public final class ScreenInputModern {
     }
 
     private static int rawX() {
-        Minecraft mc = Minecraft.getInstance();
-        return mc == null || mc.mouseHandler == null ? 0 : (int) mc.mouseHandler.xpos();
+        return (int) surfaceX();
     }
 
     private static int rawY() {
+        return (int) surfaceY();
+    }
+
+    /**
+     * MouseHandler's pointer in surface pixels. It counts in the window's screen units, which can differ from the
+     * framebuffer's by a pixel (26.2's Vulkan window: 1441 over 1440); the game scales it by the screen size, so this
+     * does too, or a pointer on a slot's edge hovers it here and not there.
+     */
+    static double surfaceX() {
         Minecraft mc = Minecraft.getInstance();
-        return mc == null || mc.mouseHandler == null ? 0 : (int) mc.mouseHandler.ypos();
+        if (mc == null || mc.mouseHandler == null) return 0;
+        Window w = Windows.of(mc);
+        return mc.mouseHandler.xpos() * w.getWidth() / Math.max(1, w.getScreenWidth());
+    }
+
+    static double surfaceY() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.mouseHandler == null) return 0;
+        Window w = Windows.of(mc);
+        return mc.mouseHandler.ypos() * w.getHeight() / Math.max(1, w.getScreenHeight());
     }
 }

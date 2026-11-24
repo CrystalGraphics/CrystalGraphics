@@ -80,6 +80,17 @@ public final class InputGlfw implements CgInput.Host {
     }
 
     @Override
+    public boolean pointerPosition(float[] out) {
+        long window = window();
+        if (window == 0L) return false;
+        double[] x = new double[1], y = new double[1];
+        GLFW.glfwGetCursorPos(window, x, y);
+        out[0] = (float) x[0];
+        out[1] = (float) y[0];
+        return true;
+    }
+
+    @Override
     public int mouseButtons() {
         return MOUSE_BUTTONS;
     }

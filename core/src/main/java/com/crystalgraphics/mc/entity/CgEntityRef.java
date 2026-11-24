@@ -70,6 +70,26 @@ public final class CgEntityRef {
         return new CgEntityRef(Kind.LIVE, null, null, Objects.requireNonNull(entity, "entity"));
     }
 
+    /**
+     * What {@link #toString} writes, read back: what a document stores a ref as.
+     *
+     * <pre>{@code
+     * CgEntityRef.parse("@s");                    // the player
+     * CgEntityRef.parse("profile Notch");         // a profile, with its skin
+     * CgEntityRef.parse("entity 0f8e...");        // a live entity, by UUID
+     * CgEntityRef.parse("sheep{Color:2b}");       // made from /summon data
+     * }</pre>
+     *
+     * @throws IllegalArgumentException where the text is none of these
+     */
+    public static CgEntityRef parse(String text) {
+        String t = Objects.requireNonNull(text, "text").trim();
+        if (t.equals("@s")) return PLAYER;
+        if (t.startsWith("profile ")) return profile(t.substring("profile ".length()));
+        if (t.startsWith("entity ")) return live(UUID.fromString(t.substring("entity ".length()).trim()));
+        return of(CgEntityData.parse(t));
+    }
+
     public Kind kind() {
         return kind;
     }

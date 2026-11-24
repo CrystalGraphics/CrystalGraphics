@@ -77,12 +77,18 @@ public final class EntityPicturesLegacy implements CgEntityPictures.Host {
     }
 
     @Override
+    public String name(Object entity) {
+        return ((Entity) entity).getDisplayName().getUnformattedText();
+    }
+
+    @Override
     public float height(Object entity) {
         return ((Entity) entity).height;
     }
 
     @Override
-    public void draw(CgHostDrawContext ctx, Object entity, CgEntityPose pose, float scale, float x, float y, float w, float h) {
+    public void draw(CgHostDrawContext ctx, Object entity, CgEntityPose pose, float scale, float x, float y, float w, float h,
+                     float centreY) {
         EntityLivingBase e = (EntityLivingBase) entity;
         double turn = Math.max(-MAX_TURN, Math.min(MAX_TURN, pose.bodyYaw() / 20.0));
         double lift = Math.max(-MAX_TURN, Math.min(MAX_TURN, pose.tilt() / 20.0));
@@ -90,8 +96,20 @@ public final class EntityPicturesLegacy implements CgEntityPictures.Host {
         GlStateManager.enableDepth();
         // White, as the inventory screen leaves it: a tooltip's text colour would tint the model
         GlStateManager.color(1, 1, 1, 1);
-        GuiInventory.drawEntityOnScreen(Math.round(x + w / 2), Math.round(y + h / 2 + e.height * scale / 2),
+        GuiInventory.drawEntityOnScreen(Math.round(x + w / 2), Math.round(y + centreY + e.height * scale / 2),
                 Math.round(scale), (float) (40 * Math.tan(turn)), (float) (40 * Math.tan(lift)), e);
         GlStateManager.disableDepth();
+    }
+
+    // GuiInventory's: the player's feet at (51, 75) of the panel, 3 units over its 70-unit box's bottom, the pointer
+    // measured from 50 units over them
+    @Override
+    public float inventoryCentreY(float h, float entityHeight, float scale) {
+        return h - 3 - entityHeight * scale / 2;
+    }
+
+    @Override
+    public float inventoryLookY(float h) {
+        return h - 53;
     }
 }

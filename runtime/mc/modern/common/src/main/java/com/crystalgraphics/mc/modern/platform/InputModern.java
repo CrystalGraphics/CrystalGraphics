@@ -28,6 +28,15 @@ final class InputModern implements CgInput.Host {
     @Override public int key(int toolkitKey) { return toolkit.key(toolkitKey); }
     @Override public int mouseButton(int toolkitButton) { return toolkit.mouseButton(toolkitButton); }
     @Override public void movePointer(int x, int y) { toolkit.movePointer(x, y); }
+    /** Minecraft's own pointer, which its screens read, in surface pixels as the screen events carry it. */
+    @Override
+    public boolean pointerPosition(float[] out) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.mouseHandler == null) return toolkit.pointerPosition(out);
+        out[0] = (float) ScreenInputModern.surfaceX();
+        out[1] = (float) ScreenInputModern.surfaceY();
+        return true;
+    }
 
     /** Minecraft's own grab, so the game knows the pointer is its camera. */
     @Override

@@ -1,9 +1,11 @@
 package com.crystalgraphics.mc;
 
 import java.util.List;
+import java.util.UUID;
 
 import com.crystalgraphics.mc.block.CgBlockState;
 import com.crystalgraphics.mc.entity.CgEntityData;
+import com.crystalgraphics.mc.entity.CgEntityRef;
 import com.crystalgraphics.mc.fluid.CgFluidStack;
 import com.crystalgraphics.mc.item.CgIngredient;
 import com.crystalgraphics.mc.item.CgItemStack;
@@ -97,6 +99,16 @@ public class CgCommandValuesTest {
         assertEquals("minecraft:sheep", saved.getString("id"));
         assertEquals(sheep, CgEntityData.fromNbt(saved));
         assertFalse(sheep.data().has("id"));
+    }
+
+    @Test
+    public void entityRefReadsBackWhatItWrites() {
+        for (CgEntityRef ref : List.of(CgEntityRef.player(), CgEntityRef.profile("jeb_"),
+                CgEntityRef.live(UUID.fromString("0f8e2c4a-1b3d-4e5f-8a9b-0c1d2e3f4a5b")),
+                CgEntityRef.of(CgEntityData.parse("sheep{Color:2b}")))) {
+            assertEquals(ref, CgEntityRef.parse(ref.toString()));
+        }
+        assertEquals(CgEntityRef.player(), CgEntityRef.parse(" @s "));
     }
 
     @Test

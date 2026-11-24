@@ -1448,6 +1448,7 @@ com/crystalgraphics/platform/input/CgInput
   method public,static mouseButtons ()I
   method public,static movePointer (II)V
   method public,static pointerGrabbed ()Z
+  method public,static pointerPosition ([F)Z
 com/crystalgraphics/platform/input/CgInput$Host
   access public,abstract,interface
   extends java/lang/Object
@@ -1461,6 +1462,7 @@ com/crystalgraphics/platform/input/CgInput$Host
   method public,abstract mouseButtons ()I
   method public,abstract movePointer (II)V
   method public,abstract pointerGrabbed ()Z
+  method public,abstract pointerPosition ([F)Z
 com/crystalgraphics/platform/input/CgInputListener
   access public,abstract,interface
   extends java/lang/Object

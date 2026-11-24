@@ -27,17 +27,38 @@ public final class CgEntityPictures {
         /** Its height in blocks, for fitting it to a rect. */
         float height(Object entity);
 
+        /** Its name as its nametag shows it, plain text: a custom name, else its type's or its profile's. */
+        String name(Object entity);
+
         /**
-         * {@code entity} posed, {@code scale} units a block, centred in the box {@code x, y, w, h} of the context's units,
-         * as the inventory centres its player in its own.
+         * {@code entity} posed, {@code scale} units a block, its bounding box centred across the box {@code x, y, w, h} of
+         * the context's units and its middle {@code centreY} units below the box's top; clipped to the box where the game
+         * clips its own.
          */
-        void draw(CgHostDrawContext ctx, Object entity, CgEntityPose pose, float scale, float x, float y, float w, float h);
+        void draw(CgHostDrawContext ctx, Object entity, CgEntityPose pose, float scale, float x, float y, float w, float h,
+                  float centreY);
+
+        /**
+         * Where this version's inventory puts its player's middle in a box {@code h} units tall, from the box's top:
+         * standing 3 units above its bottom to 1.20.1, its middle 1/16 block below the box's to 1.20.2 and after.
+         */
+        float inventoryCentreY(float h, float entityHeight, float scale);
+
+        /**
+         * Where this version's inventory measures the pointer from, in a box {@code h} units tall, from its top: the
+         * player's head, 50 units over its feet, to 1.20.1; the box's middle after.
+         */
+        float inventoryLookY(float h);
 
         Host NONE = new Host() {
             @Override public String absent() { return "no entity pictures on this node"; }
             @Override public Object entity(CgEntityRef ref, Object previous) { return null; }
             @Override public float height(Object entity) { return 1; }
-            @Override public void draw(CgHostDrawContext ctx, Object entity, CgEntityPose pose, float scale, float x, float y, float w, float h) { }
+            @Override public String name(Object entity) { return ""; }
+            @Override public void draw(CgHostDrawContext ctx, Object entity, CgEntityPose pose, float scale, float x, float y,
+                                       float w, float h, float centreY) { }
+            @Override public float inventoryCentreY(float h, float entityHeight, float scale) { return h / 2; }
+            @Override public float inventoryLookY(float h) { return h / 2; }
         };
     }
 

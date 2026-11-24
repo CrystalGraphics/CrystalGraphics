@@ -499,7 +499,7 @@ public final class CgPicturesProbe {
                 active.stated("pictures.made." + c.name(), e != null, e == null
                         ? "the game made no entity from it in " + tries + " frames" : "made");
             }
-            if (e != null) host.draw(ctx, e, pose(c), c.count(), x, y, r[2], r[3]);
+            if (e != null) host.draw(ctx, e, pose(c), c.count(), x, y, r[2], r[3], r[3] / 2);
         } else if (c.kind() == Kind.BLOCK) {
             CgBlockPictures.Host host = CgPlatform.get(CgBlockPictures.HOST);
             Object b = REFERENCE_BLOCKS.compute(c, (k, before) -> host.prepare(CgBlockState.parse(k.item()), before));

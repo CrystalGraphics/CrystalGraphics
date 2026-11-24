@@ -57,6 +57,15 @@ public final class InputLwjgl2 implements CgInput.Host {
         Mouse.setCursorPosition(x, Display.getHeight() - y);
     }
 
+    // LWJGL 2 counts up from the window's bottom
+    @Override
+    public boolean pointerPosition(float[] out) {
+        if (!Mouse.isCreated()) return false;
+        out[0] = Mouse.getX();
+        out[1] = Display.getHeight() - Mouse.getY();
+        return true;
+    }
+
     @Override
     public int mouseButtons() {
         return Mouse.getButtonCount();

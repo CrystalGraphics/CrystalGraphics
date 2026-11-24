@@ -150,6 +150,11 @@ public final class EntityPicturesModern implements CgEntityPictures.Host {
     }
 
     @Override
+    public String name(Object entity) {
+        return ((Entity) entity).getDisplayName().getString();
+    }
+
+    @Override
     public float height(Object entity) {
         //? if <1.14 {
         /*return 1;
@@ -159,9 +164,10 @@ public final class EntityPicturesModern implements CgEntityPictures.Host {
     }
 
     @Override
-    public void draw(CgHostDrawContext ctx, Object entity, CgEntityPose pose, float scale, float x, float y, float w, float h) {
+    public void draw(CgHostDrawContext ctx, Object entity, CgEntityPose pose, float scale, float x, float y, float w, float h,
+                     float centreY) {
         LivingEntity e = (LivingEntity) entity;
-        float cx = x + w / 2, cy = y + h / 2;
+        float cx = x + w / 2, cy = y + centreY;
         int x0 = Math.round(x), y0 = Math.round(y), x1 = Math.round(x + w), y1 = Math.round(y + h);
         Quaternionf rotation = new Quaternionf().rotateZ((float) Math.PI);
         Quaternionf tilt = new Quaternionf().rotateX(pose.tilt() * DEG);
@@ -205,7 +211,8 @@ public final class EntityPicturesModern implements CgEntityPictures.Host {
             living.boundingBoxHeight = living.boundingBoxHeight / living.scale;
             living.scale = 1.0F;
         }
-        Vector3f translation = new Vector3f(0, state.boundingBoxHeight / 2, 0);
+        // The game centres the box's middle: a middle lower than it is vanilla's offsetY, in blocks
+        Vector3f translation = new Vector3f(0, state.boundingBoxHeight / 2 + (centreY - h / 2) / scale, 0);
         *///?}
         //? if >=1.21.11 <26.1 {
         /*((GuiGraphics) ctx.gui()).submitEntityRenderState(state, scale, translation, rotation, tilt, x0, y0, x1, y1);
@@ -232,8 +239,29 @@ public final class EntityPicturesModern implements CgEntityPictures.Host {
         /*InventoryScreen.renderEntityInInventory((GuiGraphics) ctx.gui(), cx, cy, scale / e.getScale(),
                 new Vector3f(0, e.getBbHeight() / 2, 0), rotation, tilt, e);
         *///?} elif <1.21.11 {
-        /*InventoryScreen.renderEntityInInventory((GuiGraphics) ctx.gui(), x0, y0, x1, y1,
-                scale / e.getScale(), new Vector3f(0, e.getBbHeight() / 2, 0), rotation, tilt, e);
+        /*// The game centres the box's middle: a middle lower than it is vanilla's offsetY, in blocks
+        InventoryScreen.renderEntityInInventory((GuiGraphics) ctx.gui(), x0, y0, x1, y1, scale / e.getScale(),
+                new Vector3f(0, e.getBbHeight() / 2 + (cy - (y0 + y1) / 2f) / scale, 0), rotation, tilt, e);
+        *///?}
+    }
+
+    // InventoryScreen's: to 1.20.1 the player's feet at (51, 75) of the panel, 3 units over its 70-unit box's bottom,
+    // the pointer measured from 50 units over them; from 1.20.2 the box's middle, the player lowered by offsetY 0.0625
+    @Override
+    public float inventoryCentreY(float h, float entityHeight, float scale) {
+        //? if <1.20.2 {
+        return h - 3 - entityHeight * scale / 2;
+        //?} else {
+        /*return h / 2 + scale * 0.0625F;
+        *///?}
+    }
+
+    @Override
+    public float inventoryLookY(float h) {
+        //? if <1.20.2 {
+        return h - 53;
+        //?} else {
+        /*return h / 2;
         *///?}
     }
 }

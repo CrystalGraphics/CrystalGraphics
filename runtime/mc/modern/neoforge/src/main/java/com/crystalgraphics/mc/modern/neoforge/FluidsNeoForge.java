@@ -45,7 +45,9 @@ final class FluidsNeoForge implements CgFluids.Host {
         //? if <26.1 {
         return FluidsModern.opaque(IClientFluidTypeExtensions.of(f).getTintColor(neo(f, stack)));
         //?} else {
-        /*return FluidsModern.opaque(FluidsModern.model(f).fluidTintSource().colorAsStack(neo(f, stack)));
+        /*var tint = FluidsModern.model(f).fluidTintSource();
+        // A fluid the game does not tint (lava) has no source: drawn as its sprite is
+        return tint == null ? 0xFFFFFFFF : FluidsModern.opaque(tint.colorAsStack(neo(f, stack)));
         *///?}
     }
 
