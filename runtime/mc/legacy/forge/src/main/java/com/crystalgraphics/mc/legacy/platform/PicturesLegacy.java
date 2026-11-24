@@ -190,6 +190,13 @@ final class PicturesLegacy implements CgHostPictures.Host {
         GlStateManager.color(1f, 1f, 1f, 1f);
     }
 
+    /** Frees {@code f} outside a batch, the draw framebuffer kept: {@code deleteFramebuffer} binds 0. */
+    static void delete(Framebuffer f) {
+        int bound = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        f.deleteFramebuffer();
+        OpenGlHelper.glBindFramebuffer(OpenGlHelper.GL_FRAMEBUFFER, bound);
+    }
+
     // What the batch found bound, back: after a page, and after making or freeing a target, which binds 0
     private void rebind() {
         if (boundBefore < 0) return;

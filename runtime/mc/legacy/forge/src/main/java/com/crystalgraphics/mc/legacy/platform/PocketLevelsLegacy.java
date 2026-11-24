@@ -198,7 +198,7 @@ public final class PocketLevelsLegacy implements CgPocketLevel.Host {
             if (colour != null) CgHostPictures.forget(colour);
             if (target != null) {
                 CgExternalTarget.forgetHost(target.framebufferObject);
-                target.deleteFramebuffer();
+                PicturesLegacy.delete(target);
             }
             target = null;
             colour = null;

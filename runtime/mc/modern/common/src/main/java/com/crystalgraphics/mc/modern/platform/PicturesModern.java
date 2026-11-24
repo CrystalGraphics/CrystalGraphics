@@ -496,6 +496,21 @@ public final class PicturesModern implements CgHostPictures.Host {
         rebind();
     }
 
+    /** Frees {@code t} outside a batch, the draw framebuffer kept: {@code destroyBuffers} binds 0 below 1.21.5. */
+    static void destroy(RenderTarget t) {
+        //? if <1.15 {
+        /*int bound = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        t.destroyBuffers();
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, bound);
+        *///?} elif <1.21.5 {
+        int bound = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        t.destroyBuffers();
+        GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, bound);
+        //?} else {
+        /*t.destroyBuffers();
+        *///?}
+    }
+
     // Making or freeing a target binds framebuffer 0 below 1.21.5: what the batch found bound goes back
     private void rebind() {
         //? if <1.21.5 {

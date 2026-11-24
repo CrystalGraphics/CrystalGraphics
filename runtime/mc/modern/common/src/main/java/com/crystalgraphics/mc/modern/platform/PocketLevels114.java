@@ -147,7 +147,7 @@ public final class PocketLevels114 implements CgPocketLevel.Host {
             if (colour != null) CgHostPictures.forget(colour);
             if (target != null) {
                 CgExternalTarget.forgetHost(target.frameBufferId);
-                target.destroyBuffers();
+                PicturesModern.destroy(target);
             }
             target = null;
             colour = null;

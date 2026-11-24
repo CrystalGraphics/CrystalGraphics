@@ -358,7 +358,7 @@ public final class PocketLevelsModern implements CgPocketLevel.Host {
                 //? if <1.21.5 {
                 CgExternalTarget.forgetHost(target.frameBufferId);
                 //?}
-                target.destroyBuffers();
+                PicturesModern.destroy(target);
             }
             target = null;
             colour = null;
