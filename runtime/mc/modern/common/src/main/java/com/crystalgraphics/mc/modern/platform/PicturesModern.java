@@ -460,15 +460,19 @@ public final class PicturesModern implements CgHostPictures.Host {
 
     @Override
     public Object createTarget(int width, int height, float clear) {
-        RenderTarget t = make(width, height);
-        //? if <1.21.6 {
-        clearAndBind(t, clear);
-        drawing = null;
-        //?} else {
-        /*clearRecorded(t, null, 0);
-        *///?}
-        rebind();
-        return t;
+        // Making binds the new target, and Minecraft throws past an incomplete one: the batch's binding goes back either way
+        try {
+            RenderTarget t = make(width, height);
+            //? if <1.21.6 {
+            clearAndBind(t, clear);
+            drawing = null;
+            //?} else {
+            /*clearRecorded(t, null, 0);
+            *///?}
+            return t;
+        } finally {
+            rebind();
+        }
     }
 
     static RenderTarget make(int width, int height) {

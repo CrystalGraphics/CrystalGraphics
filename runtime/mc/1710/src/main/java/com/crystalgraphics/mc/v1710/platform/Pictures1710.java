@@ -71,11 +71,15 @@ final class Pictures1710 implements CgHostPictures.Host {
 
     @Override
     public Object createTarget(int width, int height, float clear) {
-        Framebuffer f = new Framebuffer(width, height, true);
-        f.setFramebufferColor(clear, clear, clear, 0f);
-        f.framebufferClear();
-        rebind();
-        return f;
+        // Making binds the new framebuffer, and it may throw past an incomplete one: the batch's binding goes back either way
+        try {
+            Framebuffer f = new Framebuffer(width, height, true);
+            f.setFramebufferColor(clear, clear, clear, 0f);
+            f.framebufferClear();
+            return f;
+        } finally {
+            rebind();
+        }
     }
 
     @Override

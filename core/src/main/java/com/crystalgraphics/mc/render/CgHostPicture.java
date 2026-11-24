@@ -115,7 +115,7 @@ public abstract class CgHostPicture implements CgPicture {
         boolean register;
         CgPicture.Image shown;
         synchronized (this) {
-            Size s = size(deviceWidth, deviceHeight, scale);
+            Size s = fitted(deviceWidth, deviceHeight, scale);
             s.shownFrame = frame;
             register = !held;
             held = true;
@@ -207,6 +207,15 @@ public abstract class CgHostPicture implements CgPicture {
             logged = false;
             invalidate();
         }
+    }
+
+    // Within what the host can make a target for: past it the picture draws at a lower scale and shows stretched to its
+    // size, as Chromium caps a layer's contents scale at the largest texture (PictureLayerImpl::MaximumContentsScale)
+    private Size fitted(int w, int h, float scale) {
+        int pad = Math.round(bleed() * scale), max = CgHostPictures.maxCell(scale);
+        float k = Math.min(1f, Math.min(max / (float) (w + 2 * pad), max / (float) (h + 2 * pad)));
+        if (k >= 1f) return size(w, h, scale);
+        return size(Math.max(1, (int) (w * k)), Math.max(1, (int) (h * k)), scale * k);
     }
 
     private Size size(int w, int h, float scale) {

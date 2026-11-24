@@ -505,6 +505,17 @@ public final class CgHostPictures {
         }
     }
 
+    /** The largest target the host makes, as of the last draw point: the default until one ran. */
+    private static volatile int maxTarget = 4096;
+
+    /**
+     * The largest cell, either side, a picture drawn at {@code scale} may ask for: its own page adds the gutter and
+     * rounds each side up to the cell alignment, never more than the scale.
+     */
+    static int maxCell(float scale) {
+        return maxTarget - GUTTER - 2 * (int) Math.ceil(scale);
+    }
+
     private static void drawPointInside() {
         // Pocket levels first, then the view pictures drawn over them: what a UI composites later in this firing
         if (!CgDeviceSection.open()) {
@@ -524,6 +535,7 @@ public final class CgHostPictures {
             return;
         }
         Host host = CgPlatform.get(HOST);
+        maxTarget = host.maxTargetSize();
         long frame = CgFrameClock.frameIndex();
         ticked = TICKS.step(System.nanoTime(), TICK_HZ.get());
         releaseDue(host, frame);
@@ -631,10 +643,10 @@ public final class CgHostPictures {
         long mark = ALLOCATION.hostBegin();
         try {
             cells.pass = 0;
-            host.drawPage(page.target, page.side, page.side, 0f, cells);
+            host.drawPage(page.target, page.width, page.height, 0f, cells);
             if (page.white != null) {
                 cells.pass = 1;
-                host.drawPage(page.white, page.side, page.side, 1f, cells);
+                host.drawPage(page.white, page.width, page.height, 1f, cells);
             }
         } finally {
             ALLOCATION.hostEnd(mark);
@@ -646,27 +658,36 @@ public final class CgHostPictures {
 
     // A size's cell on a page of its alignment: the first it fits, else one repacked without what was given back, else
     // a new one
+    // A new page holding s; deleted again, never kept empty, where s does not fit
+    private static boolean fresh(Host host, CgHostPicture.Size s, int width, int height, int align) {
+        Page page = new Page(host, width, height, align);
+        if (!page.insert(s)) {
+            page.delete(host);
+            throw new IllegalStateException("a " + CgHostPicture.cellWidth(s) + "x" + CgHostPicture.cellHeight(s)
+                    + " cell did not fit a new " + width + "x" + height + " page");
+        }
+        PAGES.add(page);
+        return true;
+    }
+
     private static boolean place(Host host, CgHostPicture.Size s) {
         int w = CgHostPicture.cellWidth(s), h = CgHostPicture.cellHeight(s);
         int side = Math.min(PAGE_SIDE, host.maxTargetSize());
         int align = Math.max(1, host.cellAlign(s.scale));
         try {
-            if (w > side || h > side) {
-                Page own = new Page(host, Page.units(Math.max(w, h), align) * align, align);
-                PAGES.add(own);
-                return own.insert(s);
+            // In the packer's units, gutter included: a cell no shared page takes has a page of its own, that size
+            // (CgHostPicture keeps it within the host's limit)
+            int gutter = Page.units(GUTTER, align), across = Page.units(w, align) + gutter, down = Page.units(h, align) + gutter;
+            if (across > side / align || down > side / align) return fresh(host, s, across * align, down * align, align);
+            for (int i = 0; i < PAGES.size(); i++) {
+                Page page = PAGES.get(i);
+                if (page.shared(side) && page.align == align && page.insert(s)) return true;
             }
             for (int i = 0; i < PAGES.size(); i++) {
                 Page page = PAGES.get(i);
-                if (page.side == side && page.align == align && page.insert(s)) return true;
+                if (page.shared(side) && page.align == align && page.freed > 0 && page.repack(s)) return true;
             }
-            for (int i = 0; i < PAGES.size(); i++) {
-                Page page = PAGES.get(i);
-                if (page.side == side && page.align == align && page.freed > 0 && page.repack(s)) return true;
-            }
-            Page page = new Page(host, side, align);
-            PAGES.add(page);
-            return page.insert(s);
+            return fresh(host, s, side, side, align);
         } catch (VirtualMachineError e) {
             throw e;
         } catch (Throwable t) {
@@ -794,7 +815,8 @@ public final class CgHostPictures {
      * Render thread.
      */
     static final class Page {
-        final int side;
+        /** Its size in pixels: a shared page's square, a page of one cell's own that cell's. */
+        final int width, height;
         /** Every cell here starts on a multiple of this many pixels and is sized up to one: the packer counts in them. */
         final int align;
         final Object target;
@@ -808,12 +830,13 @@ public final class CgHostPictures {
         /** Sizes given back since the last pack: space the packer still counts as used. */
         int freed;
 
-        Page(Host host, int side, int align) {
-            this.side = side;
+        Page(Host host, int width, int height, int align) {
+            this.width = width;
+            this.height = height;
             this.align = align;
             this.packer = packer();
-            this.target = host.createTarget(side, side, 0f);
-            this.white = host.twoClears() ? host.createTarget(side, side, 1f) : null;
+            this.target = host.createTarget(width, height, 0f);
+            this.white = host.twoClears() ? host.createTarget(width, height, 1f) : null;
             this.targetTexture = host.texture(target);
             this.whiteTexture = white == null ? null : host.texture(white);
         }
@@ -823,7 +846,12 @@ public final class CgHostPictures {
         }
 
         private MaxRectsPacker packer() {
-            return new MaxRectsPacker(side / align, side / align);
+            return new MaxRectsPacker(width / align, height / align);
+        }
+
+        /** Whether it is a shared page of {@code side}: one that packs any cell, not one cell's own. */
+        boolean shared(int side) {
+            return width == side && height == side;
         }
 
         // s's rect in the packer's units, its position kept in pixels
@@ -885,8 +913,8 @@ public final class CgHostPictures {
 
         // Size s's image: its cell of the page (and of the white twin), its bleed outside the rect
         CgPicture.Image image(CgHostPicture.Size s, boolean bottomUp) {
-            float u0 = (float) s.x / side, u1 = (float) (s.x + CgHostPicture.cellWidth(s)) / side;
-            float top = (float) s.y / side, bottom = (float) (s.y + CgHostPicture.cellHeight(s)) / side;
+            float u0 = (float) s.x / width, u1 = (float) (s.x + CgHostPicture.cellWidth(s)) / width;
+            float top = (float) s.y / height, bottom = (float) (s.y + CgHostPicture.cellHeight(s)) / height;
             float v0 = bottomUp ? 1f - top : top, v1 = bottomUp ? 1f - bottom : bottom;
             CgTexture page = CgHostCopies.sampled(targetTexture);
             CgPicture.Image image = whiteTexture == null ? CgPicture.Image.of(page, u0, v0, u1, v1)
@@ -901,7 +929,7 @@ public final class CgHostPictures {
         // The cells the host just drew, copied where the engine samples a copy (texels, rows bottom first where so)
         void copied(Cells cells, boolean bottomUp) {
             for (int i = 0; i < cells.count(); i++) {
-                int w = cells.width(i), h = cells.height(i), x = cells.x(i), y = bottomUp ? side - cells.y(i) - h : cells.y(i);
+                int w = cells.width(i), h = cells.height(i), x = cells.x(i), y = bottomUp ? height - cells.y(i) - h : cells.y(i);
                 CgHostCopies.copy(targetTexture, x, y, w, h);
                 if (whiteTexture != null) CgHostCopies.copy(whiteTexture, x, y, w, h);
             }
