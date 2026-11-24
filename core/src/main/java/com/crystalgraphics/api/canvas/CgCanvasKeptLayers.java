@@ -13,6 +13,8 @@ import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.ui.element.CgUiElements;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 /**
  * A canvas's kept layers: each walk drawn into the layer's held picture when its revision or size changed, else
@@ -75,26 +77,28 @@ final class CgCanvasKeptLayers {
         CgRecording recording = cv.recording;
         CgKeptLayer.Shown shown = kept.shown;
         boolean full = kept.revision == CgKeptLayer.NONE || shown == null || shown.width() != pw || shown.height() != ph;
-        if (kept.texture != null) {
-            // Remade when outgrown, or holding more than twice what it needs
-            int tw = kept.texture.getWidth(), th = kept.texture.getHeight();
-            int rw = reserved(kept.reserveWidth), rh = reserved(kept.reserveHeight);
-            if (tw < pw || th < ph || tw < rw || th < rh || tw > Math.max(Math.max(64, pw * 2), rw)
-                    || th > Math.max(Math.max(64, ph * 2), rh)) {
-                // Released when this recording ends: nothing may composite it from here
-                kept.shown = null;
-                recording.release(kept.texture);
-                kept.texture = null;
-            }
+        // The walk draws into the pending texture, remade when outgrown or holding more than twice what it needs; the
+        // shown one stays until the walk completes
+        if (kept.pending != null && !fits(kept, kept.pending, pw, ph)) {
+            recording.release(kept.pending);
+            kept.pending = null;
         }
-        if (kept.texture == null) {
-            kept.texture = CgGraphTexture.requested("canvas_kept", CgTextureDesc.of(
+        if (kept.pending == null) {
+            kept.pending = CgGraphTexture.requested("canvas_kept", CgTextureDesc.of(
                     Math.max(bucket(pw), reserved(kept.reserveWidth)), Math.max(bucket(ph), reserved(kept.reserveHeight)),
                     CgFormat.RGBA16_FLOAT));
+        }
+        if (!full && kept.texture != null) {
+            // Damage redraws only part of it: the rest is the shown picture's, copied in first
+            CgGraphTexture from = kept.texture, to = kept.pending;
+            cv.recorder.end();
+            recording.copy(from, 0, from.getHeight() - ph, pw, ph, to, 0, to.getHeight() - ph, pw, ph, false);
+        } else {
             full = true;
         }
         kept.invalidate();
         kept.beginWalk(now, full);
+        walk.degradedAtOpen = cv.degradedDraws();
         if (moved && !full) kept.damageMoved();
         CgCanvasLayer l = cv.layers.open(Float.NaN, 0f, 0f, 0f);
         l.kept = walk;
@@ -102,8 +106,8 @@ final class CgCanvasKeptLayers {
         l.y0 = y0;
         l.w = pw;
         l.h = ph;
-        l.texture = kept.texture;
-        l.lens.screenLens(kept.texture.getWidth(), kept.texture.getHeight());
+        l.texture = kept.pending;
+        l.lens.screenLens(kept.pending.getWidth(), kept.pending.getHeight());
         l.load = CgLoad.CLEAR;
         l.opened = true;
         l.passMark = recording.passCount();
@@ -173,7 +177,11 @@ final class CgCanvasKeptLayers {
         }
     }
 
-    /** A drawn walk's end, its layer closed: tenants vacate, the damage is cut into its passes, the picture is held. */
+    /**
+     * A drawn walk's end, its layer closed: tenants vacate, the damage is cut into its passes, and the pending picture is
+     * shown if the walk is complete (or past {@link CgKeptLayer#DEGRADED_WALKS} incomplete ones); else the shown one
+     * stands and the layer walks again next frame.
+     */
     void finish(CgCanvasLayer l) {
         CgKeptLayer.Walk walk = l.kept;
         CgKeptLayer kept = walk.layer();
@@ -181,7 +189,7 @@ final class CgCanvasKeptLayers {
         kept.endWalk();
         // Nothing damaged on a drawn walk is the whole picture: the safe answer for a caller that damages nothing
         if (!kept.full && kept.damaged()) {
-            CgGraphTexture t = kept.texture;
+            CgGraphTexture t = kept.pending;
             int th = t.getHeight();
             // A pixel either side for edge coverage, then the bottom-left rect a pass takes
             int x0 = Math.max(0, (int) Math.floor(kept.damageX0) - 1), y0 = Math.max(0, (int) Math.floor(kept.damageY0) - 1);
@@ -199,12 +207,21 @@ final class CgCanvasKeptLayers {
                 if (recording.pass(i) instanceof CgRasterPass raster && raster.target() == t) raster.damage(dx, dy, dw, dh);
             }
         }
-        kept.revision = walk.revision;
-        CgKeptLayer.Shown shown = kept.shown;
-        if (shown == null || shown.texture() != kept.texture || shown.width() != l.w || shown.height() != l.h) {
+        boolean complete = canvas.degradedDraws() == walk.degradedAtOpen;
+        if (complete || kept.shown == null || ++kept.degradedWalks >= CgKeptLayer.DEGRADED_WALKS) {
+            // Shown: the pending texture swaps with the shown one, which the next walk draws into
+            CgGraphTexture was = kept.texture;
+            kept.texture = kept.pending;
+            kept.pending = was;
             kept.shown = CgKeptLayer.Shown.of(kept.texture, l.w, l.h);
+            kept.drawCount++;
+            CgTrace.add(CgChannels.MISC, complete ? "kept.shown-complete" : "kept.shown-degraded", 1);
+            kept.degradedWalks = 0;
+        } else {
+            CgTrace.add(CgChannels.MISC, "kept.held-incomplete", 1);
         }
-        kept.drawCount++;
+        // An incomplete picture, shown or not, walks again next frame
+        kept.revision = complete ? walk.revision : CgKeptLayer.NONE;
         composite(walk);
     }
 
@@ -292,8 +309,10 @@ final class CgCanvasKeptLayers {
             CgKeptLayer kept = walked.get(i);
             if (now - kept.lastFrame < IDLE_FRAMES || kept.keep) continue;
             if (kept.texture != null) recording.release(kept.texture);
+            if (kept.pending != null) recording.release(kept.pending);
             if (kept.thumbnail != null) recording.release(kept.thumbnail);
-            kept.texture = kept.thumbnail = null;
+            kept.texture = kept.pending = kept.thumbnail = null;
+            kept.degradedWalks = 0;
             kept.shown = null;
             kept.thumbnailDrawn = -1L;
             kept.invalidate();
@@ -305,6 +324,14 @@ final class CgCanvasKeptLayers {
     /** A held walk left open has nothing to land. */
     void dropWalks() {
         for (int i = 0; i < walked.size(); i++) walked.get(i).walk.live = false;
+    }
+
+    /** Whether {@code t} holds a {@code pw} x {@code ph} picture without being more than twice what it needs. */
+    private static boolean fits(CgKeptLayer kept, CgGraphTexture t, int pw, int ph) {
+        int tw = t.getWidth(), th = t.getHeight();
+        int rw = reserved(kept.reserveWidth), rh = reserved(kept.reserveHeight);
+        return tw >= pw && th >= ph && tw >= rw && th >= rh && tw <= Math.max(Math.max(64, pw * 2), rw)
+                && th <= Math.max(Math.max(64, ph * 2), rh);
     }
 
     /** What the owner promised, rounded as a texture is; 0 for no promise. */

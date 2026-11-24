@@ -35,6 +35,10 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
  *       {@link #delete} at a context's teardown.</li>
  *   <li>One canvas walks it at a time. Another may composite it meanwhile, on any thread: it draws the last finished
  *       picture.</li>
+ *   <li><b>Only complete pictures are shown.</b> A walk draws into a pending texture; one that drew text below the
+ *       glyph tier it asked for ({@code CgCanvas#degradedDraws}) leaves the shown picture standing and walks again next
+ *       frame. After {@value #DEGRADED_WALKS} such walks in a row the pending picture is shown anyway. Chromium's
+ *       pending tree, activated once its raster is complete.</li>
  *   <li>It is a {@link CgPicture}: its last finished picture, whatever size it is asked at; {@link #version} moves with
  *       each walk that draws.</li>
  *   <li>A {@link CgPicture} drawn in a walk is followed: while held, the layer keeps it shown, and when its version moves
@@ -125,6 +129,8 @@ public final class CgKeptLayer implements CgPicture {
         int x0, y0;
         float opacity = 1f;
         long revision;
+        /** The canvas's degraded draws as the walk opened: more at its close and the picture is incomplete. */
+        long degradedAtOpen;
 
         /** Where its picture's top-left lands, in the device pixels of the node it was opened under. */
         public int x() {
@@ -181,8 +187,14 @@ public final class CgKeptLayer implements CgPicture {
         }
     }
 
-    // The picture: the texture walks draw into, what it holds, and the last picture a walk finished
+    /** Incomplete walks in a row after which the pending picture is shown anyway: a frame of holes beats a frozen one. */
+    static final int DEGRADED_WALKS = 3;
+
+    // The shown picture's texture, the pending one walks draw into, what it holds, and the last picture shown
     @Nullable CgGraphTexture texture;
+    @Nullable CgGraphTexture pending;
+    /** Incomplete walks since the last picture shown. */
+    int degradedWalks;
     long revision = NONE;
     @Nullable volatile Shown shown;
     long lastFrame;
@@ -283,8 +295,10 @@ public final class CgKeptLayer implements CgPicture {
     /** Frees its textures with no frame to record a release into: a context's teardown. */
     public void delete() {
         if (texture != null) CgExecutor.freeStorage(texture);
+        if (pending != null) CgExecutor.freeStorage(pending);
         if (thumbnail != null) CgExecutor.freeStorage(thumbnail);
-        texture = thumbnail = null;
+        texture = pending = thumbnail = null;
+        degradedWalks = 0;
         shown = null;
         revision = NONE;
         thumbnailDrawn = -1L;
