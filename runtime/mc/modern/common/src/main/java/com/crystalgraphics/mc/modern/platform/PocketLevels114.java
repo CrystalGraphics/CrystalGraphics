@@ -143,11 +143,13 @@ public final class PocketLevels114 implements CgPocketLevel.Host {
         CgTexture2D colour;
         CgHostLevel.Drawn drawn;
 
+        // Our imports let go now; the storage freed once the frames that may sample it retire
         void release() {
             if (colour != null) CgHostPictures.forget(colour);
-            if (target != null) {
-                CgExternalTarget.forgetHost(target.frameBufferId);
-                PicturesModern.destroy(target);
+            RenderTarget gone = target;
+            if (gone != null) {
+                CgExternalTarget.forgetHost(gone.frameBufferId);
+                CgHostPictures.whenRetired(() -> PicturesModern.destroy(gone));
             }
             target = null;
             colour = null;

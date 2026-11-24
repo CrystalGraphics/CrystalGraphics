@@ -25,8 +25,10 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgService;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgHostImports;
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.render.CgFrameClock;
+import com.crystalgraphics.render.host.CgHostCopies;
 import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.render.view.CgViewPicture;
 import com.crystalgraphics.text.atlas.packing.MaxRectsPacker;
@@ -442,6 +444,7 @@ public final class CgHostPictures {
     private static final Queue<CgHostPicture> ASKED = new ConcurrentLinkedQueue<>();
     private static final Queue<Release> RELEASED = new ConcurrentLinkedQueue<>();
     private static final ArrayDeque<Release> RELEASING = new ArrayDeque<>();
+    private static final ArrayDeque<Retiring> RETIRING = new ArrayDeque<>();
     private static final List<CgHostPicture> HELD = new ArrayList<>();
     private static final List<Page> PAGES = new ArrayList<>();
     private static final CgHostPicture.Size[] DUE = new CgHostPicture.Size[CgHostPicture.MAX_SIZES];
@@ -509,10 +512,12 @@ public final class CgHostPictures {
             long mark = ALLOCATION.hostBegin();
             CgPocketLevel.drawPoint(CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick());
             CgViewPicture.drawPoint();
+            CgHostCopies.flush();
             ALLOCATION.hostEnd(mark);
+            runRetired();
         }
         for (CgHostPicture p; (p = ASKED.poll()) != null; ) HELD.add(p);
-        if (HELD.isEmpty() && RELEASED.isEmpty() && RELEASING.isEmpty() && !batchDue()) return;
+        if (HELD.isEmpty() && RELEASED.isEmpty() && RELEASING.isEmpty() && RETIRING.isEmpty() && !batchDue()) return;
         if (CgDeviceSection.open()) {
             refuse("CgHostPictures.drawPoint() inside a device section: Minecraft's code would run with the engine's "
                     + "state bound. Call it before CgDeviceSection.begin()");
@@ -556,6 +561,7 @@ public final class CgHostPictures {
             long end = CgTrace.begin(CgChannels.PICTURES, "pictures.end");
             String leak = host.endBatch();
             CgTrace.end(end);
+            CgHostCopies.flush();
             ALLOCATION.hostEnd(mark);
             CgTrace.end(zone);
             if (leak != null) leaked(leak);
@@ -633,6 +639,7 @@ public final class CgHostPictures {
         } finally {
             ALLOCATION.hostEnd(mark);
         }
+        page.copied(cells, host.bottomUp());
         cells.finish(page, host, frame);
         cells.clear();
     }
@@ -691,7 +698,31 @@ public final class CgHostPictures {
 
     /** Forgets what {@link #imported} made; the host's texture is untouched. */
     public static void forget(@Nullable CgTexture imported) {
+        if (imported == null) return;
+        CgHostCopies.forget(imported);
         if (imported instanceof CgTexture2D t) t.delete();
+    }
+
+    /**
+     * Runs {@code free} at a draw point once the device has retired the frame recorded now: what frees a host target a
+     * frame in flight may still sample. Forget its import first ({@link #forget}): the device lets the import go as that
+     * frame retires, before this runs, so the host's storage outlives every handle of ours to it. A few frames' wait is
+     * not enough, since the CPU runs frames ahead of the GPU, and a bindless read of freed storage faults the GPU,
+     * which takes the driver down with no exception. Render thread.
+     *
+     * <pre>{@code
+     * CgHostPictures.forget(texture);
+     * CgHostPictures.whenRetired(() -> host.deleteTarget(target, null));
+     * }</pre>
+     */
+    public static void whenRetired(Runnable free) {
+        RETIRING.add(new Retiring(free, CgRHI.get().frameIndex()));
+    }
+
+    // Outside a device section, where a host's code may run
+    private static void runRetired() {
+        long retired = CgRHI.get().retiredFrame();
+        while (!RETIRING.isEmpty() && RETIRING.peekFirst().frame <= retired) RETIRING.pollFirst().free.run();
     }
 
     /** Joins {@code batch} to every draw point from now on. */
@@ -857,8 +888,9 @@ public final class CgHostPictures {
             float u0 = (float) s.x / side, u1 = (float) (s.x + CgHostPicture.cellWidth(s)) / side;
             float top = (float) s.y / side, bottom = (float) (s.y + CgHostPicture.cellHeight(s)) / side;
             float v0 = bottomUp ? 1f - top : top, v1 = bottomUp ? 1f - bottom : bottom;
-            CgPicture.Image image = whiteTexture == null ? CgPicture.Image.of(targetTexture, u0, v0, u1, v1)
-                    : CgPicture.Image.matted(targetTexture, whiteTexture, u0, v0, u1, v1);
+            CgTexture page = CgHostCopies.sampled(targetTexture);
+            CgPicture.Image image = whiteTexture == null ? CgPicture.Image.of(page, u0, v0, u1, v1)
+                    : CgPicture.Image.matted(page, CgHostCopies.sampled(whiteTexture), u0, v0, u1, v1);
             if (s.pad > 0) {
                 float ox = (float) s.pad / s.width, oy = (float) s.pad / s.height;
                 image = image.outset(ox, oy, ox, oy);
@@ -866,12 +898,29 @@ public final class CgHostPictures {
             return image;
         }
 
+        // The cells the host just drew, copied where the engine samples a copy (texels, rows bottom first where so)
+        void copied(Cells cells, boolean bottomUp) {
+            for (int i = 0; i < cells.count(); i++) {
+                int w = cells.width(i), h = cells.height(i), x = cells.x(i), y = bottomUp ? side - cells.y(i) - h : cells.y(i);
+                CgHostCopies.copy(targetTexture, x, y, w, h);
+                if (whiteTexture != null) CgHostCopies.copy(whiteTexture, x, y, w, h);
+            }
+        }
+
         void delete(Host host) {
-            host.deleteTarget(target, targetTexture);
-            if (white != null) host.deleteTarget(white, whiteTexture);
+            Object page = target, twin = white;
+            forget(targetTexture);
+            forget(whiteTexture);
+            whenRetired(() -> {
+                host.deleteTarget(page, null);
+                if (twin != null) host.deleteTarget(twin, null);
+            });
         }
     }
 
     private record Release(CgHostPicture.Size size, long frame) {
+    }
+
+    private record Retiring(Runnable free, long frame) {
     }
 }

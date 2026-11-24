@@ -172,6 +172,11 @@ public abstract class CgTextureAbstract implements CgTexture, CgBinaryAsset, CgR
 
     // ── CgTexture — accessors ───────────────────────────────────────
 
+    /** Whether its storage is another's ({@code CgTexture2D.borrowed}): the engine neither made nor frees it. */
+    public boolean borrowed() {
+        return !owned;
+    }
+
     public int getId() {
         ensureLoaded();
         gpu.flush();

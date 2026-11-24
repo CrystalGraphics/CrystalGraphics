@@ -7,6 +7,7 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.api.canvas.CgPicture;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.host.CgHostLevel;
+import com.crystalgraphics.render.host.CgHostCopies;
 
 /**
  * A pocket level drawn by Minecraft alone from a camera, as a picture any canvas shows: a guidebook's multiblock, a
@@ -55,7 +56,7 @@ public final class CgLevelPicture implements CgPicture {
     public Image image(int deviceWidth, int deviceHeight, float scale) {
         CgHostLevel.Drawn drawn = level.drawnFor(this, Math.max(1, deviceWidth), Math.max(1, deviceHeight));
         // Minecraft's targets start at the bottom left
-        return drawn == null ? null : Image.of(drawn.colour(), 0f, 1f, 1f, 0f);
+        return drawn == null ? null : Image.of(CgHostCopies.sampled(drawn.colour()), 0f, 1f, 1f, 0f);
     }
 
     @Override

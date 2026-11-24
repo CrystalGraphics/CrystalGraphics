@@ -352,13 +352,15 @@ public final class PocketLevelsModern implements CgPocketLevel.Host {
         final CameraRenderState camera = new CameraRenderState();
         *///?}
 
+        // Our imports let go now; the storage freed once the frames that may sample it retire
         void release() {
             if (colour != null) CgHostPictures.forget(colour);
-            if (target != null) {
+            RenderTarget gone = target;
+            if (gone != null) {
                 //? if <1.21.5 {
-                CgExternalTarget.forgetHost(target.frameBufferId);
+                CgExternalTarget.forgetHost(gone.frameBufferId);
                 //?}
-                PicturesModern.destroy(target);
+                CgHostPictures.whenRetired(() -> PicturesModern.destroy(gone));
             }
             target = null;
             colour = null;

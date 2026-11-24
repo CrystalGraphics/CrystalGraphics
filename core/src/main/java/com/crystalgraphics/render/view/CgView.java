@@ -17,6 +17,7 @@ import com.crystalgraphics.render.post.upscale.CgUpscaleFilter;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 import com.crystalgraphics.render.target.CgRenderTarget;
+import com.crystalgraphics.render.host.CgHostCopies;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.apache.logging.log4j.LogManager;
@@ -661,7 +662,10 @@ public final class CgView {
             } finally {
                 CgDepthConvention.host(before);
             }
-            return drawn.colour();
+            // The host's target with the scene over it, copied where the engine samples a copy of a host's texture
+            CgHostCopies.copyWhole(drawn.colour());
+            CgHostCopies.flush();   // now: a canvas may draw it inline, past any draw point's flush
+            return CgHostCopies.sampled(drawn.colour());
         }
         if (picture == null) picture = new CgViewPictureTarget("cg_view." + name);
         CgRenderTarget target = picture.at(width, height, argb);

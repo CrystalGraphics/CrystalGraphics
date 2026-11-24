@@ -32,6 +32,7 @@ import com.crystalgraphics.platform.CgService;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceHints;
 import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.render.host.CgHostCopies;
 
 /**
  * Item icons, as Minecraft draws them: one atlas page per size in device pixels, a cell per look. Mojang's
@@ -621,6 +622,12 @@ public final class CgItemIcons {
             drawer.clear();
         }
         boolean bottomUp = pictures.bottomUp();
+        // The rects drawn, copied where the engine samples a copy of the host's page (texels, rows bottom first where so)
+        for (int i = 0; i < n; i++) {
+            int k = i * 4, w = rects[k + 2], h = rects[k + 3], x = rects[k], y = bottomUp ? side - rects[k + 1] - h : rects[k + 1];
+            CgHostCopies.copy(atlas.pageTexture(), x, y, w, h);
+            if (atlas.whiteTexture() != null) CgHostCopies.copy(atlas.whiteTexture(), x, y, w, h);
+        }
         for (int i = from; i < to; i++) {
             CgIconAtlas.Cell c = cells.get(i);
             if (!c.failed()) atlas.drawn(c, frame, bottomUp);
@@ -719,7 +726,8 @@ public final class CgItemIcons {
     private static void releaseDue(CgHostPictures.Host pictures, long frame) {
         while (!RELEASING.isEmpty() && RELEASING.peekFirst().frame <= frame - RELEASE_AFTER) {
             Release r = RELEASING.pollFirst();
-            pictures.deleteTarget(r.target, r.texture);
+            CgHostPictures.forget(r.texture);
+            CgHostPictures.whenRetired(() -> pictures.deleteTarget(r.target, null));
         }
     }
 

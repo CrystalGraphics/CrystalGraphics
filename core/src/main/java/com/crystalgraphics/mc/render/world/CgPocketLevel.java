@@ -36,6 +36,7 @@ import com.crystalgraphics.render.host.CgHostLevel;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.bounds.CgAABBc;
+import com.crystalgraphics.render.host.CgHostCopies;
 
 /**
  * A Minecraft level of your own, drawn by Minecraft under a scene of yours: a structure editor's, a guidebook's
@@ -513,6 +514,8 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
                 CgTrace.end(zone);
             }
             CgTrace.add(CgChannels.PICTURES, "pocket-draws", 1);
+            // A picture's is sampled as drawn; a view's is copied once its scene is drawn over it (CgView.renderPicture)
+            if (ask.picture != null && ask.drawn != null) CgHostCopies.copyWhole(ask.drawn.colour());
             ask.drawnFrame = frame;
             ask.drawnStamp = stamp;
             if (ask.picture != null) ask.picture.drew();

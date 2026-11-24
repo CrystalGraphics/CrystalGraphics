@@ -11,6 +11,7 @@ import com.crystalgraphics.mc.render.CgPace;
 
 import com.crystalgraphics.api.canvas.CgPicture;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.render.host.CgHostCopies;
 
 /**
  * The icons of one cell size, in device pixels: a uniform grid on one page the host draws into, cells keyed by what
@@ -300,8 +301,10 @@ public final class CgIconAtlas {
         float u0 = x0 * scale / s, u1 = (x0 + this.frame) * scale / s;
         float top = y0 * scale / s, bottom = (y0 + this.frame) * scale / s;
         float v0 = bottomUp ? 1f - top : top, v1 = bottomUp ? 1f - bottom : bottom;
-        CgPicture.Image image = whiteTexture == null ? CgPicture.Image.of(pageTexture, u0, v0, u1, v1)
-                : CgPicture.Image.matted(pageTexture, whiteTexture, u0, v0, u1, v1);
+        // A copy of the host's page where the engine samples one (CgHostCopies)
+        CgTexture page = CgHostCopies.sampled(pageTexture);
+        CgPicture.Image image = whiteTexture == null ? CgPicture.Image.of(page, u0, v0, u1, v1)
+                : CgPicture.Image.matted(page, CgHostCopies.sampled(whiteTexture), u0, v0, u1, v1);
         float out = margin / 16f;
         c.image = margin == 0 ? image : image.outset(out, out, out, out);
     }

@@ -194,11 +194,13 @@ public final class PocketLevelsLegacy implements CgPocketLevel.Host {
         CgTexture2D colour;
         CgHostLevel.Drawn drawn;
 
+        // Our imports let go now; the storage freed once the frames that may sample it retire
         void release() {
             if (colour != null) CgHostPictures.forget(colour);
-            if (target != null) {
-                CgExternalTarget.forgetHost(target.framebufferObject);
-                PicturesLegacy.delete(target);
+            Framebuffer gone = target;
+            if (gone != null) {
+                CgExternalTarget.forgetHost(gone.framebufferObject);
+                CgHostPictures.whenRetired(() -> PicturesLegacy.delete(gone));
             }
             target = null;
             colour = null;

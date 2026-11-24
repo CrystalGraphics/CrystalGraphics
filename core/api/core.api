@@ -9032,6 +9032,7 @@ com/crystalgraphics/gpu/resource/CgTextureAbstract
   method protected,final storage ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method protected,final storeOnDevice (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Kind;Lcom/crystalgraphics/platform/rhi/format/CgFormat;IIII)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method protected,static pixelFormatForChannels (I)I
+  method public borrowed ()Z
   method public delete ()V
   method public getHeight ()I
   method public getId ()I
@@ -13101,6 +13102,16 @@ com/crystalgraphics/render/graph/CgTargetCompare$Difference
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/render/host/CgHostCopies
+  access public,final
+  extends java/lang/Object
+  method public,static active ()Z
+  method public,static copy (Lcom/crystalgraphics/api/texture/CgTexture;IIII)V
+  method public,static copyWhole (Lcom/crystalgraphics/api/texture/CgTexture;)V
+  method public,static flush ()V
+  method public,static forget (Lcom/crystalgraphics/api/texture/CgTexture;)V
+  method public,static sampled (Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/api/texture/CgTexture;
+  method public,static sampled (Lcom/crystalgraphics/gpu/resource/CgTexture2D;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
 com/crystalgraphics/render/host/CgHostEnvironment
   access public,final
   extends java/lang/Object
