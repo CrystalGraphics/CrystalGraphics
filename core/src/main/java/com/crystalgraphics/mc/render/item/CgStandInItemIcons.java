@@ -47,15 +47,15 @@ public final class CgStandInItemIcons implements CgItemIcons.Host {
 
     /** Its count over 1 and its damage, as a slot decorates; nothing for a whole single item. */
     @Override
-    public CgItemIcons.Look overlayLook(Object hostStack) {
+    public CgItemIcons.Look overlayLook(Object hostStack, String countText) {
         CgItemStack s = (CgItemStack) hostStack;
-        if (s.count() <= 1 && s.damage() <= 0) return null;
-        return CgItemIcons.Look.still("overlay " + s.count() + " " + s.damage() + "/" + s.maxDamage());
+        if (countText == null && s.count() <= 1 && s.damage() <= 0) return null;
+        return CgItemIcons.Look.still("overlay " + s.count() + " " + s.damage() + "/" + s.maxDamage() + " " + countText);
     }
 
     /** The count at the slot's bottom right, reaching past it as vanilla's does; a bar for damage. */
     @Override
-    public void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y) {
+    public void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y, String countText) {
         CgItemStack s = (CgItemStack) hostStack;
         CgCanvas canvas = (CgCanvas) ctx.gui();
         if (s.damage() > 0) {
@@ -64,8 +64,9 @@ public final class CgStandInItemIcons implements CgItemIcons.Host {
             canvas.fill(x + 2, y + 13, 13f, 2f, 0xFF000000);
             canvas.fill(x + 2, y + 13, 13f * left, 1f, 0xFF40FF40);
         }
-        if (s.count() > 1) {
-            String n = Integer.toString(s.count());
+        // A text's formatting codes are no digits
+        String n = countText != null ? countText.replaceAll("§.", "") : s.count() > 1 ? Integer.toString(s.count()) : "";
+        if (!n.isEmpty()) {
             // Digits 6 units apart, the last ending 1 unit past the slot, its shadow 2: as vanilla's
             canvas.fill(x + 18 - 6 * n.length(), y + 10, 6f * n.length(), 8f, 0xFFFFFFFF);
         }

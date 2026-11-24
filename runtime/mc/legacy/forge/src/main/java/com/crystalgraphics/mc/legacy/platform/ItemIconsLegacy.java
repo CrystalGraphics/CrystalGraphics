@@ -52,21 +52,21 @@ public final class ItemIconsLegacy implements CgItemIcons.Host {
 
     /** Its decorations: the stack's data with its count, drawn again every frame while the item cools down (1.10+). */
     @Override
-    public CgItemIcons.Look overlayLook(Object hostStack) {
+    public CgItemIcons.Look overlayLook(Object hostStack, String countText) {
         ItemStack stack = (ItemStack) hostStack;
         int count = count(stack);
         boolean cooling = cooldown(stack) > 0f;
-        if (count <= 1 && !stack.getItem().showDurabilityBar(stack) && !cooling) return null;
-        return looks.of(CgItems.stampOf(stack), count, null, cooling, cooling ? "cooldown" : null);
+        if (countText == null && count <= 1 && !stack.getItem().showDurabilityBar(stack) && !cooling) return null;
+        return looks.of(CgItems.stampOf(stack), count, countText, cooling, cooling ? "cooldown" : null);
     }
 
     @Override
-    public void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y) {
+    public void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y, String countText) {
         Minecraft mc = Minecraft.getMinecraft();
         //? if <1.12 {
-        /*mc.getRenderItem().renderItemOverlays(mc.fontRendererObj, (ItemStack) hostStack, x, y);
+        /*mc.getRenderItem().renderItemOverlayIntoGUI(mc.fontRendererObj, (ItemStack) hostStack, x, y, countText);
         *///?} else {
-        mc.getRenderItem().renderItemOverlays(mc.fontRenderer, (ItemStack) hostStack, x, y);
+        mc.getRenderItem().renderItemOverlayIntoGUI(mc.fontRenderer, (ItemStack) hostStack, x, y, countText);
         //?}
     }
 

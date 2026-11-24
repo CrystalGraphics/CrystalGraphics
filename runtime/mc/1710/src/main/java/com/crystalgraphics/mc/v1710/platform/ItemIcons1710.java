@@ -58,15 +58,15 @@ public final class ItemIcons1710 implements CgItemIcons.Host {
 
     /** Its decorations: the stack's data with its count; 1.7.10 has no cooldowns. */
     @Override
-    public CgItemIcons.Look overlayLook(Object hostStack) {
+    public CgItemIcons.Look overlayLook(Object hostStack, String countText) {
         ItemStack stack = (ItemStack) hostStack;
-        if (stack.stackSize <= 1 && !stack.getItem().showDurabilityBar(stack)) return null;
-        return looks.of(CgItems.stampOf(stack), stack.stackSize, null, false, null);
+        if (countText == null && stack.stackSize <= 1 && !stack.getItem().showDurabilityBar(stack)) return null;
+        return looks.of(CgItems.stampOf(stack), stack.stackSize, countText, false, null);
     }
 
     @Override
-    public void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y) {
+    public void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y, String countText) {
         Minecraft mc = Minecraft.getMinecraft();
-        RenderItem.getInstance().renderItemOverlayIntoGUI(mc.fontRenderer, mc.getTextureManager(), (ItemStack) hostStack, x, y);
+        RenderItem.getInstance().renderItemOverlayIntoGUI(mc.fontRenderer, mc.getTextureManager(), (ItemStack) hostStack, x, y, countText);
     }
 }

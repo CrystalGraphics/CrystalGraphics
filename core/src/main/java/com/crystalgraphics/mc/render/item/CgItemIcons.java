@@ -237,16 +237,18 @@ public final class CgItemIcons {
 
         /**
          * What {@code hostStack}'s decorations look like: its count, durability bar, cooldown and mods' decorators; null
-         * where it draws none. Render thread, at the draw point.
+         * where it draws none. {@code countText}, where given, is drawn where the count goes, as vanilla's drag shows a
+         * slot's share ({@code "§e64"}): a look of its own. Render thread, at the draw point.
          */
         @Nullable
-        Look overlayLook(Object hostStack);
+        Look overlayLook(Object hostStack, @Nullable String countText);
 
         /**
          * Draws {@code hostStack}'s decorations alone, as the inventory draws them over a slot's item, the slot's top-left
-         * at {@code (x, y)}. Render thread, inside a {@link CgHostPictures.Host} draw.
+         * at {@code (x, y)}, {@code countText} in the count's place where given. Render thread, inside a
+         * {@link CgHostPictures.Host} draw.
          */
-        void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y);
+        void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y, @Nullable String countText);
 
         /** Draws nothing. */
         Host NONE = new Host() {
@@ -256,8 +258,8 @@ public final class CgItemIcons {
             @Override public void draw(CgHostDrawContext ctx, Object hostStack, int x, int y) {
                 throw new UnsupportedOperationException();
             }
-            @Override public Look overlayLook(Object hostStack) { throw new UnsupportedOperationException(); }
-            @Override public void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y) {
+            @Override public Look overlayLook(Object hostStack, String countText) { throw new UnsupportedOperationException(); }
+            @Override public void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y, String countText) {
                 throw new UnsupportedOperationException();
             }
         };
@@ -512,7 +514,8 @@ public final class CgItemIcons {
                         continue;
                     }
                     CgIconAtlas atlas = atlas(atlasKey(s.pixels, icon.decorations, split && look.animated()));
-                    CgIconAtlas.Cell cell = atlas.cell(look.key(), icon.hostStack, look.animated(), look.why());
+                    Object drawn = icon.countText == null ? icon.hostStack : new Counted(icon.hostStack, icon.countText);
+                    CgIconAtlas.Cell cell = atlas.cell(look.key(), drawn, look.animated(), look.why());
                     if (s.cell != cell) {
                         if (s.cell != null) s.cell.release();
                         cell.use();
@@ -564,10 +567,14 @@ public final class CgItemIcons {
         }
     }
 
+    /** A cell's stack with the text drawn in its count's place. */
+    private record Counted(Object hostStack, String text) {
+    }
+
     @Nullable
     private static Look overlayLook(Host host, CgItemIcon icon) {
         try {
-            return host.overlayLook(icon.hostStack);
+            return host.overlayLook(icon.hostStack, icon.countText);
         } catch (RuntimeException e) {
             if (LOGGED.add(icon.stack().item() + ":overlay")) LOGGER.warn("[cg] item overlay {}: its look could not be read", icon.stack(), e);
             return new Look(icon, true, "unknown");
@@ -670,7 +677,8 @@ public final class CgItemIcons {
             CgIconAtlas.Cell c = cells.get(i);
             if (c.failed()) continue;
             try {
-                if (atlas.frame == CgIconAtlas.OVERLAY) host.drawOverlay(ctx, c.drawn, atlas.unitsX(c), atlas.unitsY(c));
+                if (c.drawn instanceof Counted d) host.drawOverlay(ctx, d.hostStack(), atlas.unitsX(c), atlas.unitsY(c), d.text());
+                else if (atlas.frame == CgIconAtlas.OVERLAY) host.drawOverlay(ctx, c.drawn, atlas.unitsX(c), atlas.unitsY(c), null);
                 else host.draw(ctx, c.drawn, atlas.unitsX(c), atlas.unitsY(c));
             } catch (VirtualMachineError e) {
                 throw e;

@@ -90,27 +90,27 @@ public final class ItemIconsModern implements CgItemIcons.Host {
      * draw none.
      */
     @Override
-    public CgItemIcons.Look overlayLook(Object hostStack) {
+    public CgItemIcons.Look overlayLook(Object hostStack, String countText) {
         ItemStack stack = (ItemStack) hostStack;
         float cooldown = cooldown(stack);
-        boolean decorated = stack.getCount() > 1 || bar(stack) || cooldown > 0f || DECORATORS;
+        boolean decorated = countText != null || stack.getCount() > 1 || bar(stack) || cooldown > 0f || DECORATORS;
         if (!decorated) return null;
         boolean cooling = cooldown > 0f;
-        return looks.of(CgItems.stampOf(stack), stack.getCount(), null, cooling, cooling ? "cooldown" : null);
+        return looks.of(CgItems.stampOf(stack), stack.getCount(), countText, cooling, cooling ? "cooldown" : null);
     }
 
     @Override
-    public void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y) {
+    public void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y, String countText) {
         ItemStack stack = (ItemStack) hostStack;
         Minecraft mc = Minecraft.getInstance();
         //? if >=1.14 <1.19.4 {
-        /*mc.getItemRenderer().renderGuiItemDecorations(mc.font, stack, x, y);
+        /*mc.getItemRenderer().renderGuiItemDecorations(mc.font, stack, x, y, countText);
         *///?} elif >=1.19.4 <1.20 {
-        /*mc.getItemRenderer().renderGuiItemDecorations((PoseStack) ctx.poseStack(), mc.font, stack, x, y);
+        /*mc.getItemRenderer().renderGuiItemDecorations((PoseStack) ctx.poseStack(), mc.font, stack, x, y, countText);
         *///?} elif >=1.20 <26.1 {
-        ((GuiGraphics) ctx.gui()).renderItemDecorations(mc.font, stack, x, y);
+        ((GuiGraphics) ctx.gui()).renderItemDecorations(mc.font, stack, x, y, countText);
         //?} elif >=26.1 {
-        /*((GuiGraphicsExtractor) ctx.gui()).itemDecorations(mc.font, stack, x, y);
+        /*((GuiGraphicsExtractor) ctx.gui()).itemDecorations(mc.font, stack, x, y, countText);
         *///?}
     }
 

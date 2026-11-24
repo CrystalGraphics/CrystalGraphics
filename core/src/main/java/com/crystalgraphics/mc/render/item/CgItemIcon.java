@@ -1,5 +1,8 @@
 package com.crystalgraphics.mc.render.item;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.canvas.CgPicture;
@@ -45,7 +48,11 @@ public final class CgItemIcon implements CgPicture {
     private final CgItemStack stack;
     /** Whether this is a stack's decorations ({@link #overlay}) rather than its icon. */
     final boolean decorations;
+    /** What a decorations icon draws in its count's place; null for the stack's own count. */
+    @Nullable final String countText;
     @Nullable private volatile CgItemIcon overlay;
+    /** Decorations with a text in the count's place, by text. */
+    @Nullable private Map<String, CgItemIcon> counted;
     /** The host's stack, made at the first draw point that resolves it; NONE where the game does not know the item. */
     @Nullable Object hostStack;
     boolean unknown;
@@ -57,12 +64,13 @@ public final class CgItemIcon implements CgPicture {
     boolean prewarm;
 
     CgItemIcon(CgItemStack stack) {
-        this(stack, false);
+        this(stack, false, null);
     }
 
-    private CgItemIcon(CgItemStack stack, boolean decorations) {
+    private CgItemIcon(CgItemStack stack, boolean decorations, @Nullable String countText) {
         this.stack = stack;
         this.decorations = decorations;
+        this.countText = countText;
     }
 
     /**
@@ -76,10 +84,30 @@ public final class CgItemIcon implements CgPicture {
         if (o == null) {
             synchronized (this) {
                 o = overlay;
-                if (o == null) overlay = o = new CgItemIcon(stack, true);
+                if (o == null) overlay = o = new CgItemIcon(stack, true, null);
             }
         }
         return o;
+    }
+
+    /**
+     * Its decorations with {@code countText} drawn where the count goes, in Minecraft's font and its formatting codes:
+     * what vanilla's drag shows over each slot it shares a stack into, and over the stack it leaves on the pointer.
+     *
+     * <pre>{@code
+     * canvas.picture(icon.overlay("§e64"), x, y, 16, 16);   // a share capped at the stack's limit, yellow
+     * canvas.picture(icon.overlay("§e0"), x, y, 16, 16);    // nothing left on the pointer
+     * }</pre>
+     *
+     * Null is {@link #overlay()}. Each text is its own picture, kept while the icon is.
+     */
+    public CgItemIcon overlay(@Nullable String countText) {
+        if (countText == null) return overlay();
+        if (decorations && countText.equals(this.countText)) return this;
+        synchronized (this) {
+            if (counted == null) counted = new HashMap<>();
+            return counted.computeIfAbsent(countText, t -> new CgItemIcon(stack, true, t));
+        }
     }
 
     /** The stack it shows. */
