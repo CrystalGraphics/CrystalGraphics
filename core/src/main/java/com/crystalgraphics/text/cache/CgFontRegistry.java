@@ -189,6 +189,16 @@ public class CgFontRegistry {
     private static final int MAX_COMMIT_COUNT_PER_FRAME = 2048;
 
     /**
+     * Render-thread time a frame may spend rasterising the bitmap glyphs its draws miss, in nanoseconds; past it they
+     * go to the workers and draw a frame or two later. Chromium rasterises a frame's glyphs inside that frame; this
+     * keeps that while bounding a cold screen (a new zoom step, a CJK page) to one long frame, not a stall.
+     */
+    private static final long INLINE_NANOS_PER_FRAME = 2_000_000L;
+
+    /** Time spent inline this frame. @see #INLINE_NANOS_PER_FRAME */
+    private long inlineNanos;
+
+    /**
      * Wall-clock ceiling for one frame's async-commit drain, in nanoseconds.
      *
      * <p>The byte and count budgets above bound <em>how much</em> is uploaded, but not <em>how
@@ -305,8 +315,10 @@ public class CgFontRegistry {
                     atlas.tickFrame(frame);
             }
 
-            // 3. Reset the MSDF generator's per-frame budget counter.
+            // 3. Reset the per-frame budgets: the MSDF generator's and the inline glyphs'.
             msdfGenerator.tickFrame();
+            CgTrace.counter(CgChannels.TEXT, "glyph.inline-us", inlineNanos / 1000L);
+            inlineNanos = 0L;
 
             // 4. Only now, with demand already drained above, top the pool up with speculation.
             int msdfQueueDepth = glyphGenerationExecutor.msdfQueueDepth();
@@ -448,10 +460,10 @@ public class CgFontRegistry {
      *
      * <p>Transforms the key exactly once, checks the atlas exactly once. On a cache hit (the
      * common, steady-state case) returns immediately — no job submission, no generation
-     * attempt, just the one transform and the one {@code O(1)} lookup. On a miss it asks a worker
-     * and returns null: a bitmap glyph draws nothing until it lands, an MSDF one its bitmap
-     * stand-in (itself from a worker) or nothing. Nothing is generated here unless the worker
-     * route cannot deliver ({@link #bitmapOnWorker}).</p>
+     * attempt, just the one transform and the one {@code O(1)} lookup. On a miss a bitmap glyph
+     * is rasterised here while the frame's inline budget lasts, else asked of a worker and null
+     * until it lands; an MSDF miss asks a worker for the field and draws its bitmap stand-in,
+     * under the same budget ({@link #bitmapWithinBudget}).</p>
      *
      * <h4>Never generates MSDF synchronously — that is {@link #ensureGlyph}'s job</h4>
      * <p>On an MSDF miss this submits the async job and then takes the bitmap fallback for
@@ -502,7 +514,7 @@ public class CgFontRegistry {
         CgGlyphKey atlasKey = toBitmapAtlasGlyphKey(
                 new CgRasterGlyphKey(rasterFontKey, key.getGlyphId(), false, subPixelBucket,
                         key.isSyntheticBold(), key.isSyntheticItalic()));
-        return bitmapOnWorker(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket, currentFrame);
+        return bitmapWithinBudget(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket, currentFrame);
     }
 
     /**
@@ -1000,24 +1012,34 @@ public class CgFontRegistry {
         CgGlyphKey bitmapAtlasKey = toBitmapAtlasGlyphKey(
                 new CgRasterGlyphKey(bitmapRasterKey, atlasKey.getGlyphId(), false, subPixelBucket,
                         atlasKey.isSyntheticBold(), atlasKey.isSyntheticItalic()));
-        return bitmapOnWorker(font, bitmapAtlasKey, bitmapRasterKey, effectiveTargetPx, subPixelBucket, currentFrame);
+        return bitmapWithinBudget(font, bitmapAtlasKey, bitmapRasterKey, effectiveTargetPx, subPixelBucket,
+                currentFrame);
     }
 
     /**
-     * A bitmap glyph from the atlas, else asked of a worker: null, and nothing drawn for it this frame. Rasterising
-     * here put every bitmap glyph on the render thread, 4810 calls and 387 ms in text-3d's first frame; a glyph a few
-     * frames late is imperceptible. Rasterised here only when the worker route cannot deliver: a job that failed is
-     * refused for good, and a rejected submission means nothing is coming.
+     * A bitmap glyph from the atlas, else rasterised here while the frame's {@link #INLINE_NANOS_PER_FRAME} lasts, else
+     * asked of a worker: null, and nothing drawn for it this frame. The budget is what keeps a cold first frame (4810
+     * glyphs, 387 ms in text-3d's, when every miss was made here) to one long frame. Rasterised here past the budget
+     * only when the worker route cannot deliver: a job that failed is refused for good, and a rejected submission means
+     * nothing is coming.
      *
      * <p>Null is safe to return: {@code submitBatchedQuads} skips it, and {@code CgResolvedGlyphs} refuses to cache a
      * placement array holding one, so the glyph is asked for again next frame.</p>
      */
-    private CgGlyphPlacement bitmapOnWorker(CgFont font, CgGlyphKey atlasKey, CgRasterFontKey rasterFontKey,
-                                            int effectiveTargetPx, int subPixelBucket, long currentFrame) {
+    private CgGlyphPlacement bitmapWithinBudget(CgFont font, CgGlyphKey atlasKey, CgRasterFontKey rasterFontKey,
+                                                int effectiveTargetPx, int subPixelBucket, long currentFrame) {
         CgGlyphPlacement cached = getBitmapAtlas().get(atlasKey, currentFrame);
         if (cached != null) {
             CgTrace.add(CgChannels.TEXT, "glyph.bitmap.atlasHit", 1);
             return cached;
+        }
+        if (inlineNanos < INLINE_NANOS_PER_FRAME) {
+            long start = System.nanoTime();
+            CgGlyphPlacement made = ensureBitmapGlyph(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket,
+                    currentFrame);
+            inlineNanos += System.nanoTime() - start;
+            CgTrace.add(CgChannels.TEXT, "glyph.bitmap.inline", 1);
+            return made;
         }
         CgGlyphGenerationJob job = CgGlyphGenerationJob.bitmap(
                 font.getKey(), font.getData(), atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket);
