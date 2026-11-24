@@ -16,6 +16,8 @@ import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.Vec3;
 *///?}
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -75,6 +77,33 @@ public final class WorldStimulusLegacy implements CgWorldStimulus {
         if (player == null) return false;
         String name = player.getName();
         return run("gamemode 1 " + name, String.format(Locale.ROOT, "tp %s %.2f %.2f %.2f", name, x, y, z));
+    }
+
+    @Override
+    public boolean time(long ticks) {
+        return run("time set " + ticks);
+    }
+
+    @Override
+    public boolean survival() {
+        EntityPlayerSP player = player();
+        return player != null && run("gamemode 0 " + player.getName());
+    }
+
+    // replaceitem's player slots: slot.hotbar.0-8, then slot.inventory.0-26 for the inventory's 9-35
+    @Override
+    public boolean inventory(String... stacks) {
+        EntityPlayerSP player = player();
+        if (player == null) return false;
+        String name = player.getName();
+        List<String> commands = new ArrayList<>();
+        commands.add("clear " + name);
+        for (int i = 0; i < stacks.length; i++) {
+            if (stacks[i].isEmpty()) continue;
+            String slot = i < 9 ? "slot.hotbar." + i : "slot.inventory." + (i - 9);
+            commands.add(String.format(Locale.ROOT, "replaceitem entity %s %s %s", name, slot, stacks[i]));
+        }
+        return run(commands.toArray(new String[0]));
     }
 
     // As the death screen's button does: nothing closes the screen for it.

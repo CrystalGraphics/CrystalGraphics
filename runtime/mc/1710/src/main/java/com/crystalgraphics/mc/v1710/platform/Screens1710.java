@@ -6,6 +6,7 @@ import com.crystalgraphics.platform.service.CgScreens;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiChat;
 import net.minecraft.client.gui.GuiScreen;
+import net.minecraft.client.gui.inventory.GuiInventory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.input.Keyboard;
@@ -154,5 +155,12 @@ public final class Screens1710 implements CgScreens.Host {
     @Override
     public void openChat() {
         Minecraft.getMinecraft().displayGuiScreen(new GuiChat());
+    }
+
+    // In creative GuiInventory's initGui puts the creative screen up, as the inventory key's does
+    @Override
+    public void openInventory() {
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.thePlayer != null) mc.displayGuiScreen(new GuiInventory(mc.thePlayer));
     }
 }

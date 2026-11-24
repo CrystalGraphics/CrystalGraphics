@@ -19,6 +19,8 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 //?}
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -100,6 +102,36 @@ public final class WorldStimulusModern implements CgWorldStimulus {
         if (player == null) return false;
         String name = player.getScoreboardName();
         return run("gamemode creative " + name, String.format(Locale.ROOT, "tp %s %.2f %.2f %.2f", name, x, y, z));
+    }
+
+    @Override
+    public boolean time(long ticks) {
+        return run("time set " + ticks);
+    }
+
+    @Override
+    public boolean survival() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        return player != null && run("gamemode survival " + player.getScoreboardName());
+    }
+
+    // The slot command was `replaceitem` until 1.17's `item`; container.N is the player's slot N from 1.13.
+    @Override
+    public boolean inventory(String... stacks) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) return false;
+        String name = player.getScoreboardName();
+        List<String> commands = new ArrayList<>();
+        commands.add("clear " + name);
+        for (int i = 0; i < stacks.length; i++) {
+            if (stacks[i].isEmpty()) continue;
+            //? if >=1.17 {
+            commands.add(String.format(Locale.ROOT, "item replace entity %s container.%d with %s", name, i, stacks[i]));
+            //?} else {
+            /*commands.add(String.format(Locale.ROOT, "replaceitem entity %s container.%d %s", name, i, stacks[i]));
+            *///?}
+        }
+        return run(commands.toArray(new String[0]));
     }
 
     // The respawn packet closes the death screen.

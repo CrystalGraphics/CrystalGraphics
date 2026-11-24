@@ -8,6 +8,7 @@ import com.crystalgraphics.platform.service.CgScreens;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 //? if >=26.1 {
 /*import net.minecraft.client.gui.GuiGraphicsExtractor;
 *///?} elif >=1.20 {
@@ -272,5 +273,20 @@ public final class ScreensModern implements CgScreens.Host {
         *///?} else {
         CgMinecraftClient.setScreen(mc, new ChatScreen(""));
         //?}
+    }
+
+    // As Minecraft.handleKeybinds' inventory key: a server-controlled inventory (riding a horse) asks the server
+    @Override
+    public void openInventory() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.player == null) return;
+        //? if >=1.14.3 {
+        if (mc.gameMode != null && mc.gameMode.isServerControlledInventory()) {
+            mc.player.sendOpenInventory();
+            return;
+        }
+        //?}
+        mc.getTutorial().onOpenInventory();
+        CgMinecraftClient.setScreen(mc, new InventoryScreen(mc.player));
     }
 }

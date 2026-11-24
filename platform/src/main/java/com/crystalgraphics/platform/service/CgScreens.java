@@ -100,6 +100,9 @@ public final class CgScreens {
         /** Puts the game's chat screen up: one of the host's own, in front of an engine screen. */
         void openChat();
 
+        /** Puts the game's inventory screen up, as its inventory key does. */
+        void openInventory();
+
         Host NONE = new Host() {
             @Override public void open(Owner owner) { }
             @Override public void close(Owner owner) { }
@@ -108,6 +111,7 @@ public final class CgScreens {
             @Override public void giveBack(CgSystemInput.Keyboard.Event key) { }
             @Override public void closeFront() { }
             @Override public void openChat() { }
+            @Override public void openInventory() { }
         };
     }
 
@@ -167,5 +171,13 @@ public final class CgScreens {
     /** Puts the game's chat screen up, one of its own: what an engine screen does under a screen it does not own. */
     public static void openChat() {
         host().openChat();
+    }
+
+    /**
+     * Puts the game's inventory screen up, as its inventory key does: in creative, the creative screen. For an
+     * unattended run comparing an engine screen with the game's own.
+     */
+    public static void openInventory() {
+        host().openInventory();
     }
 }

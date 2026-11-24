@@ -3180,6 +3180,7 @@ com/crystalgraphics/platform/service/CgScreens
   method public,static isOpen (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)Z
   method public,static open (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
   method public,static openChat ()V
+  method public,static openInventory ()V
 com/crystalgraphics/platform/service/CgScreens$Host
   access public,abstract,interface
   extends java/lang/Object
@@ -3191,6 +3192,7 @@ com/crystalgraphics/platform/service/CgScreens$Host
   method public,abstract giveBack (Lcom/crystalgraphics/platform/input/CgSystemInput$Keyboard$Event;)V
   method public,abstract open (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
   method public,abstract openChat ()V
+  method public,abstract openInventory ()V
 com/crystalgraphics/platform/service/CgScreens$Owner
   access public,abstract,interface
   extends java/lang/Object
@@ -3647,10 +3649,13 @@ com/crystalgraphics/platform/world/CgWorldStimulus
   field public,static,final NONE Lcom/crystalgraphics/platform/world/CgWorldStimulus;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   method public container (IIILjava/lang/String;)Z
+  method public inventory ([Ljava/lang/String;)Z
   method public jumpDown ()Z
   method public merchant (III)Z
   method public pressJump ()Z
+  method public survival ()Z
   method public teleport (DDD)Z
+  method public time (J)Z
   method public turnLook (FF)Z
   method public use (III)Z
   method public useEntity (I)Z

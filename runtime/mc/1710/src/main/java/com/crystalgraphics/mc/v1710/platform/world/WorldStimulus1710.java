@@ -10,6 +10,7 @@ import net.minecraft.entity.passive.EntityVillager;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
 import net.minecraft.inventory.IInventory;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.village.MerchantRecipe;
@@ -124,6 +125,38 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
         if (player == null) return false;
         String name = player.getCommandSenderName();
         return run(command("gamemode 1 " + name), command(String.format(Locale.ROOT, "tp %s %.2f %.2f %.2f", name, x, y, z)));
+    }
+
+    @Override
+    public boolean time(long ticks) {
+        return run(command("time set " + ticks));
+    }
+
+    @Override
+    public boolean survival() {
+        EntityClientPlayerMP player = Minecraft.getMinecraft().thePlayer;
+        return player != null && run(command("gamemode 0 " + player.getCommandSenderName()));
+    }
+
+    // 1.7.10 has no replaceitem: the server's player filled directly, then its menu synced
+    @Override
+    public boolean inventory(String... stacks) {
+        EntityClientPlayerMP me = Minecraft.getMinecraft().thePlayer;
+        if (me == null) return false;
+        String name = me.getCommandSenderName();
+        return run(server -> {
+            EntityPlayerMP player = server.getConfigurationManager().func_152612_a(name);
+            if (player == null) return;
+            player.inventory.clearInventory(null, -1);
+            for (int i = 0; i < stacks.length; i++) {
+                if (stacks[i].isEmpty()) continue;
+                String[] parts = stacks[i].trim().split("\\s+");
+                Item item = (Item) Item.itemRegistry.getObject(parts[0]);
+                if (item == null) continue;
+                player.inventory.setInventorySlotContents(i, new ItemStack(item, parts.length > 1 ? Integer.parseInt(parts[1]) : 1));
+            }
+            player.inventoryContainer.detectAndSendChanges();
+        });
     }
 
     // As the death screen's button does: nothing closes the screen for it.

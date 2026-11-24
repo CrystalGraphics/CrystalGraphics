@@ -122,6 +122,32 @@ public interface CgWorldStimulus {
         return false;
     }
 
+    /** The local player put in survival, so the inventory key opens the survival inventory; false where there is no player. */
+    default boolean survival() {
+        return false;
+    }
+
+    /**
+     * The local player's inventory emptied, then filled slot by slot, for a probe of an inventory screen: slots 0 to 8
+     * are the hotbar, 9 to 35 the rest, each {@code "minecraft:diamond 5"} or empty for none. False where this
+     * version cannot.
+     *
+     * <pre>{@code
+     * stimulus.inventory("minecraft:cobblestone 64", "", "minecraft:ender_pearl 16");
+     * }</pre>
+     */
+    default boolean inventory(String... stacks) {
+        return false;
+    }
+
+    /**
+     * The world's time of day set, as {@code /time set}: {@code 6000} noon, {@code 18000} midnight. What a probe of a
+     * clock's face moves; false where there is no single-player server.
+     */
+    default boolean time(long ticks) {
+        return false;
+    }
+
     /** A lightning bolt at the point. */
     boolean lightning(double x, double y, double z);
 
