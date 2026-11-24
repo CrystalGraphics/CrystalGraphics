@@ -91,8 +91,11 @@ public final class CgSceneTextRenderer {
     private final Matrix4f place = new Matrix4f();
     private final Vector3f eye = new Vector3f();
     private final Quaternionf turn = new Quaternionf();
-    /** Captures the labels' glyphs, under the camera's projection: a label's tier is fixed, its pose its own. */
-    private final CgTextBatch capturer = new CgTextBatch(null);
+    /**
+     * Captures the labels' glyphs, under the camera's projection: a label's tier is fixed, its pose its own. Made by the
+     * first {@link #prepare}: a scene exists on a dedicated server, which has no font engine.
+     */
+    private CgTextBatch capturer;
     private final List<Kept> kept = new ArrayList<>();
     private int keptCount;
     private final List<Batch> batches = new ArrayList<>();
@@ -145,6 +148,7 @@ public final class CgSceneTextRenderer {
      */
     public void prepare(CgRecording recording, CgCamera view, int width, int height) {
         CgCanvasTables.of(recording);   // its pipelines read the clip and palette slots, whatever else the recording draws
+        if (capturer == null) capturer = new CgTextBatch(null);
         capturer.camera(view.projection(), NO_VIEW, width, height);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text.content")) {
             evictions = CgGlyphAtlas.evictions();
