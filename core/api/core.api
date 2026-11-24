@@ -2502,6 +2502,7 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public picture (Lcom/crystalgraphics/api/canvas/CgPicture;FF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public picture (Lcom/crystalgraphics/api/canvas/CgPicture;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public picture (Lcom/crystalgraphics/api/canvas/CgPicture;FFFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public picturesPending ()I
   method public pixelSnap (Z)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public recording ()Z
   method public rectilinear ()Z

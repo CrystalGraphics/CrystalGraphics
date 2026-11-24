@@ -234,12 +234,14 @@ public abstract class CgHostPicture implements CgPicture {
         return s;
     }
 
+    // Another size's drawing while this one is drawn. Never the 1-pixel ask a picture is measured by (canvas.picture at
+    // its natural size before it knows it): that is no picture of it, and would end a screen's paint holding blank
     @Nullable
     private CgPicture.Image nearest(int width) {
         Size best = null;
         for (int i = 0; i < sizeCount; i++) {
             Size s = sizes[i];
-            if (s.image != null && (best == null || Math.abs(s.width - width) < Math.abs(best.width - width))) best = s;
+            if (s.image != null && (s.width > 1 || s.height > 1) && (best == null || Math.abs(s.width - width) < Math.abs(best.width - width))) best = s;
         }
         return best == null ? null : best.image;
     }

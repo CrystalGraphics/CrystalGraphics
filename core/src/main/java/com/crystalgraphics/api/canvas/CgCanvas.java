@@ -146,6 +146,8 @@ public final class CgCanvas {
     private float chunkX0, chunkY0, chunkX1, chunkY1;
 
     private float[] stack = new float[SAVED * 16];
+    /** Pictures this recording asked for that held nothing yet: {@link #picturesPending}. */
+    private int picturesPending;
     int depth;
 
     /**
@@ -195,7 +197,21 @@ public final class CgCanvas {
         effect = 0;
         layers.beginTurn();
         keptLayers.sweep();
+        picturesPending = 0;
         return this;
+    }
+
+    /**
+     * How many pictures this recording asked for that held nothing yet: each will show from a later frame. What a
+     * screen holds its first frame on until its content can draw (Chromium's paint holding).
+     *
+     * <pre>{@code
+     * paint(canvas);
+     * boolean complete = canvas.picturesPending() == 0;
+     * }</pre>
+     */
+    public int picturesPending() {
+        return picturesPending;
     }
 
     /**
@@ -746,6 +762,7 @@ public final class CgCanvas {
         float scale = deviceScale() * zoom;
         CgPicture.Image image = picture.image(pw, ph, scale);
         if (image == null) {
+            picturesPending++;
             keptLayers.pictured(picture, x, y, w, h, pw, ph, scale);
             return this;
         }
@@ -773,6 +790,7 @@ public final class CgCanvas {
     public CgCanvas picture(CgPicture picture, float x, float y) {
         float w = picture.naturalWidth(), h = picture.naturalHeight();
         if (w <= 0f || h <= 0f) {
+            picturesPending++;
             picture.image(1, 1, deviceScale());
             return this;
         }
