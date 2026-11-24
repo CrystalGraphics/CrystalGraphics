@@ -129,8 +129,10 @@ The authoritative path is:
 2. registry transforms the public glyph key into the relevant internal cache key
 3. registry looks in the paged atlas family
 4. on hit, return placement
-5. on a bitmap miss, rasterise it here while the frame's 2 ms inline budget lasts (`INLINE_NANOS_PER_FRAME`,
-   `glyph.inline-us`), as Chromium makes a frame's glyphs in that frame; past it, ask a worker and return null, and
+5. on a bitmap miss on the device's thread, rasterise it here while the frame's 2 ms inline budget lasts
+   (`INLINE_NANOS_PER_FRAME`, `glyph.inline-us`). A recording thread never does: its upload would land against the
+   render thread's frame, not its recording, so the glyph could draw before its texels; a kept layer holds its last
+   complete picture until the workers deliver. Past the budget, or off the device's thread, ask a worker and return null, and
    the glyph draws a frame or more later. An MSDF miss asks a worker for the field and draws its bitmap stand-in,
    under the same budget. Past the budget, generated here only where the worker route cannot deliver (a failed
    job, a full queue), or through `ensureGlyph`, for tooling.

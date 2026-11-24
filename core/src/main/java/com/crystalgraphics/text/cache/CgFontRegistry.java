@@ -1,5 +1,6 @@
 package com.crystalgraphics.text.cache;
 
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.freetype.FTBitmap;
 import com.crystalgraphics.freetype.FTFace;
 import com.crystalgraphics.freetype.FTLoadFlags;
@@ -192,8 +193,10 @@ public class CgFontRegistry {
      * Render-thread time a frame may spend rasterising the bitmap glyphs its draws miss, in nanoseconds; past it they
      * go to the workers and draw a frame or two later. Chromium rasterises a frame's glyphs inside that frame; this
      * keeps that while bounding a cold screen (a new zoom step, a CJK page) to one long frame, not a stall.
+     * {@code -Dcrystalgraphics.text.inlineGlyphMs=<ms>} sets it; 0 sends every miss to the workers.
      */
-    private static final long INLINE_NANOS_PER_FRAME = 2_000_000L;
+    private static final long INLINE_NANOS_PER_FRAME =
+            (long) (Float.parseFloat(System.getProperty("crystalgraphics.text.inlineGlyphMs", "2")) * 1_000_000f);
 
     /** Time spent inline this frame. @see #INLINE_NANOS_PER_FRAME */
     private long inlineNanos;
@@ -1017,7 +1020,8 @@ public class CgFontRegistry {
     }
 
     /**
-     * A bitmap glyph from the atlas, else rasterised here while the frame's {@link #INLINE_NANOS_PER_FRAME} lasts, else
+     * A bitmap glyph from the atlas, else rasterised here, on the device's thread, while the frame's
+     * {@link #INLINE_NANOS_PER_FRAME} lasts, else
      * asked of a worker: null, and nothing drawn for it this frame. The budget is what keeps a cold first frame (4810
      * glyphs, 387 ms in text-3d's, when every miss was made here) to one long frame. Rasterised here past the budget
      * only when the worker route cannot deliver: a job that failed is refused for good, and a rejected submission means
@@ -1033,7 +1037,11 @@ public class CgFontRegistry {
             CgTrace.add(CgChannels.TEXT, "glyph.bitmap.atlasHit", 1);
             return cached;
         }
-        if (inlineNanos < INLINE_NANOS_PER_FRAME) {
+        // Only where the device may be driven: there the upload lands at once. A recording thread's upload is ordered
+        // against the render thread's frame, not its recording, so a glyph placed there could be drawn before its
+        // texels; it goes to the workers, and a kept layer holds its last complete picture meanwhile (Chromium's raster
+        // workers and pending tree)
+        if (inlineNanos < INLINE_NANOS_PER_FRAME && CgRHI.onDeviceThread()) {
             long start = System.nanoTime();
             CgGlyphPlacement made = ensureBitmapGlyph(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket,
                     currentFrame);
