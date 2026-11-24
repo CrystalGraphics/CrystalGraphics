@@ -103,8 +103,9 @@ public final class CgExternalTarget {
     private static int[] hostKeys = new int[12];
     private static int hostCount;
 
-    /** Host framebuffer {@code fbo}'s targets forgotten: the host remade or closed its images. */
+    /** Host framebuffer {@code fbo}'s targets forgotten, and its imports with them: the host remade or closed its images. */
     public static void forgetHost(int fbo) {
+        if (CgHostImports.installed()) CgHostImports.get().forgetAttachments(fbo);
         for (int i = hostCount - 1; i >= 0; i--) {
             if (hostKeys[i * 3] != fbo) continue;
             hostCount--;

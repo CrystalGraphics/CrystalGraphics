@@ -23,6 +23,7 @@ public final class GLTexture implements CgGpuTexture {
     private final List<CgTextureView> viewKeys = new ArrayList<>();
     private final List<Integer> viewNames = new ArrayList<>();
     private final boolean owned;
+    private boolean deleted;
 
     public GLTexture(CgGLDriver gl, Desc desc) {
         this.desc = desc;
@@ -109,5 +110,11 @@ public final class GLTexture implements CgGpuTexture {
     public void delete(CgGLDriver gl) {
         for (int v : viewNames) gl.glDeleteTextures(v);
         if (owned) gl.glDeleteTextures(name);
+        deleted = true;
+    }
+
+    /** Whether the device let it go: an adopted name's next import is a new texture, whatever the name. */
+    public boolean deleted() {
+        return deleted;
     }
 }

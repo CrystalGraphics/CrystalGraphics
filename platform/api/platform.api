@@ -1101,6 +1101,7 @@ com/crystalgraphics/platform/gl/resource/GLImports
   method public defaultColor (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public defaultDepth (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public forgetAttachments ()V
+  method public forgetAttachments (I)V
   method public texture (Ljava/lang/Object;)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
 com/crystalgraphics/platform/gl/resource/GLSampler
   access public,final
@@ -1118,6 +1119,7 @@ com/crystalgraphics/platform/gl/resource/GLTexture
   implements com/crystalgraphics/platform/rhi/resource/CgGpuTexture
   method public <init> (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;)V
   method public delete (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;)V
+  method public deleted ()Z
   method public desc ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Desc;
   method public owned ()Z
   method public sampled (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;)I
@@ -1760,6 +1762,7 @@ com/crystalgraphics/platform/rhi/CgHostImports
   access public,abstract,interface
   extends java/lang/Object
   method public forgetAttachments ()V
+  method public forgetAttachments (I)V
   method public,abstract attachment (IZII)Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
   method public,abstract defaultColor (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public,abstract defaultDepth (II)Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;

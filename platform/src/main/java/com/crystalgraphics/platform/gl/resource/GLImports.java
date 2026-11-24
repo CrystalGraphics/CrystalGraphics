@@ -58,7 +58,8 @@ public final class GLImports implements CgHostImports {
 
     private CgGpuTexture texture(int name, CgGpuTexture.Desc desc) {
         GLTexture t = textures.get(name);
-        if (t == null || !t.desc().equals(desc)) {
+        // Released: the host may have freed the name and made another texture under it
+        if (t == null || t.deleted() || !t.desc().equals(desc)) {
             if (t != null) framebuffers.forget(t);
             textures.put(name, t = GLTexture.adopt(name, desc));
         }
@@ -77,7 +78,7 @@ public final class GLImports implements CgHostImports {
 
     private CgGpuTexture renderbuffer(int name, CgGpuTexture.Desc desc) {
         GLTexture t = renderbuffers.get(name);
-        if (t == null || !t.desc().equals(desc)) {
+        if (t == null || t.deleted() || !t.desc().equals(desc)) {
             if (t != null) framebuffers.forget(t);
             renderbuffers.put(name, t = GLTexture.adoptRenderbuffer(name, desc));
         }
@@ -125,7 +126,7 @@ public final class GLImports implements CgHostImports {
         for (int i = 0; i < attachedCount; i++) {
             int at = i * 4;
             if (attachedAt[at] == fbo && attachedAt[at + 1] == point && attachedAt[at + 2] == width
-                    && attachedAt[at + 3] == height) {
+                    && attachedAt[at + 3] == height && (attached[i] == null || !((GLTexture) attached[i].texture()).deleted())) {
                 return attached[i];
             }
         }
@@ -162,6 +163,17 @@ public final class GLImports implements CgHostImports {
     public void forgetAttachments() {
         Arrays.fill(attached, null);
         attachedCount = 0;
+    }
+
+    @Override
+    public void forgetAttachments(int fbo) {
+        for (int i = attachedCount - 1; i >= 0; i--) {
+            if (attachedAt[i * 4] != fbo) continue;
+            attachedCount--;
+            attached[i] = attached[attachedCount];
+            attached[attachedCount] = null;
+            System.arraycopy(attachedAt, attachedCount * 4, attachedAt, i * 4, 4);
+        }
     }
 
 }

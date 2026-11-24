@@ -47,6 +47,12 @@ public interface CgHostImports {
     default void forgetAttachments() {}
 
     /**
+     * What {@link #attachment} learned of framebuffer {@code fbo} is stale: the host deleted it, and GL may give its
+     * name to the next one made.
+     */
+    default void forgetAttachments(int fbo) {}
+
+    /**
      * The imports of a device with nothing of a host's but its surface (a test's null device, an owned window's):
      * framebuffer 0 is {@code rhi}'s surface, a texture's handle a device texture.
      */
