@@ -129,9 +129,11 @@ The authoritative path is:
 2. registry transforms the public glyph key into the relevant internal cache key
 3. registry looks in the paged atlas family
 4. on hit, return placement
-5. on miss, ask a worker and return null: the glyph draws nothing until it lands, a frame or more later (an MSDF
-   glyph draws its bitmap stand-in once that lands). Generated on the calling thread only where the worker route
-   cannot deliver (a failed job, a full queue), or through `ensureGlyph`, for tooling.
+5. on a bitmap miss, rasterise it here while the frame's 2 ms inline budget lasts (`INLINE_NANOS_PER_FRAME`,
+   `glyph.inline-us`), as Chromium makes a frame's glyphs in that frame; past it, ask a worker and return null, and
+   the glyph draws a frame or more later. An MSDF miss asks a worker for the field and draws its bitmap stand-in,
+   under the same budget. Past the budget, generated here only where the worker route cannot deliver (a failed
+   job, a full queue), or through `ensureGlyph`, for tooling.
    **Drawn before warm**, by lane: a job a draw waits on runs ahead of every warm (`CgFontWarmer`) job, asking
    for one still queued as warm promotes it, and a drawn result commits first. `glyph.queueWaitUs.<bitmap|msdf>.
    <drawn|warm>` (async channel) is each job's wait for a worker
