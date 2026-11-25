@@ -7,6 +7,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
 //? if >=26.1 {
 /*import net.minecraft.client.gui.GuiGraphicsExtractor;
 *///?} elif >=1.20 {
@@ -58,9 +59,7 @@ final class OwnedContainer extends AbstractContainerScreen<AbstractContainerMenu
         if (!(opening instanceof AbstractContainerScreen) || opening instanceof OwnedContainer) return null;
         AbstractContainerMenu menu = ((AbstractContainerScreen<?>) opening).getMenu();
         String type = ContainersModern.typeOf(menu);
-        CgScreens.MenuScreen screen = CgScreens.menuScreen(type);
-        if (screen == null) return null;
-        CgScreens.Owner owner = screen.open(type);
+        CgScreens.Owner owner = CgScreens.menuOwner(type, opening.getTitle().getString(), menu.slots.size());
         return owner == null ? null : new OwnedContainer(menu, opening, owner);
     }
 
@@ -115,6 +114,15 @@ final class OwnedContainer extends AbstractContainerScreen<AbstractContainerMenu
         }
         int slot = state.owner.hoveredSlot();
         hoveredSlot = slot >= 0 && slot < menu.slots.size() ? menu.slots.get(slot) : null;
+        // Each slot where the owner drew it, for mods finding slots by position
+        float[] places = state.owner.slotPlaces();
+        if (places == null) return;
+        for (int i = 0; i < menu.slots.size() && i * 2 + 1 < places.length; i++) {
+            Slot each = menu.slots.get(i);
+            if (each instanceof HostSlotPlace && !Float.isNaN(places[i * 2])) {
+                ((HostSlotPlace) each).crystalgraphics$place(Math.round(places[i * 2]), Math.round(places[i * 2 + 1]));
+            }
+        }
     }
 
     // Nothing drawn: the owner draws at the SCREEN stage

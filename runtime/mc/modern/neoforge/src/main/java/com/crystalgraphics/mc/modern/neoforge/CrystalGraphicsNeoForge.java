@@ -117,6 +117,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
         LogUtils.getLogger().info("[cg] {}: {}", CrashVariant.LABEL,
                 CrashVariant.report(CrystalGraphicsNeoForge.class));
         PlatformServiceModern.install(ModLoaderNeoForge.INSTANCE);
+        MenusNeoForge.install((IEventBus) context);
         // what the engine saves with an entity, in NeoForge's persistent data: through IEntityExtension, which the compile
         // classpath of 1.20.2-1.20.3 does not show on Entity
         CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(entity -> ((IEntityExtension) entity).getPersistentData(), true));

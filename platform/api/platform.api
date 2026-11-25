@@ -3180,11 +3180,12 @@ com/crystalgraphics/platform/service/CgScreens
   method public,static closeFront ()V
   method public,static giveBack (Lcom/crystalgraphics/platform/input/CgSystemInput$Keyboard$Event;)V
   method public,static isOpen (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)Z
-  method public,static menuScreen (Ljava/lang/String;)Lcom/crystalgraphics/platform/service/CgScreens$MenuScreen;
+  method public,static menuOwner (Ljava/lang/String;Ljava/lang/String;I)Lcom/crystalgraphics/platform/service/CgScreens$Owner;
   method public,static open (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
   method public,static openChat ()V
   method public,static openInventory ()V
   method public,static replaceMenu (Ljava/lang/String;Lcom/crystalgraphics/platform/service/CgScreens$MenuScreen;)V
+  method public,static replaceMenus (Lcom/crystalgraphics/platform/service/CgScreens$MenuScreen;)V
 com/crystalgraphics/platform/service/CgScreens$Host
   access public,abstract,interface
   extends java/lang/Object
@@ -3200,6 +3201,7 @@ com/crystalgraphics/platform/service/CgScreens$Host
 com/crystalgraphics/platform/service/CgScreens$MenuScreen
   access public,abstract,interface
   extends java/lang/Object
+  method public open (Ljava/lang/String;Ljava/lang/String;I)Lcom/crystalgraphics/platform/service/CgScreens$Owner;
   method public,abstract open (Ljava/lang/String;)Lcom/crystalgraphics/platform/service/CgScreens$Owner;
 com/crystalgraphics/platform/service/CgScreens$Owner
   access public,abstract,interface
@@ -3211,6 +3213,7 @@ com/crystalgraphics/platform/service/CgScreens$Owner
   method public panel ([F)Z
   method public pausesGame ()Z
   method public shown ()V
+  method public slotPlaces ()[F
   method public textInputArea ([F)Z
 com/crystalgraphics/platform/service/CgServers
   access public,final
@@ -3658,6 +3661,7 @@ com/crystalgraphics/platform/world/CgWorldStimulus
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/platform/world/CgWorldStimulus;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public command (Ljava/lang/String;)Z
   method public container (IIILjava/lang/String;)Z
   method public hostKey (I)Z
   method public hostPointer (DD)Z

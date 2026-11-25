@@ -206,6 +206,7 @@ public final class CrystalGraphicsForge implements VariantEntry {
                 })));
         *///?}
         PlatformServiceModern.install(ModLoaderForge.INSTANCE);
+        MenusForge.install((FMLJavaModLoadingContext) context);
         // what the engine saves with an entity, in Forge's persistent data: through IForgeEntity, which the compile
         // classpath of 26 and of 1.13.2-1.14.3 does not show on Entity though the patched Entity implements it
         //? if >=1.14.4 {

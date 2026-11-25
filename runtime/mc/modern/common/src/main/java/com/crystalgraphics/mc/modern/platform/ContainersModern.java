@@ -3,6 +3,7 @@ package com.crystalgraphics.mc.modern.platform;
 import com.crystalgraphics.mc.container.Action;
 import com.crystalgraphics.mc.container.Capabilities;
 import com.crystalgraphics.mc.container.CgContainers;
+import com.crystalgraphics.mc.container.CgMenus;
 import com.crystalgraphics.mc.container.SlotKind;
 import com.crystalgraphics.mc.item.CgItemStack;
 import com.crystalgraphics.mc.item.CgItems;
@@ -321,7 +322,11 @@ public final class ContainersModern implements CgContainers.Host {
         CgNbtCompound out = new CgNbtCompound();
         //? if >=1.14.3 {
         AbstractContainerMenu menu = menu();
-        if (menu instanceof AbstractFurnaceMenu) {
+        if (menu instanceof HostMenu) {
+            // A mod's own menu: each data slot by the name its type gave it
+            CgMenus.Logic logic = ((HostMenu) menu).logic;
+            for (int i = 0; i < logic.dataCount(); i++) out.put(logic.dataName(i), logic.data(i));
+        } else if (menu instanceof AbstractFurnaceMenu) {
             AbstractFurnaceMenu furnace = (AbstractFurnaceMenu) menu;
             //? if >=1.20.2 {
             /*out.put("burn", (int) (furnace.getLitProgress() * 1000f));

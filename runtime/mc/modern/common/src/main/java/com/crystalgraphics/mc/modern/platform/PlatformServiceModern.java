@@ -59,6 +59,7 @@ import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgKeyBindings;
 import com.crystalgraphics.mc.container.CgContainers;
+import com.crystalgraphics.mc.container.CgMenus;
 import com.crystalgraphics.mc.block.CgBlocks;
 import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.platform.service.CgScreens;
@@ -127,6 +128,7 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgLevels.HOST, LevelsModern.INSTANCE);
         CgPlatform.provide(CgEntityMovement.HOST, EntityMovementModern.INSTANCE);
         CgPlatform.provide(CgPlayers.HOST, PlayersModern.INSTANCE);
+        CgPlatform.provide(CgMenus.HOST, MenusModern.INSTANCE);
         CgPlatform.provide(CgServers.HOST, ServersModern.INSTANCE);
         CgPlatform.provide(CgHostShapes.HOST, new HostShapesModern());
         CgPlatform.provide(CgMirrorHost.HOST, new MirrorHostModern());

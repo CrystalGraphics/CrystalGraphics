@@ -298,8 +298,21 @@ stops the player and gives Escape to its owner.
 type -> owner)` names the menu type, and each loader's open hook (Forge's and NeoForge's `ScreenEvent.Opening`, Fabric's
 `ScreenOpenHook` on `setScreen`) swaps the game's container screen for `OwnedContainer`. It is a real
 `AbstractContainerScreen` over the same menu, its `leftPos`, `topPos`, image size and hovered slot set each frame from
-the owner's `panel` and `hoveredSlot`, so a sorting mod reading container geometry finds the engine's slots. 1.13.2,
-legacy Forge and 1.7.10 have no menu types and keep the game's screens.
+the owner's `panel` and `hoveredSlot`, so a sorting mod reading container geometry finds the engine's slots, and each
+slot's `x`/`y` from the owner's `slotPlaces`, for a mod's own menu (written through `SlotPlaceHook`, a mixin, since they are final from
+1.15.2). `CgScreens.replaceMenus(screen)` asks for any opening menu no type claims, with its title and slot count.
+1.13.2, legacy Forge and 1.7.10 have no menu types and keep the game's screens.
+
+**A mod's own menus — `CgMenus`**: `CgMenus.declare(id, type)` at construction; the loader registers a real `MenuType`
+for each in `RegisterEvent`, and `CgMenus.open(player, id, title, logic, spec)` opens a `HostMenu` whose every rule
+(accepts, takes, max stack, shift-click targets, buttons, data, validity) is the `CgMenus.Logic`'s, and whose clicks,
+drags, sync and carried stack are the game's own. The spec's bytes ride the loader's own open (Forge
+`NetworkHooks.openScreen`, NeoForge `openMenu(provider, Consumer)`), so the client builds its menu before the contents
+arrive: `CgNetwork`'s connections are served on the engine tick and keep no order with vanilla's packets. Slots sit over
+`CgItemStorage`s; `create(n)` and `of(container)` are the game's own stacks, changed in place as vanilla's menus change
+them, and a storage written by hand gets a copy that writes back on `setChanged` (as Forge's `SlotItemHandler`). Opened
+on Forge 1.19.3-1.20.1 and NeoForge 1.20.6+; elsewhere `open` answers false. CrystalGUI's `ContainerType` is the
+author's API over it.
 
 The exact version splits are in each loader branch's `AGENTS.md`. **The frame ends after the GUI**, from
 a loader frame event or, on Fabric, a mixin — `runtime/mc/modern/common/CLAUDE.md` § *The frame end*,

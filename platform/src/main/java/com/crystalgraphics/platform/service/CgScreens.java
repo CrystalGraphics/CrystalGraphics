@@ -1,7 +1,9 @@
 package com.crystalgraphics.platform.service;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 
 import com.crystalgraphics.platform.CgPlatform;
@@ -92,11 +94,25 @@ public final class CgScreens {
         default int hoveredSlot() {
             return -1;
         }
+
+        /**
+         * Where each menu slot is drawn, x, y per slot in the game's GUI units from the panel's corner, NaN for one it
+         * does not place: what the host writes into the game's slots, so a mod finding slots by position finds ours.
+         * Null to leave every slot where its menu put it, as for a vanilla menu, whose slots a screen matches already.
+         */
+        default float[] slotPlaces() {
+            return null;
+        }
     }
 
-    /** Makes the owner of a screen for a menu of a registered type, as the server opens it. Client thread. */
+    /** Makes the owner of a screen for a menu as the server opens it; null leaves the game's screen. Client thread. */
     public interface MenuScreen {
         Owner open(String menuType);
+
+        /** The same, told what else a client knows as a menu opens: its title and slot count. By default the type alone. */
+        default Owner open(String menuType, String title, int slots) {
+            return open(menuType);
+        }
     }
 
     /** What a host answers: its screen of the engine's, one class per era, {@code Screens<Era>}. */
@@ -142,6 +158,7 @@ public final class CgScreens {
     public static final CgService<Host> HOST = CgService.of("crystalgraphics:screens", Host.NONE);
 
     private static final Map<String, MenuScreen> MENU_SCREENS = new ConcurrentHashMap<>();
+    private static final List<MenuScreen> ANY_MENU = new CopyOnWriteArrayList<>();
 
     private CgScreens() {
     }
@@ -170,9 +187,36 @@ public final class CgScreens {
         else MENU_SCREENS.put(menuType, screen);
     }
 
-    /** What shows a menu of {@code menuType} instead of the game's screen; null for the game's own. Hosts. */
-    public static MenuScreen menuScreen(String menuType) {
-        return MENU_SCREENS.get(menuType);
+    /**
+     * Asks {@code screen} of every menu that opens with no screen registered for its type, in the order these were
+     * given: the first owner answered shows it; all answering null leaves the game's screen. For a choice by more than
+     * the type.
+     *
+     * <pre>{@code
+     * CgScreens.replaceMenus(new CgScreens.MenuScreen() {
+     *     public Owner open(String type) { return null; }
+     *     public Owner open(String type, String title, int slots) {
+     *         return title.startsWith("Ender") ? new EnderUi().owner() : null;
+     *     }
+     * });
+     * }</pre>
+     */
+    public static void replaceMenus(MenuScreen screen) {
+        ANY_MENU.add(screen);
+    }
+
+    /**
+     * The owner of the screen to show instead of the game's for a menu opening: the one registered for its type, else
+     * the first {@link #replaceMenus} one answering. Null for the game's own. Hosts, client thread.
+     */
+    public static Owner menuOwner(String menuType, String title, int slots) {
+        MenuScreen screen = MENU_SCREENS.get(menuType);
+        if (screen != null) return screen.open(menuType, title, slots);
+        for (MenuScreen any : ANY_MENU) {
+            Owner owner = any.open(menuType, title, slots);
+            if (owner != null) return owner;
+        }
+        return null;
     }
 
     /** Puts {@code owner}'s screen up in front of whatever is there; nothing if it is up already. */

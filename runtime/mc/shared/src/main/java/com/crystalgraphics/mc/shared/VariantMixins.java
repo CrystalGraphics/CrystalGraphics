@@ -100,6 +100,8 @@ public abstract class VariantMixins implements IMixinConfigPlugin {
     static {
         FIELD_MIXINS.put("ShadowFieldsHook", new String[]{"net/minecraft/client/renderer/entity/EntityRenderer", "shadowStrength"});
         FIELD_MIXINS.put("ShadowFieldsSrgHook", new String[]{"net/minecraft/client/renderer/entity/EntityRenderer", "f_114478_", "field_76987_f"});
+        FIELD_MIXINS.put("SlotPlaceHook", new String[]{"net/minecraft/world/inventory/Slot", "x"});
+        FIELD_MIXINS.put("SlotPlaceSrgHook", new String[]{"net/minecraft/world/inventory/Slot", "f_40220_"});
     }
 
     private static boolean hasField(String[] targetAndNames) {

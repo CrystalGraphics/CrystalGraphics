@@ -167,6 +167,14 @@ public interface CgWorldStimulus {
         return false;
     }
 
+    /**
+     * {@code command} (no slash) run by the single-player server as the local player typed it: a mod's own command,
+     * which sees that player as its source. False without a single-player server.
+     */
+    default boolean command(String command) {
+        return false;
+    }
+
     /** A lightning bolt at the point. */
     boolean lightning(double x, double y, double z);
 

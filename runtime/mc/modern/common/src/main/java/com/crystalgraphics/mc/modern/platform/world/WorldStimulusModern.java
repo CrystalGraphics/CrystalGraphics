@@ -9,6 +9,7 @@ import net.minecraft.client.player.LocalPlayer;
 //? if >=1.14 {
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.server.level.ServerPlayer;
 //?}
 //? if >=1.14.3 {
 import net.minecraft.client.gui.screens.PauseScreen;
@@ -30,6 +31,7 @@ import org.lwjgl.glfw.GLFWKeyCallback;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 /**
  * {@link CgWorldStimulus} through the single-player server's console, 1.14 to 26.3: each request queued onto the
@@ -217,6 +219,13 @@ public final class WorldStimulusModern implements CgWorldStimulus {
             return run(String.format(Locale.ROOT, "setblock %d %d %d minecraft:stone", x, y - 1, z),
                     String.format(Locale.ROOT, "setblock %d %d %d minecraft:anvil", x, y, z));
         }
+        if ("chest".equals(block)) {
+            // One chest: setblock joins a chest to a chest half beside it (updateFromNeighbourShapes), so none is left there
+            run(String.format(Locale.ROOT, "setblock %d %d %d minecraft:air", x - 1, y, z),
+                    String.format(Locale.ROOT, "setblock %d %d %d minecraft:air", x + 1, y, z),
+                    String.format(Locale.ROOT, "setblock %d %d %d minecraft:air", x, y, z - 1),
+                    String.format(Locale.ROOT, "setblock %d %d %d minecraft:air", x, y, z + 1));
+        }
         // a chest under a solid block will not open
         return run(String.format(Locale.ROOT, "setblock %d %d %d minecraft:air", x, y + 1, z),
                 String.format(Locale.ROOT, "setblock %d %d %d minecraft:%s", x, y, z, block),
@@ -276,6 +285,23 @@ public final class WorldStimulusModern implements CgWorldStimulus {
     public boolean clear(double x, double y, double z, double radius) {
         return run(String.format(Locale.ROOT, "execute positioned %.2f %.2f %.2f run kill @e[type=!minecraft:player,distance=..%.1f]",
                 x, y, z, radius));
+    }
+
+    @Override
+    public boolean command(String command) {
+        //? if >=1.14 {
+        IntegratedServer server = Minecraft.getInstance().getSingleplayerServer();
+        LocalPlayer me = Minecraft.getInstance().player;
+        if (server == null || me == null) return false;
+        UUID id = me.getUUID();
+        server.execute(() -> {
+            ServerPlayer player = server.getPlayerList().getPlayer(id);
+            if (player != null) perform(server, player.createCommandSourceStack(), command);
+        });
+        return true;
+        //?} else {
+        /*return false;
+        *///?}
     }
 
     private static boolean run(String... commands) {

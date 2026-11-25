@@ -14,6 +14,6 @@ public final class CrystalGraphicsNeoForgeEventMixins extends VariantMixins {
     public CrystalGraphicsNeoForgeEventMixins() {
         super("crystalgraphics", new String[]{"ChunkWriteHook", "EntitySaveHook"}, "ExplosionHook", "LevelEventHook", "DeviceFeaturesHook", "ProfilerHook", "CameraHook", "SoundVolumeHook",
                 "FirstScreenHook",
-                "EntityRendererHook", "ActorRenderHook", "WorldSubmitHook", "VanillaPoseHook", "GuiTargetHook", "GuiWindowHook", "GuiScissorHook", "GuiBlendHook");
+                "EntityRendererHook", "ActorRenderHook", "WorldSubmitHook", "VanillaPoseHook", "GuiTargetHook", "GuiWindowHook", "GuiScissorHook", "GuiBlendHook", "SlotPlaceHook");
     }
 }
