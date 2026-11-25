@@ -133,6 +133,10 @@ public final class CgScreens {
         /** Delivers {@code key} again through the window's input, as though no listener had seen it. */
         void giveBack(CgSystemInput.Keyboard.Event key);
 
+        /** Delivers a wheel of {@code notches} (positive down) again through the window's input, where the pointer is. */
+        default void giveBackWheel(float notches) {
+        }
+
         /** Closes whatever screen is in front, the host's own included. */
         void closeFront();
 
@@ -259,6 +263,19 @@ public final class CgScreens {
      */
     public static void giveBack(CgSystemInput.Keyboard.Event key) {
         host().giveBack(key);
+    }
+
+    /**
+     * {@link #giveBack} for the wheel: a turn the {@code SCREEN} stage took and its listener left (no scroller moved, no
+     * shortcut fired) goes back through the window's own scroll input, so a mod scrolling over a screen's slots (Mouse
+     * Tweaks) sees it as over the game's. Nothing where the host has no input to re-enter (below 1.13).
+     *
+     * <pre>{@code
+     * for (float notches; !Float.isNaN(notches = ui.pollUnhandledWheel()); ) CgScreens.giveBackWheel(notches);
+     * }</pre>
+     */
+    public static void giveBackWheel(float notches) {
+        host().giveBackWheel(notches);
     }
 
     /** Closes whatever screen is in front, the host's own included: the pause menu an unfocused window keeps opening. */

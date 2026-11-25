@@ -14,6 +14,7 @@ import net.minecraft.client.input.KeyEvent;
 *///?} else {
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWKeyCallback;
+import org.lwjgl.glfw.GLFWScrollCallback;
 //?}
 //? if >=26.1.2 <26.3 {
 /*import org.lwjgl.glfw.GLFWCharCallback;
@@ -56,7 +57,7 @@ public final class ScreenInputModern {
 
     /** The wheel turned; {@code platformDelta} is the host's, positive up. */
     public static boolean scrolled(double platformDelta) {
-        if (noScreen()) return false;
+        if (noScreen() || givingBack) return false;
         return CgInputStage.SCREEN.scrolled(new CgSystemInput.Mouse.Event(rawX(), rawY(), 0, 0,
                 CgMouseCodes.NONE, false, (float) -platformDelta, -1L));
     }
@@ -113,6 +114,25 @@ public final class ScreenInputModern {
             int code = HostKeys.key(key.key());
             int action = !key.pressed() ? GLFW.GLFW_RELEASE : key.repeat() ? GLFW.GLFW_REPEAT : GLFW.GLFW_PRESS;
             keys.invoke(window, code, GLFW.glfwGetKeyScancode(code), action, modifiers(window));
+            //?}
+        } finally {
+            givingBack = false;
+        }
+    }
+
+    /** {@link #giveBack} for a wheel of {@code notches}, positive down, where the pointer is. Render thread. */
+    public static void giveBackWheel(float notches) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null) return;
+        long window = Windows.handle(mc);
+        givingBack = true;
+        try {
+            //? if >=26.3 {
+            /*mc.mouseHandler.onScroll(window, 0, -notches);
+            *///?} else {
+            GLFWScrollCallback scroll = GLFW.glfwSetScrollCallback(window, null);
+            GLFW.glfwSetScrollCallback(window, scroll);
+            if (scroll != null) scroll.invoke(window, 0, -notches);
             //?}
         } finally {
             givingBack = false;

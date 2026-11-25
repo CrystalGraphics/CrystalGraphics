@@ -162,6 +162,19 @@ public interface CgWorldStimulus {
         return false;
     }
 
+    /**
+     * A wheel turn of {@code amount} notches (positive away from the player, as up) where the pointer is, through the
+     * host's own scroll callback. False where it cannot.
+     *
+     * <pre>{@code
+     * stimulus.hostPointer(x, y);
+     * stimulus.hostScroll(-1);                  // one notch down over that point
+     * }</pre>
+     */
+    default boolean hostScroll(double amount) {
+        return false;
+    }
+
     /** A key ({@code CgKeyCodes}) pressed and released through the host's own key callback. False where it cannot. */
     default boolean hostKey(int key) {
         return false;

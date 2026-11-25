@@ -98,6 +98,11 @@ public final class ScreensModern implements CgScreens.Host {
         if (screen() != null) ScreenInputModern.giveBack(key);
     }
 
+    @Override
+    public void giveBackWheel(float notches) {
+        if (screen() != null) ScreenInputModern.giveBackWheel(notches);
+    }
+
     private static Screen screen() {
         Minecraft mc = Minecraft.getInstance();
         return mc == null ? null : CgMinecraftClient.screen(mc);

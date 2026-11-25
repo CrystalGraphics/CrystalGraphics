@@ -80,6 +80,10 @@ public final class CgMenus {
             return true;
         }
 
+        /** The game's menu made over it, with the id the game gave it ({@link CgContainers.Menu#id} on the client). */
+        default void opened(int menuId) {
+        }
+
         /** The menu closed, for whatever reason. The carried stack has gone back already. */
         default void closed() {
         }

@@ -35,6 +35,7 @@ public final class HostMenu extends AbstractContainerMenu {
     HostMenu(MenuType<?> type, int windowId, CgMenus.Logic logic) {
         super(type, windowId);
         this.logic = logic;
+        logic.opened(windowId);
         Map<CgItemStorage, Container> containers = new IdentityHashMap<>();
         for (int i = 0; i < logic.size(); i++) {
             Container container = containers.computeIfAbsent(logic.storage(i), storage -> {

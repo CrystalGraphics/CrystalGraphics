@@ -26,6 +26,7 @@ import net.minecraft.world.phys.Vec3;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWCursorPosCallback;
 import org.lwjgl.glfw.GLFWKeyCallback;
+import org.lwjgl.glfw.GLFWScrollCallback;
 //?}
 
 import java.util.ArrayList;
@@ -82,6 +83,20 @@ public final class WorldStimulusModern implements CgWorldStimulus {
         GLFW.glfwSetCursorPosCallback(window, callback);
         if (callback == null) return false;
         callback.invoke(window, x, y);
+        return true;
+        //?} else {
+        /*return false;
+        *///?}
+    }
+
+    @Override
+    public boolean hostScroll(double amount) {
+        //? if <26.3 {
+        long window = Windows.handle(Minecraft.getInstance());
+        GLFWScrollCallback callback = GLFW.glfwSetScrollCallback(window, null);
+        GLFW.glfwSetScrollCallback(window, callback);
+        if (callback == null) return false;
+        callback.invoke(window, 0, amount);
         return true;
         //?} else {
         /*return false;

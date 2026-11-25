@@ -250,7 +250,21 @@ public final class CgGauntlet {
         }
     };
 
+    /** A tick in progress: a stimulus a test sends can draw a frame of its own (a screen opened by a key), whose end
+     * would run the test's tick again inside its own. Render thread. */
+    private static boolean ticking;
+
     private static void tick() {
+        if (ticking) return;
+        ticking = true;
+        try {
+            tickOnce();
+        } finally {
+            ticking = false;
+        }
+    }
+
+    private static void tickOnce() {
         long now = System.nanoTime();
         float seconds = lastTickNanos == 0 ? 0f : (now - lastTickNanos) / 1.0e9f;
         lastTickNanos = now;

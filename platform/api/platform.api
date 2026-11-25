@@ -3179,6 +3179,7 @@ com/crystalgraphics/platform/service/CgScreens
   method public,static close (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
   method public,static closeFront ()V
   method public,static giveBack (Lcom/crystalgraphics/platform/input/CgSystemInput$Keyboard$Event;)V
+  method public,static giveBackWheel (F)V
   method public,static isOpen (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)Z
   method public,static menuOwner (Ljava/lang/String;Ljava/lang/String;I)Lcom/crystalgraphics/platform/service/CgScreens$Owner;
   method public,static open (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
@@ -3190,6 +3191,7 @@ com/crystalgraphics/platform/service/CgScreens$Host
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/platform/service/CgScreens$Host;
+  method public giveBackWheel (F)V
   method public,abstract anyFront ()Z
   method public,abstract close (Lcom/crystalgraphics/platform/service/CgScreens$Owner;)V
   method public,abstract closeFront ()V
@@ -3665,6 +3667,7 @@ com/crystalgraphics/platform/world/CgWorldStimulus
   method public container (IIILjava/lang/String;)Z
   method public hostKey (I)Z
   method public hostPointer (DD)Z
+  method public hostScroll (D)Z
   method public inventory ([Ljava/lang/String;)Z
   method public jumpDown ()Z
   method public merchant (III)Z
