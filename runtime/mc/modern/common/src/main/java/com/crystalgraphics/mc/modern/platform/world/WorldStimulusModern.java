@@ -292,7 +292,16 @@ public final class WorldStimulusModern implements CgWorldStimulus {
         //? if >=1.14 {
         IntegratedServer server = Minecraft.getInstance().getSingleplayerServer();
         LocalPlayer me = Minecraft.getInstance().player;
-        if (server == null || me == null) return false;
+        if (me == null) return false;
+        if (server == null) {
+            // A remote server: sent as the player typing it
+            //? if >=1.19.3 {
+            me.connection.sendCommand(command);
+            return true;
+            //?} else {
+            /*return false;
+            *///?}
+        }
         UUID id = me.getUUID();
         server.execute(() -> {
             ServerPlayer player = server.getPlayerList().getPlayer(id);

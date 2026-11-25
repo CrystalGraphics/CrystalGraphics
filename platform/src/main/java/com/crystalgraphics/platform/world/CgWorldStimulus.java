@@ -168,8 +168,8 @@ public interface CgWorldStimulus {
     }
 
     /**
-     * {@code command} (no slash) run by the single-player server as the local player typed it: a mod's own command,
-     * which sees that player as its source. False without a single-player server.
+     * {@code command} (no slash) run by the server as the local player typed it: a mod's own command, which sees that
+     * player as its source. A remote server gets it over the connection (from 1.19.3). False where it cannot be sent.
      */
     default boolean command(String command) {
         return false;
