@@ -1,6 +1,8 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
 import com.crystalgraphics.mc.modern.platform.CgMinecraftClient;
+import com.crystalgraphics.mc.modern.platform.HostKeys;
+import com.crystalgraphics.mc.modern.platform.Windows;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -17,6 +19,12 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
+//?}
+
+//? if <26.3 {
+import org.lwjgl.glfw.GLFW;
+import org.lwjgl.glfw.GLFWCursorPosCallback;
+import org.lwjgl.glfw.GLFWKeyCallback;
 //?}
 
 import java.util.ArrayList;
@@ -60,6 +68,39 @@ public final class WorldStimulusModern implements CgWorldStimulus {
     public boolean explode(double x, double y, double z) {
         return run(String.format(Locale.ROOT, "summon minecraft:pig %.2f %.2f %.2f", x, y, z),
                 String.format(Locale.ROOT, "summon minecraft:tnt %.2f %.2f %.2f {Fuse:0,fuse:0}", x, y, z));
+    }
+
+    // The window's installed callbacks, invoked as GLFW would: whatever chain the game and its mods put there runs.
+    // 26.3's SDL3 input has no callback to fetch: not yet.
+    @Override
+    public boolean hostPointer(double x, double y) {
+        //? if <26.3 {
+        long window = Windows.handle(Minecraft.getInstance());
+        GLFWCursorPosCallback callback = GLFW.glfwSetCursorPosCallback(window, null);
+        GLFW.glfwSetCursorPosCallback(window, callback);
+        if (callback == null) return false;
+        callback.invoke(window, x, y);
+        return true;
+        //?} else {
+        /*return false;
+        *///?}
+    }
+
+    @Override
+    public boolean hostKey(int key) {
+        //? if <26.3 {
+        long window = Windows.handle(Minecraft.getInstance());
+        GLFWKeyCallback callback = GLFW.glfwSetKeyCallback(window, null);
+        GLFW.glfwSetKeyCallback(window, callback);
+        if (callback == null) return false;
+        int code = HostKeys.key(key);
+        int scancode = GLFW.glfwGetKeyScancode(code);
+        callback.invoke(window, code, scancode, GLFW.GLFW_PRESS, 0);
+        callback.invoke(window, code, scancode, GLFW.GLFW_RELEASE, 0);
+        return true;
+        //?} else {
+        /*return false;
+        *///?}
     }
 
     @Override

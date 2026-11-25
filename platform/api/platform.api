@@ -3659,6 +3659,8 @@ com/crystalgraphics/platform/world/CgWorldStimulus
   field public,static,final NONE Lcom/crystalgraphics/platform/world/CgWorldStimulus;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   method public container (IIILjava/lang/String;)Z
+  method public hostKey (I)Z
+  method public hostPointer (DD)Z
   method public inventory ([Ljava/lang/String;)Z
   method public jumpDown ()Z
   method public merchant (III)Z

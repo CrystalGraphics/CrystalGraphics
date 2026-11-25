@@ -148,6 +148,25 @@ public interface CgWorldStimulus {
         return false;
     }
 
+    /**
+     * The pointer moved to {@code (x, y)}, the window's screen units from its top-left, through the host's own cursor
+     * callback, as the system delivers a move: everything listening to the game's input sees it, and the system's
+     * cursor stays where it is. False where this version cannot. Render thread.
+     *
+     * <pre>{@code
+     * stimulus.hostPointer(640, 360);           // over the middle of a 1280x720 window
+     * stimulus.hostKey(CgKeyCodes.KEY_R);       // R, as the player presses it there
+     * }</pre>
+     */
+    default boolean hostPointer(double x, double y) {
+        return false;
+    }
+
+    /** A key ({@code CgKeyCodes}) pressed and released through the host's own key callback. False where it cannot. */
+    default boolean hostKey(int key) {
+        return false;
+    }
+
     /** A lightning bolt at the point. */
     boolean lightning(double x, double y, double z);
 

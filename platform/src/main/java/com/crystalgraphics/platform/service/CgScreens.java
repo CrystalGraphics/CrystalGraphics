@@ -114,7 +114,7 @@ public final class CgScreens {
         /** Whether any screen is in front, the host's or the engine's. */
         boolean anyFront();
 
-        /** Gives the screen in front {@code key} through its own handling, as though no listener had seen it. */
+        /** Delivers {@code key} again through the window's input, as though no listener had seen it. */
         void giveBack(CgSystemInput.Keyboard.Event key);
 
         /** Closes whatever screen is in front, the host's own included. */
@@ -197,8 +197,10 @@ public final class CgScreens {
 
     /**
      * Gives the screen in front a key a {@code SCREEN} input listener took and then left: a listener answering a frame
-     * late (a UI on its own thread) takes every key and returns those it did not want. A screen of the host's handles it
-     * as though no listener had seen it; the engine's gives an Escape press to its owner ({@link Owner#escape}).
+     * late (a UI on its own thread) takes every key and returns those it did not want. From 1.13 the key goes back
+     * through the window's own input, so the game, the loader's screen events and every mod see it as though no listener
+     * had: a recipe viewer's R and U work over an engine screen as over the game's. The engine's screen gives an Escape
+     * press to its owner ({@link Owner#escape}).
      *
      * <pre>{@code
      * for (CgSystemInput.Keyboard.Event key; (key = ui.pollUnhandledKey()) != null; ) CgScreens.giveBack(key);
@@ -207,6 +209,8 @@ public final class CgScreens {
      * <ul>
      *   <li>A key carries a key code or a character, never both; each reaches the matching handler.</li>
      *   <li>Releases reach only a host whose screens take them (from 1.8): 1.7.10's screens hear presses alone.</li>
+     *   <li>Below 1.13 (LWJGL 2, polled input, nothing to re-enter) the key is typed into the screen in front, past the
+     *       loader's events.</li>
      * </ul>
      */
     public static void giveBack(CgSystemInput.Keyboard.Event key) {

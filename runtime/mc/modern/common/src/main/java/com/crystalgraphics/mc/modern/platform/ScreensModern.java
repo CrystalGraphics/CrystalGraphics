@@ -1,7 +1,5 @@
 package com.crystalgraphics.mc.modern.platform;
 
-import com.crystalgraphics.platform.input.CgInput;
-import com.crystalgraphics.platform.input.CgKeyCodes;
 import com.crystalgraphics.platform.input.CgSystemInput;
 import com.crystalgraphics.platform.service.CgScreens;
 
@@ -22,8 +20,7 @@ import net.minecraft.network.chat.Component;
 /*import net.minecraft.network.chat.TextComponent;
 *///?}
 //? if >=1.21.9 {
-/*import net.minecraft.client.input.CharacterEvent;
-import net.minecraft.client.input.KeyEvent;
+/*import net.minecraft.client.input.KeyEvent;
 *///?}
 //? if >=26.3 {
 /*import net.minecraft.client.input.PreeditEvent;
@@ -95,43 +92,15 @@ public final class ScreensModern implements CgScreens.Host {
         return screen() != null;
     }
 
+    // Through the window's input, as the system delivers it: an engine screen's keyPressed gives Escape to its owner
     @Override
     public void giveBack(CgSystemInput.Keyboard.Event key) {
-        Screen screen = screen();
-        OwnedState state = state(screen);
-        if (state != null) {
-            if (key.pressed() && key.key() == CgKeyCodes.KEY_ESCAPE) state.owner.escape();
-        } else if (screen != null) {
-            give(screen, key);
-        }
+        if (screen() != null) ScreenInputModern.giveBack(key);
     }
 
     private static Screen screen() {
         Minecraft mc = Minecraft.getInstance();
         return mc == null ? null : CgMinecraftClient.screen(mc);
-    }
-
-    /** {@code key} through {@code screen}'s own handlers: a key code to {@code keyPressed}/{@code keyReleased}, a character to {@code charTyped}. */
-    private static void give(Screen screen, CgSystemInput.Keyboard.Event key) {
-        if (key.character() != 0) {
-            //? if >=26.1 {
-            /*screen.charTyped(new CharacterEvent(key.character()));
-            *///?} elif >=1.21.9 {
-            /*screen.charTyped(new CharacterEvent(key.character(), 0));
-            *///?} else {
-            screen.charTyped(key.character(), 0);
-            //?}
-            return;
-        }
-        int code = HostKeys.key(key.key());
-        //? if >=1.21.9 {
-        /*KeyEvent event = new KeyEvent(code, 0, 0);
-        if (key.pressed()) screen.keyPressed(event);
-        else screen.keyReleased(event);
-        *///?} else {
-        if (key.pressed()) screen.keyPressed(code, 0, 0);
-        else screen.keyReleased(code, 0, 0);
-        //?}
     }
 
     /** The engine's screen: empty, its owner's. */
