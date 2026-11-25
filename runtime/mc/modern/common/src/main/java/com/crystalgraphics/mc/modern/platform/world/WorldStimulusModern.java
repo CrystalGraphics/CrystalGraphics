@@ -90,6 +90,18 @@ public final class WorldStimulusModern implements CgWorldStimulus {
     }
 
     @Override
+    public void clearToasts() {
+        Minecraft mc = Minecraft.getInstance();
+        //? if >=26.2 {
+        /*mc.gui.toastManager().clear();
+        *///?} elif >=1.21.3 {
+        /*mc.getToastManager().clear();
+        *///?} else {
+        mc.getToasts().clear();
+        //?}
+    }
+
+    @Override
     public boolean hostScroll(double amount) {
         //? if <26.3 {
         long window = Windows.handle(Minecraft.getInstance());
@@ -165,6 +177,11 @@ public final class WorldStimulusModern implements CgWorldStimulus {
     @Override
     public boolean time(long ticks) {
         return run("time set " + ticks);
+    }
+
+    @Override
+    public boolean peaceful() {
+        return run("difficulty peaceful");
     }
 
     @Override

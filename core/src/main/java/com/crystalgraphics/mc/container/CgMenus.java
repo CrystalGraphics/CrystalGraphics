@@ -128,6 +128,10 @@ public final class CgMenus {
         @Nullable
         CgItemStorage wrap(Object hostContainer);
 
+        /** Type {@code id} was declared: a host whose game has no later registration point registers it now. */
+        default void declared(String id) {
+        }
+
         /** Opens {@code logic} as a menu of {@code type} for {@code player}; false when it cannot. Server thread. */
         boolean open(Object player, String type, String title, Logic logic, byte[] spec);
 
@@ -152,6 +156,7 @@ public final class CgMenus {
     /** Declares menu type {@code id} ({@code mymod:grinder}), registered by the host with the game's registries. */
     public static void declare(String id, Type type) {
         if (TYPES.putIfAbsent(id, type) != null) throw new IllegalStateException("menu type declared twice: " + id);
+        host().declared(id);
     }
 
     /** The declared type {@code id}; null for one never declared. Hosts. */

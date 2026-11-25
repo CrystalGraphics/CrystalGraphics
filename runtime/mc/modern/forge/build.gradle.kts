@@ -24,6 +24,7 @@ import cgbuildlogic.renderDocRun
 import cgbuildlogic.registerThinRename
 import cgbuildlogic.stubMode
 import cgbuildlogic.useForgeApi
+import cgbuildlogic.useLoaderAccess
 import cgbuildlogic.useModernMinecraft
 import cgbuildlogic.backportedMojmap
 import cgbuildlogic.shaderToolchainRun
@@ -66,6 +67,9 @@ if (!stubMode && usesUniminedMinecraft) {
         the<UniminedExtension>().minecraft(lang) { combineWith(sourceSets.main.get()) }
     }
 }
+
+// What Forge's access transformer opens at runtime, open to javac too (MenuScreens.register). @see useLoaderAccess
+if (findProperty("neoform.version") != null) useLoaderAccess()
 
 if (!stubMode && legacyForge == null && !usesUniminedMinecraft) {
     useForgeApi()

@@ -39,7 +39,12 @@ public final class MenusModern implements CgMenus.Host {
     /** A loader's half: a menu type whose open carries the spec's bytes, and that open. */
     public interface Loader {
 
-        MenuType<HostMenu> type(Factory factory);
+        /** Type {@code id}'s menu type; a loader whose call also registers it registers it here. */
+        MenuType<HostMenu> type(String id, Factory factory);
+
+        /** Type {@code id} was declared: a loader with no registry event registers it now (Fabric). */
+        default void declared(String id) {
+        }
 
         boolean open(ServerPlayer player, MenuProvider provider, byte[] spec);
     }
@@ -68,11 +73,17 @@ public final class MenusModern implements CgMenus.Host {
         if (half == null) return;
         for (String id : CgMenus.declared()) {
             if (TYPES.containsKey(id)) continue;
-            MenuType<HostMenu> type = half.type((windowId, inventory, spec) ->
+            MenuType<HostMenu> type = half.type(id, (windowId, inventory, spec) ->
                     new HostMenu(TYPES.get(id), windowId, CgMenus.type(id).client(spec, storage(inventory))));
             TYPES.put(id, type);
             out.accept(id, type);
         }
+    }
+
+    @Override
+    public void declared(String id) {
+        Loader half = loader;
+        if (half != null) half.declared(id);
     }
 
     /** Every type made, for the loader's screen registration. */

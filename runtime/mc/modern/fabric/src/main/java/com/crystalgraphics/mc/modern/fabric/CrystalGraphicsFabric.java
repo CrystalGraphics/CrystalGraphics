@@ -58,6 +58,7 @@ public final class CrystalGraphicsFabric implements VariantEntry {
     @Override
     public void start(Object context) {
         PlatformServiceModern.installClient();
+        MenusFabric.Screens.install();
         //? if >=1.16.5 {
         CgPlatform.provide(CgFluids.HOST, new FluidsFabric());
         //?}

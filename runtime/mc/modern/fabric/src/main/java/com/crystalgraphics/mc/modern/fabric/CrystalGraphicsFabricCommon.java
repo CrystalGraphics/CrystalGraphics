@@ -64,6 +64,7 @@ public final class CrystalGraphicsFabricCommon implements VariantEntry {
         LogManager.getLogger("CrystalGraphics").info("[cg] {}: {}", CrashVariant.LABEL,
                 CrashVariant.report(CrystalGraphicsFabricCommon.class));
         PlatformServiceModern.install(ModLoaderFabric.INSTANCE);
+        MenusFabric.install();
         // what the engine saves with an entity, in the compound EntitySaveHook keeps on it
         CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(entity -> ((SavedEntity) entity).crystalgraphics$saved(), true));
         CgEngineLifecycle.preInit();

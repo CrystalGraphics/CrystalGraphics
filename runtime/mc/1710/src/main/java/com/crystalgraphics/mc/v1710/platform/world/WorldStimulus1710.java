@@ -77,14 +77,14 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
 
     @Override
     public boolean breakBlock(int x, int y, int z) {
-        return run(command(String.format(Locale.ROOT, "setblock %d %d %d minecraft:stone", x, y, z)),
-                command(String.format(Locale.ROOT, "setblock %d %d %d minecraft:air 0 destroy", x, y, z)));
+        return run(console(String.format(Locale.ROOT, "setblock %d %d %d minecraft:stone", x, y, z)),
+                console(String.format(Locale.ROOT, "setblock %d %d %d minecraft:air 0 destroy", x, y, z)));
     }
 
     @Override
     public boolean explode(double x, double y, double z) {
-        return run(command(String.format(Locale.ROOT, "summon Pig %.2f %.2f %.2f", x, y, z)),
-                command(String.format(Locale.ROOT, "summon PrimedTnt %.2f %.2f %.2f {Fuse:0}", x, y, z)));
+        return run(console(String.format(Locale.ROOT, "summon Pig %.2f %.2f %.2f", x, y, z)),
+                console(String.format(Locale.ROOT, "summon PrimedTnt %.2f %.2f %.2f {Fuse:0}", x, y, z)));
     }
 
     @Override
@@ -124,18 +124,23 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
         EntityClientPlayerMP player = Minecraft.getMinecraft().thePlayer;
         if (player == null) return false;
         String name = player.getCommandSenderName();
-        return run(command("gamemode 1 " + name), command(String.format(Locale.ROOT, "tp %s %.2f %.2f %.2f", name, x, y, z)));
+        return run(console("gamemode 1 " + name), console(String.format(Locale.ROOT, "tp %s %.2f %.2f %.2f", name, x, y, z)));
     }
 
     @Override
     public boolean time(long ticks) {
-        return run(command("time set " + ticks));
+        return run(console("time set " + ticks));
+    }
+
+    @Override
+    public boolean peaceful() {
+        return run(console("difficulty 0"));
     }
 
     @Override
     public boolean survival() {
         EntityClientPlayerMP player = Minecraft.getMinecraft().thePlayer;
-        return player != null && run(command("gamemode 0 " + player.getCommandSenderName()));
+        return player != null && run(console("gamemode 0 " + player.getCommandSenderName()));
     }
 
     // 1.7.10 has no replaceitem: the server's player filled directly, then its menu synced
@@ -172,12 +177,12 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
     // 1.7.10 has no armor stand: a pig wanders a little, which a probe's hits tolerate.
     @Override
     public boolean stand(double x, double y, double z) {
-        return run(command(String.format(Locale.ROOT, "summon Pig %.2f %.2f %.2f", x, y, z)));
+        return run(console(String.format(Locale.ROOT, "summon Pig %.2f %.2f %.2f", x, y, z)));
     }
 
     @Override
     public boolean dragon(double x, double y, double z) {
-        return run(command(String.format(Locale.ROOT, "summon EnderDragon %.2f %.2f %.2f", x, y, z)));
+        return run(console(String.format(Locale.ROOT, "summon EnderDragon %.2f %.2f %.2f", x, y, z)));
     }
 
     // Built as an item places one, not summoned: 1.7.10's /summon sets the position after loading, which gives a
@@ -186,7 +191,7 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
     public boolean painting(int x, int y, int z) {
         if (Minecraft.getMinecraft().thePlayer == null) return false;
         int dimension = Minecraft.getMinecraft().thePlayer.dimension;
-        return run(command(String.format(Locale.ROOT, "setblock %d %d %d minecraft:stone", x, y, z + 1)), server -> {
+        return run(console(String.format(Locale.ROOT, "setblock %d %d %d minecraft:stone", x, y, z + 1)), server -> {
             WorldServer world = server.worldServerForDimension(dimension);
             world.spawnEntityInWorld(new EntityPainting(world, x, y, z + 1, 2, "Kebab"));
         });
@@ -260,7 +265,7 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
         });
     }
 
-    private static Consumer<MinecraftServer> command(String command) {
+    private static Consumer<MinecraftServer> console(String command) {
         return server -> {
             // the server is the sender, so its refusal reaches no chat: said here, or a probe waits blind
             if (server.getCommandManager().executeCommand(server, command) == 0) {

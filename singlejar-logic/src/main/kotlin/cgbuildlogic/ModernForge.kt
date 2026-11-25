@@ -3,6 +3,7 @@ package cgbuildlogic
 import org.gradle.api.Project
 import org.gradle.api.artifacts.ModuleDependency
 import org.gradle.api.file.FileCollection
+import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
 
@@ -76,6 +77,32 @@ fun Project.useForgeApi() {
         }
     }
 }
+
+/**
+ * What a from-parts node's loader opens by its access transformer, at that access, for compiling: the loader applies
+ * its transformer to Minecraft at runtime, but neither NeoForm nor the node's stub does, so a member it opens is
+ * private to javac. A `loaderAccess` source set ([LOADER_ACCESS]) compiles against the node's classpath and comes
+ * first on `main`'s; it is never packaged.
+ *
+ * ```kotlin
+ * if (findProperty("neoform.version") != null) useLoaderAccess()   // stub and real mode alike
+ * ```
+ *
+ * - Declare in it only members the loader's own transformer lists, in Mojang's names: on an SRG-running Forge the
+ *   reobfuscation renames a call as any other.
+ */
+fun Project.useLoaderAccess() {
+    val sourceSets = extensions.getByType(SourceSetContainer::class.java)
+    val main = sourceSets.getByName("main")
+    val access = sourceSets.create("loaderAccess") {
+        java.srcDir(rootProject.file(LOADER_ACCESS))
+        compileClasspath += main.compileClasspath
+    }
+    main.compileClasspath = access.output + main.compileClasspath
+}
+
+/** The overlay's sources, from the root: `MenuScreens.register`, whose screen a mod's menu type registers. */
+const val LOADER_ACCESS = "runtime/mc/modern/loader-access/src"
 
 /**
  * NeoForge's own jars compileOnly, for a NeoForge node ModDevGradle cannot set up (20.2, 20.3): its

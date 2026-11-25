@@ -1,7 +1,6 @@
 package com.crystalgraphics.mc.modern.neoforge;
 
-//? if >=1.20.6 {
-/*import com.crystalgraphics.mc.modern.platform.HostMenu;
+import com.crystalgraphics.mc.modern.platform.HostMenu;
 import com.crystalgraphics.mc.modern.platform.MenusModern;
 import com.crystalgraphics.mc.modern.platform.PlainMenuScreen;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
@@ -13,16 +12,28 @@ import net.minecraft.world.MenuProvider;
 import net.minecraft.world.inventory.MenuType;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.loading.FMLLoader;
-import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
 import net.neoforged.neoforge.registries.RegisterEvent;
+//? if >=1.20.4 {
+import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+//?} else {
+/*import net.minecraft.client.gui.screens.MenuScreens;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.network.NetworkHooks;
+*///?}
 
-/^*
- * {@code CgMenus} on NeoForge: a type whose open carries the spec ({@code IMenuTypeExtension}), opened through
- * {@code openMenu(provider, Consumer)}, which sends it in the open itself so the client builds its menu before the
- * contents arrive. Types are registered in {@code RegisterEvent}, after every mod declared its own; each gets
- * {@link PlainMenuScreen}, which an engine screen replaces where one is registered.
- ^/
+/**
+ * {@code CgMenus} on NeoForge: a type whose open carries the spec ({@code IMenuTypeExtension}), opened by NeoForge's
+ * own extra-data open, so the client builds its menu before the contents arrive. Types are registered in
+ * {@code RegisterEvent}, after every mod declared its own; each gets {@link PlainMenuScreen}, which an engine screen
+ * replaces where one is registered.
+ *
+ * <ul>
+ *   <li>The open: {@code NetworkHooks.openScreen} on 1.20.2-1.20.3, {@code openMenu(provider, Consumer)} from 1.20.4.</li>
+ *   <li>The screen: {@code RegisterMenuScreensEvent} from 1.20.4; before it {@code MenuScreens.register}, which
+ *       NeoForge's access transformer opens (compiled through {@code useLoaderAccess}).</li>
+ * </ul>
+ */
 final class MenusNeoForge implements MenusModern.Loader {
 
     private MenusNeoForge() {
@@ -39,30 +50,30 @@ final class MenusNeoForge implements MenusModern.Loader {
     private static final class Screens {
 
         static void register(IEventBus modBus) {
+            //? if >=1.20.4 {
             modBus.addListener((RegisterMenuScreensEvent event) -> {
                 for (MenuType<HostMenu> type : MenusModern.types()) event.register(type, PlainMenuScreen::new);
             });
+            //?} else {
+            /*modBus.addListener((FMLClientSetupEvent event) -> event.enqueueWork(() -> {
+                for (MenuType<HostMenu> type : MenusModern.types()) MenuScreens.register(type, PlainMenuScreen::new);
+            }));
+            *///?}
         }
     }
 
     @Override
-    public MenuType<HostMenu> type(MenusModern.Factory factory) {
+    public MenuType<HostMenu> type(String id, MenusModern.Factory factory) {
         return IMenuTypeExtension.create((windowId, inventory, data) -> factory.create(windowId, inventory, data.readByteArray()));
     }
 
     @Override
     public boolean open(ServerPlayer player, MenuProvider provider, byte[] spec) {
+        //? if >=1.20.4 {
         return player.openMenu(provider, data -> data.writeByteArray(spec)).isPresent();
+        //?} else {
+        /*NetworkHooks.openScreen(player, provider, data -> data.writeByteArray(spec));
+        return true;
+        *///?}
     }
 }
-*///?} else {
-// NeoForge before 1.20.6 has no menu opener here yet (GS9B): CgMenus types do not register or open
-final class MenusNeoForge {
-
-    private MenusNeoForge() {
-    }
-
-    static void install(Object modBus) {
-    }
-}
-//?}

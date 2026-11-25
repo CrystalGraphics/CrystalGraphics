@@ -3663,6 +3663,7 @@ com/crystalgraphics/platform/world/CgWorldStimulus
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/platform/world/CgWorldStimulus;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public clearToasts ()V
   method public command (Ljava/lang/String;)Z
   method public container (IIILjava/lang/String;)Z
   method public hostKey (I)Z
@@ -3671,6 +3672,7 @@ com/crystalgraphics/platform/world/CgWorldStimulus
   method public inventory ([Ljava/lang/String;)Z
   method public jumpDown ()Z
   method public merchant (III)Z
+  method public peaceful ()Z
   method public pressJump ()Z
   method public survival ()Z
   method public teleport (DDD)Z

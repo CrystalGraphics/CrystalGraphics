@@ -85,6 +85,11 @@ public final class WorldStimulusLegacy implements CgWorldStimulus {
     }
 
     @Override
+    public boolean peaceful() {
+        return run("difficulty 0");
+    }
+
+    @Override
     public boolean survival() {
         EntityPlayerSP player = player();
         return player != null && run("gamemode 0 " + player.getName());

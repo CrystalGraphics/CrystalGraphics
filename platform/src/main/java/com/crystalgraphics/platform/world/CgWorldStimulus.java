@@ -127,6 +127,11 @@ public interface CgWorldStimulus {
         return false;
     }
 
+    /** The world made peaceful, so no mob kills a probe's survival player (a death closes its open menu). */
+    default boolean peaceful() {
+        return false;
+    }
+
     /**
      * The local player's inventory emptied, then filled slot by slot, for a probe of an inventory screen: slots 0 to 8
      * are the hotbar, 9 to 35 the rest, each {@code "minecraft:diamond 5"} or empty for none. False where this
@@ -146,6 +151,13 @@ public interface CgWorldStimulus {
      */
     default boolean time(long ticks) {
         return false;
+    }
+
+    /**
+     * The toasts in the corner taken down at once, for a capture that must not catch one (the recipes a filled inventory
+     * unlocks announce themselves for seconds). Nothing where this version has none to take down.
+     */
+    default void clearToasts() {
     }
 
     /**

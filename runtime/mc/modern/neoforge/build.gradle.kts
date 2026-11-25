@@ -13,6 +13,7 @@ import cgbuildlogic.renderDocRun
 import cgbuildlogic.shaderToolchainRun
 import cgbuildlogic.stubMode
 import cgbuildlogic.useNeoForgeApi
+import cgbuildlogic.useLoaderAccess
 import net.neoforged.moddevgradle.dsl.NeoForgeExtension
 
 plugins {
@@ -39,6 +40,8 @@ repositories {
 }
 
 val fromParts = findProperty("neoform.version") != null
+// What NeoForge's access transformer opens at runtime, open to javac too (MenuScreens.register). @see useLoaderAccess
+if (fromParts) useLoaderAccess()
 if (!stubMode) {
     pluginManager.apply("net.neoforged.moddev")
     if (fromParts) useNeoForgeApi()
