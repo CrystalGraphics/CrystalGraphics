@@ -5,6 +5,7 @@ import com.crystalgraphics.mc.render.entity.CgEntityPictures;
 import com.crystalgraphics.mc.render.entity.CgEntityPose;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.settings.GameSettings;
 import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.RenderHelper;
@@ -33,7 +34,16 @@ public final class EntityPicturesLegacy implements CgEntityPictures.Host {
         GlStateManager.enableDepth();
         // White, as the inventory screen leaves it: a tooltip's text colour would tint the model
         GlStateManager.color(1, 1, 1, 1);
-        ported(e, pose, ageTicks, Math.round(x + w / 2), Math.round(y + centreY + e.height * scale / 2), Math.round(scale));
+        // NO NAMETAG OF THE GAME'S, as its inventory draws none: a UI draws its own. A living renderer skips it while the
+        // GUI is hidden (canRenderName)
+        GameSettings settings = Minecraft.getMinecraft().gameSettings;
+        boolean hidden = settings.hideGUI;
+        settings.hideGUI = true;
+        try {
+            ported(e, pose, ageTicks, Math.round(x + w / 2), Math.round(y + centreY + e.height * scale / 2), Math.round(scale));
+        } finally {
+            settings.hideGUI = hidden;
+        }
         GlStateManager.disableDepth();
     }
 

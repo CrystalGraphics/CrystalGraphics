@@ -14,6 +14,7 @@ import org.joml.Vector3f;
 import com.mojang.math.Vector3f;
 *///?}
 //? if >=1.15 <1.21.11 {
+import net.minecraft.client.Options;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 //?}
 //? if >=1.15 <1.20 {
@@ -75,6 +76,14 @@ public final class EntityPicturesModern implements CgEntityPictures.Host {
         LivingEntity e = (LivingEntity) entity;
         float cx = x + w / 2, cy = y + centreY;
         int x0 = Math.round(x), y0 = Math.round(y), x1 = Math.round(x + w), y1 = Math.round(y + h);
+        //? if >=1.15 <1.21.11 {
+        // NO NAMETAG OF THE GAME'S, as its inventory draws none: a UI draws its own. A living renderer skips it while the
+        // GUI is hidden (shouldShowName: Minecraft.renderNames)
+        Options options = Minecraft.getInstance().options;
+        boolean hidden = options.hideGui;
+        options.hideGui = true;
+        try {
+        //?}
         //? if <1.15 {
         /*return;
         *///?} elif <1.19.4 {
@@ -90,7 +99,12 @@ public final class EntityPicturesModern implements CgEntityPictures.Host {
         } finally {
             poses.restore(e);
         }
-        //?} else {
+        //?}
+        //? if >=1.15 <1.21.11 {
+        } finally {
+            options.hideGui = hidden;
+        }
+        //?} elif >=1.21.11 {
         /*// The same, on the entity's render state, as vanilla does from 1.21.11
         Quaternionf rotation = new Quaternionf().rotateZ((float) Math.PI);
         Quaternionf tilt = new Quaternionf().rotateX(pose.tilt() * DEG);
@@ -98,6 +112,8 @@ public final class EntityPicturesModern implements CgEntityPictures.Host {
         EntityRenderState state = Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(e).createRenderState(e, 1.0F);
         state.shadowPieces.clear();
         state.outlineColor = 0;
+        // No nametag of the game's, as its inventory draws none: a UI draws its own
+        state.nameTag = null;
         if (state instanceof LivingEntityRenderState) {
             LivingEntityRenderState living = (LivingEntityRenderState) state;
             EntityPosesModern.state(state, 180 + pose.bodyYaw(), pose.headYaw() - pose.bodyYaw(),
