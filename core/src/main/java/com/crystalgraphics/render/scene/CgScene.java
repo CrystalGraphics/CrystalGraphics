@@ -446,8 +446,8 @@ public final class CgScene {
 
 
     /**
-     * The nearest visible primitive whose world box the ray from {@code (ox, oy, oz)} along {@code (dx, dy, dz)} meets,
-     * absolute; null for none. {@code CgView.pick(x, y)} casts it through a pixel.
+     * The nearest visible, pickable primitive whose world box the ray from {@code (ox, oy, oz)} along {@code (dx, dy, dz)}
+     * meets, absolute; null for none. {@code CgView.pick(x, y)} casts it through a pixel.
      */
     @Nullable
     public CgPrimitiveComponent<?> pick(double ox, double oy, double oz, double dx, double dy, double dz) {

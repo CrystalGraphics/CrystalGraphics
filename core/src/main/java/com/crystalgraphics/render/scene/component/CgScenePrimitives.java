@@ -374,7 +374,7 @@ public final class CgScenePrimitives {
     /**
      * The nearest visible primitive whose world box the ray from {@code (ox, oy, oz)} along {@code (dx, dy, dz)} meets
      * ahead of its origin, absolute; null for none. Godot's editor selection ray: a box hit, not a triangle. A primitive
-     * with no bounds is never picked.
+     * with no bounds, or not {@linkplain CgPrimitiveComponent#pickable() pickable}, is never picked.
      */
     @Nullable
     public CgPrimitiveComponent<?> pick(double ox, double oy, double oz, double dx, double dy, double dz) {
@@ -382,7 +382,7 @@ public final class CgScenePrimitives {
         double best = Double.MAX_VALUE;
         for (int i = 0, n = primitives.size(); i < n; i++) {
             CgPrimitiveComponent<?> p = primitives.get(i);
-            CgAABBc box = p.visible ? p.worldBounds() : null;
+            CgAABBc box = p.visible && p.pickable ? p.worldBounds() : null;
             if (box == null || !Intersectiond.intersectRayAab(ox, oy, oz, dx, dy, dz, box.minX(), box.minY(), box.minZ(),
                     box.maxX(), box.maxY(), box.maxZ(), hit)) continue;
             double at = Math.max(hit.x, 0.0);   // the eye inside a box picks it at 0

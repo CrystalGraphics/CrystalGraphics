@@ -14644,6 +14644,8 @@ com/crystalgraphics/render/scene/component/CgPrimitiveComponent
   method public light (FF)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public maxDistance (F)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public noCustomDepth ()Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
+  method public pickable ()Z
+  method public pickable (Z)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public remove ()V
   method public removed ()Z
   method public rotation ()Lorg/joml/Quaternionfc;

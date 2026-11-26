@@ -84,6 +84,7 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
     private int parentSocket = NO_SOCKET;
 
     boolean visible = true;
+    boolean pickable = true;
     float maxDistance = Float.POSITIVE_INFINITY;
     @Nullable
     private CgAABB statedBounds;
@@ -372,6 +373,21 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
     public T visible(boolean visible) {
         requireLive();
         this.visible = visible;
+        return self();
+    }
+
+    /** Whether {@code CgView.pick} may answer it: true by default. */
+    public boolean pickable() {
+        return pickable;
+    }
+
+    /**
+     * Left out of picks when false, though drawn: an editor's own outline, gizmo or preview, which must never stand
+     * between the pointer and what it points at (Unreal's {@code bSelectable}).
+     */
+    public T pickable(boolean pickable) {
+        requireLive();
+        this.pickable = pickable;
         return self();
     }
 
