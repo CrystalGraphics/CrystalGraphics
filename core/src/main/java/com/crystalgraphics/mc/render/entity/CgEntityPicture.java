@@ -45,6 +45,8 @@ import com.crystalgraphics.world.actor.CgEntity;
  *   <li>Centred in its rect and fitted to the rect's height unless given a {@link #scale}: the entity's height fills
  *       nine tenths of it. {@link #inventory} places it as this version's inventory places its player instead, 30
  *       units a block: the inventory's own rule changed in 1.20.2.</li>
+ *   <li>{@link #nameRoom} leaves half a block over the head, where the game draws a nametag, and {@link #nameTag}
+ *       says where the tag goes in the rect: a UI draws it there.</li>
  *   <li>Clipped to its rect, as Minecraft clips the inventory's player from 1.21.6: a model reaching past its bounding
  *       box (a plant's leaves, a dragon's wings) needs a rect with room, or a smaller {@link #scale}.</li>
  *   <li>An entity made from a ref's data or profile is made once, client-side, and never joins the level; a live one
@@ -58,6 +60,8 @@ public final class CgEntityPicture extends CgHostPicture {
 
     /** Units a block the inventory draws its player at, on every version. */
     private static final float INVENTORY_SCALE = 30;
+    /** Blocks over the head to the top of a nametag's text, and its glyphs' height: EntityRenderer.renderNameTag's. */
+    private static final float NAME_ABOVE = 0.5f, NAME_TEXT = 8 * 0.025f;
     /** The inventory's partial tick: Minecraft draws its player at 1. */
     private static final float PARTIAL_TICK = 1;
 
@@ -66,6 +70,9 @@ public final class CgEntityPicture extends CgHostPicture {
     private volatile CgEntityHook hook = CgEntityHook.NONE;
     private volatile float scale;
     private volatile boolean inventory;
+    private volatile boolean nameRoom;
+    /** Its height in blocks as last drawn; NaN before. */
+    private volatile float drawnHeight = Float.NaN;
     @Nullable private volatile Object entity;
     @Nullable private volatile String name;
     private double firstDrawn = Double.NaN;
@@ -148,6 +155,48 @@ public final class CgEntityPicture extends CgHostPicture {
         return this;
     }
 
+    /** Whether a fitted picture leaves half a block over the head for a nametag: the entity and its tag fill the rect. */
+    public boolean nameRoom() {
+        return nameRoom;
+    }
+
+    public CgEntityPicture nameRoom(boolean room) {
+        this.nameRoom = room;
+        return this;
+    }
+
+    /**
+     * Where its nametag goes in a rect {@code h} units tall, as the game draws it half a block over the head: the top of
+     * its text from the rect's top into {@code out[0]}, the text's glyph height into {@code out[1]}, in the rect's units.
+     * False before its first draw. Any thread.
+     *
+     * <pre>{@code
+     * float[] tag = new float[2];
+     * if (picture.nameTag(box.height(), tag)) label.moveTo(tag[0]).fontSize(tag[1]);
+     * }</pre>
+     */
+    public boolean nameTag(float h, float[] out) {
+        float tall = drawnHeight;
+        if (Float.isNaN(tall)) return false;
+        float s = unitsPerBlock(h, tall);
+        out[0] = centreY(CgPlatform.get(CgEntityPictures.HOST), h, tall, s) - tall * s / 2 - NAME_ABOVE * s;
+        out[1] = NAME_TEXT * s;
+        return true;
+    }
+
+    // Units a block in a rect h units tall: its own, the inventory's, or fitting its height (and a nametag's room) to 0.9 h
+    private float unitsPerBlock(float h, float tall) {
+        if (scale > 0) return scale;
+        if (inventory) return INVENTORY_SCALE;
+        return h * 0.9f / Math.max(0.1f, tall + (nameRoom ? NAME_ABOVE : 0f));
+    }
+
+    // Where its middle goes, from the rect's top: the inventory's rule, or centred with a nametag's room over it
+    private float centreY(CgEntityPictures.Host host, float h, float tall, float s) {
+        if (inventory) return host.inventoryCentreY(h, tall, s);
+        return h / 2 + (nameRoom && scale <= 0 ? NAME_ABOVE * s / 2 : 0f);
+    }
+
     /**
      * Where this version's inventory measures the pointer from in a rect {@code h} units tall, from its top: what a
      * pose following the pointer subtracts, with the rect's middle across. Render thread or any; no game, the middle.
@@ -176,9 +225,10 @@ public final class CgEntityPicture extends CgHostPicture {
         try {
             name = CgEntityQueries.name(e);
             float tall = CgEntityQueries.height(e);
-            float s = scale > 0 ? scale : inventory ? INVENTORY_SCALE : ctx.height() * 0.9f / Math.max(0.1f, tall);
-            float centreY = inventory ? host.inventoryCentreY(ctx.height(), tall, s) : ctx.height() / 2;
-            host.draw(ctx, e, pose, (float) ((now - firstDrawn) * 20), s, 0, 0, ctx.width(), ctx.height(), centreY);
+            drawnHeight = tall;
+            float s = unitsPerBlock(ctx.height(), tall);
+            host.draw(ctx, e, pose, (float) ((now - firstDrawn) * 20), s, 0, 0, ctx.width(), ctx.height(),
+                    centreY(host, ctx.height(), tall, s));
         } finally {
             h.after(e);
         }
