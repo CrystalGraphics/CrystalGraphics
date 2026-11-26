@@ -3,6 +3,7 @@ package com.crystalgraphics.mc.v1710.platform;
 import com.crystalgraphics.mc.item.CgCreativeTabs;
 import com.crystalgraphics.mc.fluid.CgFluids;
 import com.crystalgraphics.mc.render.CgHostPictures;
+import com.crystalgraphics.mc.entity.CgHostEntities;
 import com.crystalgraphics.mc.render.entity.CgEntityPictures;
 import com.crystalgraphics.mc.render.world.CgHostWorld;
 import com.crystalgraphics.mc.render.world.CgPocketLevel;
@@ -166,6 +167,7 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgLabels.HOST, new Labels1710());
             CgPlatform.provide(CgCreativeTabs.HOST, CreativeTabs1710.INSTANCE);
             CgPlatform.provide(CgFluids.HOST, new Fluids1710());
+            CgPlatform.provide(CgHostEntities.HOST, new Entities1710());
             CgPlatform.provide(CgEntityPictures.HOST, new EntityPictures1710());
             CgPlatform.provide(CgHostWorld.HOST, new HostWorld1710());
             // Blocks are ids and metadata here, and a CgBlockState has no form on this node

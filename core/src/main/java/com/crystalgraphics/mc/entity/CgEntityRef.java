@@ -5,15 +5,19 @@ import java.util.UUID;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.world.actor.CgEntity;
+
 /**
- * Which entity a view shows: one made from data, the local player, any player by name or UUID with their skin, or a
- * live entity in the level. Never the game's object itself; the host finds or makes the entity where it draws it.
+ * Which entity a view shows, as a document saves it: one made from data, the local player, any player by name or UUID
+ * with their skin, or a live entity in the level. The host finds or makes the entity where it draws it
+ * ({@link CgHostEntities}); a picture of the game's own object takes the object instead.
  *
  * <pre>{@code
  * CgEntityRef sheep = CgEntityRef.of(CgEntityData.parse("minecraft:sheep{Color:2b}"));
  * CgEntityRef me = CgEntityRef.player();
  * CgEntityRef notch = CgEntityRef.profile("Notch");                 // a name or a UUID's text
  * CgEntityRef that = CgEntityRef.live(entity.getUUID());            // as long as it is in the client's level
+ * CgEntityRef boss = CgEntityRef.of(CgEntities.of(bossId));         // the same, from a gameplay handle
  *
  * switch (ref.kind()) { case DATA -> ref.data(); case PROFILE -> ref.profile(); ... }
  * }</pre>
@@ -68,6 +72,17 @@ public final class CgEntityRef {
 
     public static CgEntityRef live(UUID entity) {
         return new CgEntityRef(Kind.LIVE, null, null, Objects.requireNonNull(entity, "entity"));
+    }
+
+    /**
+     * A live reference to {@code entity}, by its UUID: what a document keeps of it, which a network id is not.
+     *
+     * @throws IllegalStateException where this side has not got the entity loaded
+     */
+    public static CgEntityRef of(CgEntity entity) {
+        Object host = Objects.requireNonNull(entity, "entity").entity();
+        if (host == null) throw new IllegalStateException(entity + " is not loaded on this side");
+        return live(CgHostEntities.uuid(host));
     }
 
     /**

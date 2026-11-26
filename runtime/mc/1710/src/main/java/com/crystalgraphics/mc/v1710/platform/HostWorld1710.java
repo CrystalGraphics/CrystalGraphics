@@ -10,7 +10,6 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 
 import com.crystalgraphics.mc.block.CgBlockState;
-import com.crystalgraphics.mc.entity.CgEntityRef;
 import com.crystalgraphics.mc.item.CgItemStack;
 import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.mc.render.entity.CgEntityPose;
@@ -36,7 +35,7 @@ import net.minecraftforge.client.IItemRenderer.ItemRenderType;
  */
 public final class HostWorld1710 implements CgHostWorld.Host {
 
-    private final EntityPictures1710 entities = new EntityPictures1710();
+    private final EntityPoses1710 poses = new EntityPoses1710();
     private final Matrix4f view = new Matrix4f();
     private final FloatBuffer matrix = BufferUtils.createFloatBuffer(16);
     private double camX, camY, camZ;
@@ -61,11 +60,6 @@ public final class HostWorld1710 implements CgHostWorld.Host {
     @Override
     public Object item(CgItemStack stack, @Nullable Object previous) {
         return previous != null ? previous : CgItems.toHost(stack);
-    }
-
-    @Override
-    public Object entity(CgEntityRef ref, @Nullable Object previous) {
-        return entities.entity(ref, previous);
     }
 
     @Override
@@ -107,36 +101,11 @@ public final class HostWorld1710 implements CgHostWorld.Host {
     public void drawEntity(Object entity, CgEntityPose posed, float ageTicks, Matrix4fc model) {
         Entity e = (Entity) entity;
         push(model);
-        // Its own angles set for the draw and put back, as NR4's pictures pose one
-        float yaw = e.rotationYaw, yawO = e.prevRotationYaw, pitch = e.rotationPitch, pitchO = e.prevRotationPitch;
-        int age = e.ticksExisted;
-        EntityLivingBase living = e instanceof EntityLivingBase ? (EntityLivingBase) e : null;
-        float body = 0, bodyO = 0, head = 0, headO = 0;
-        if (living != null) {
-            body = living.renderYawOffset;
-            bodyO = living.prevRenderYawOffset;
-            head = living.rotationYawHead;
-            headO = living.prevRotationYawHead;
-            living.renderYawOffset = living.prevRenderYawOffset = posed.bodyYaw();
-            living.rotationYawHead = living.prevRotationYawHead = posed.headYaw();
-        }
-        e.rotationYaw = e.prevRotationYaw = posed.headYaw();
-        e.rotationPitch = e.prevRotationPitch = posed.pitch();
-        e.ticksExisted = (int) ageTicks;
+        poses.apply(e, posed.bodyYaw(), posed.headYaw(), posed.pitch(), posed, ageTicks, true);
         try {
             RenderManager.instance.renderEntityWithPosYaw(e, 0, 0, 0, posed.headYaw(), partialTick);
         } finally {
-            if (living != null) {
-                living.renderYawOffset = body;
-                living.prevRenderYawOffset = bodyO;
-                living.rotationYawHead = head;
-                living.prevRotationYawHead = headO;
-            }
-            e.rotationYaw = yaw;
-            e.prevRotationYaw = yawO;
-            e.rotationPitch = pitch;
-            e.prevRotationPitch = pitchO;
-            e.ticksExisted = age;
+            poses.restore(e);
             pop();
         }
     }

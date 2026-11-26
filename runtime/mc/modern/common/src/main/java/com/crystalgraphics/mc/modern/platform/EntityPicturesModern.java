@@ -1,33 +1,31 @@
 package com.crystalgraphics.mc.modern.platform;
 
-import java.nio.charset.StandardCharsets;
-import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import javax.annotation.Nullable;
-
-import com.crystalgraphics.mc.entity.CgEntityRef;
 import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.mc.render.entity.CgEntityPictures;
 import com.crystalgraphics.mc.render.entity.CgEntityPose;
-import com.crystalgraphics.serialization.nbt.CgNbt;
-import com.mojang.authlib.GameProfile;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import org.joml.Quaternionf;
+//? if >=1.19.3 {
 import org.joml.Vector3f;
+//?} elif >=1.15 {
+/*import com.mojang.math.Quaternion;
+import com.mojang.math.Vector3f;
+*///?}
 //? if >=1.15 <1.21.11 {
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 //?}
-//? if >=1.14 {
-import net.minecraft.client.player.RemotePlayer;
-//?}
-//? if >=1.19.4 <1.20 {
+//? if >=1.15 <1.20 {
 /*import com.mojang.blaze3d.vertex.PoseStack;
+*///?}
+//? if >=1.15 <1.19.4 {
+/*import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
+*///?}
+//? if >=1.17 <1.19.4 {
+/*import com.mojang.blaze3d.platform.Lighting;
 *///?}
 //? if >=1.20 <26.1 {
 import net.minecraft.client.gui.GuiGraphics;
@@ -40,30 +38,26 @@ import net.minecraft.world.entity.Pose;
 //? if >=26.1 {
 /*import net.minecraft.client.gui.GuiGraphicsExtractor;
 *///?}
-//? if >=1.21.3 {
-/*import net.minecraft.world.entity.EntitySpawnReason;
-*///?}
-//? if >=1.21.11 {
-/*import net.minecraft.world.entity.EntityProcessor;
-*///?}
-//? if >=26.2 {
-/*import net.minecraft.world.entity.EntitySpawnRequest;
-*///?}
 
 /**
- * {@link CgEntityPictures} on the modern tree, client: the inventory's own entity drawing, its angle code ported so any
- * pose draws as the inventory's player does (NR4 decision 2). Before 1.15 there is no inventory entity call to use.
+ * {@link CgEntityPictures} on the modern tree, client: the inventory's own entity drawing with a pose's angles in place
+ * of a pointer's. Vanilla's angle form from 1.19.4, its render state from 1.21.11; below 1.19.4 vanilla turns a model
+ * only toward a pointer, so its {@code renderEntityInInventory} is ported with the pose's angles (NR22 decision 2).
+ * Before 1.15 there is no inventory entity call to port.
  */
 public final class EntityPicturesModern implements CgEntityPictures.Host {
 
     private static final float DEG = (float) (Math.PI / 180.0);
-    /** The furthest a pointer turns a model, in vanilla's radians-times-twenty: about 60 degrees of body. */
-    private static final double MAX_TURN = 1.4;
-    /**
-     * Ids for entities a picture makes, counting down from -1 where the game's count up: from 26.2 one made outside a
-     * level has none, and a renderer reading it (a sheep's item models) throws.
-     */
-    private static final AtomicInteger IDS = new AtomicInteger(-1);
+
+    private final EntityPosesModern poses = new EntityPosesModern();
+    //? if >=1.15 <1.19.4 {
+    /*// What the ported draw renders, read by its fancy-graphics Runnable: one, made once
+    private LivingEntity drawn;
+    private PoseStack drawStack;
+    private MultiBufferSource.BufferSource drawBuffers;
+    private final Runnable render = () -> Minecraft.getInstance().getEntityRenderDispatcher().render(drawn, 0, 0, 0, 0,
+            1, drawStack, drawBuffers, 15728880);
+    *///?}
 
     @Override
     public String absent() {
@@ -75,138 +69,39 @@ public final class EntityPicturesModern implements CgEntityPictures.Host {
     }
 
     @Override
-    public Object entity(CgEntityRef ref, @Nullable Object previous) {
-        //? if <1.14 {
-        /*return null;
-        *///?} else {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) return null;
-        switch (ref.kind()) {
-            case PLAYER:
-                return mc.player;
-            case LIVE:
-                if (previous instanceof Entity && ((Entity) previous).isAlive() && ((Entity) previous).getUUID().equals(ref.uuid())) {
-                    return previous;
-                }
-                // No list of the level's entities to look in before 1.15: a live entity is none there
-                //? if >=1.15 {
-                for (Entity e : mc.level.entitiesForRendering()) {
-                    if (e.getUUID().equals(ref.uuid())) return e instanceof LivingEntity ? e : null;
-                }
-                //?}
-                return null;
-            case PROFILE:
-                if (previous != null) return previous;
-                return identified(player(mc, ref.profile()));
-            default:
-                if (previous != null) return previous;
-                return identified(fromData(mc, CgNbt.toHost(ref.data().toNbt())));
-        }
-        //?}
-    }
-
-    @Nullable
-    private static Object identified(@Nullable Object made) {
-        if (made instanceof Entity) ((Entity) made).setId(IDS.getAndDecrement());
-        return made;
-    }
-
-    // A mannequin of a profile, made client-side: the default skin until the skin is fetched (NR4 open item)
-    private static Object player(Minecraft mc, String nameOrUuid) {
-        UUID id;
-        String name;
-        try {
-            id = UUID.fromString(nameOrUuid);
-            name = nameOrUuid.substring(0, 8);
-        } catch (IllegalArgumentException notUuid) {
-            id = UUID.nameUUIDFromBytes(("OfflinePlayer:" + nameOrUuid).getBytes(StandardCharsets.UTF_8));
-            name = nameOrUuid;
-        }
-        //? if <1.14 {
-        /*return null;
-        *///?} elif >=1.19 <1.19.3 {
-        /*return new RemotePlayer(mc.level, new GameProfile(id, name), null);
-        *///?} else {
-        return new RemotePlayer(mc.level, new GameProfile(id, name));
-        //?}
-    }
-
-    // Made, never added to the level: a picture's entity never joins it
-    @Nullable
-    private static Object fromData(Minecraft mc, CompoundTag tag) {
-        //? if <1.14 {
-        /*Entity e = null;
-        *///?} elif <1.21.3 {
-        Entity e = EntityType.loadEntityRecursive(tag, mc.level, x -> x);
-        //?} elif <1.21.11 {
-        /*Entity e = EntityType.loadEntityRecursive(tag, mc.level, EntitySpawnReason.LOAD, x -> x);
-        *///?} elif <26.2 {
-        /*Entity e = EntityType.loadEntityRecursive(tag, mc.level, EntitySpawnReason.LOAD, EntityProcessor.NOP);
-        *///?} else {
-        /*Entity e = EntityType.loadEntityRecursive(tag, mc.level, new EntitySpawnRequest(EntitySpawnReason.LOAD, false),
-                EntityProcessor.NOP);
-        *///?}
-        return e instanceof LivingEntity ? e : null;
-    }
-
-    @Override
-    public String name(Object entity) {
-        return ((Entity) entity).getDisplayName().getString();
-    }
-
-    @Override
-    public float height(Object entity) {
-        //? if <1.14 {
-        /*return 1;
-        *///?} else {
-        return ((Entity) entity).getBbHeight();
-        //?}
-    }
-
-    @Override
-    public void draw(CgHostDrawContext ctx, Object entity, CgEntityPose pose, float scale, float x, float y, float w, float h,
-                     float centreY) {
+    public void draw(CgHostDrawContext ctx, Object entity, CgEntityPose pose, float ageTicks, float scale, float x, float y,
+                     float w, float h, float centreY) {
+        if (!(entity instanceof LivingEntity)) return;
         LivingEntity e = (LivingEntity) entity;
         float cx = x + w / 2, cy = y + centreY;
         int x0 = Math.round(x), y0 = Math.round(y), x1 = Math.round(x + w), y1 = Math.round(y + h);
-        Quaternionf rotation = new Quaternionf().rotateZ((float) Math.PI);
-        Quaternionf tilt = new Quaternionf().rotateX(pose.tilt() * DEG);
-        rotation.mul(tilt);
         //? if <1.15 {
         /*return;
         *///?} elif <1.19.4 {
-        /*// Only the pointer form: the pointer whose angles give the pose, as far as a pointer turns a model
-        double turn = Math.max(-MAX_TURN, Math.min(MAX_TURN, pose.bodyYaw() / 20.0));
-        double lift = Math.max(-MAX_TURN, Math.min(MAX_TURN, pose.tilt() / 20.0));
-        InventoryScreen.renderEntityInInventory(Math.round(cx), Math.round(cy + e.getBbHeight() * scale / 2), Math.round(scale),
-                (float) (40 * Math.tan(turn)), (float) (40 * Math.tan(lift)), e);
+        /*ported(e, pose, ageTicks, Math.round(cx), Math.round(cy + e.getBbHeight() * scale / 2), Math.round(scale));
         *///?} elif <1.21.11 {
         // Vanilla's renderEntityInInventoryFollowsAngle, a pose's angles in place of a pointer's
-        float body = e.yBodyRot, yaw = e.getYRot(), pitch = e.getXRot(), headO = e.yHeadRotO, head = e.yHeadRot;
-        e.yBodyRot = 180 + pose.bodyYaw();
-        e.setYRot(180 + pose.headYaw());
-        e.setXRot(pose.pitch());
-        e.yHeadRot = e.getYRot();
-        e.yHeadRotO = e.getYRot();
+        Quaternionf rotation = new Quaternionf().rotateZ((float) Math.PI);
+        Quaternionf tilt = new Quaternionf().rotateX(pose.tilt() * DEG);
+        rotation.mul(tilt);
+        poses.apply(e, 180 + pose.bodyYaw(), 180 + pose.headYaw(), pose.pitch(), pose, ageTicks, false);
         try {
             rotated(ctx, e, scale, cx, cy, x0, y0, x1, y1, rotation, tilt);
         } finally {
-            e.yBodyRot = body;
-            e.setYRot(yaw);
-            e.setXRot(pitch);
-            e.yHeadRotO = headO;
-            e.yHeadRot = head;
+            poses.restore(e);
         }
         //?} else {
         /*// The same, on the entity's render state, as vanilla does from 1.21.11
+        Quaternionf rotation = new Quaternionf().rotateZ((float) Math.PI);
+        Quaternionf tilt = new Quaternionf().rotateX(pose.tilt() * DEG);
+        rotation.mul(tilt);
         EntityRenderState state = Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(e).createRenderState(e, 1.0F);
         state.shadowPieces.clear();
         state.outlineColor = 0;
         if (state instanceof LivingEntityRenderState) {
             LivingEntityRenderState living = (LivingEntityRenderState) state;
-            living.bodyRot = 180 + pose.bodyYaw();
-            living.yRot = pose.headYaw() - pose.bodyYaw();
-            living.xRot = living.pose != Pose.FALL_FLYING ? pose.pitch() : 0;
+            EntityPosesModern.state(state, 180 + pose.bodyYaw(), pose.headYaw() - pose.bodyYaw(),
+                    living.pose != Pose.FALL_FLYING ? pose.pitch() : 0, pose, ageTicks);
             living.boundingBoxWidth = living.boundingBoxWidth / living.scale;
             living.boundingBoxHeight = living.boundingBoxHeight / living.scale;
             living.scale = 1.0F;
@@ -220,6 +115,152 @@ public final class EntityPicturesModern implements CgEntityPictures.Host {
         /*((GuiGraphicsExtractor) ctx.gui()).entity(state, scale, translation, rotation, tilt, x0, y0, x1, y1);
         *///?}
     }
+
+    // Vanilla's renderEntityInInventory (javap of 1.15.2, 1.16.5, 1.17.1, 1.19.2 and 1.19.3), its angles a pose's: the
+    // feet at (x, y), drawn at partial tick 1 with full light and no shadow; one copy an era, as its calls differ
+    //? if >=1.15 <1.16 {
+    /*private void ported(LivingEntity e, CgEntityPose pose, float ageTicks, int x, int y, int scale) {
+        RenderSystem.pushMatrix();
+        RenderSystem.translatef((float) x, (float) y, 1050.0F);
+        RenderSystem.scalef(1.0F, 1.0F, -1.0F);
+        PoseStack p = new PoseStack();
+        p.translate(0.0D, 0.0D, 1000.0D);
+        p.scale((float) scale, (float) scale, (float) scale);
+        Quaternion rotation = Vector3f.ZP.rotationDegrees(180.0F);
+        Quaternion tilt = Vector3f.XP.rotationDegrees(pose.tilt());
+        rotation.mul(tilt);
+        p.mulPose(rotation);
+        poses.apply(e, 180 + pose.bodyYaw(), 180 + pose.headYaw(), pose.pitch(), pose, ageTicks, false);
+        EntityRenderDispatcher dispatcher = Minecraft.getInstance().getEntityRenderDispatcher();
+        tilt.conj();
+        dispatcher.overrideCameraOrientation(tilt);
+        dispatcher.setRenderShadow(false);
+        MultiBufferSource.BufferSource buffers = Minecraft.getInstance().renderBuffers().bufferSource();
+        drawn = e;
+        drawStack = p;
+        drawBuffers = buffers;
+        try {
+            render.run();
+            buffers.endBatch();
+        } finally {
+            dispatcher.setRenderShadow(true);
+            poses.restore(e);
+            drawn = null;
+            drawStack = null;
+            drawBuffers = null;
+            RenderSystem.popMatrix();
+        }
+    }
+    *///?} elif >=1.16 <1.17 {
+    /*private void ported(LivingEntity e, CgEntityPose pose, float ageTicks, int x, int y, int scale) {
+        RenderSystem.pushMatrix();
+        RenderSystem.translatef((float) x, (float) y, 1050.0F);
+        RenderSystem.scalef(1.0F, 1.0F, -1.0F);
+        PoseStack p = new PoseStack();
+        p.translate(0.0D, 0.0D, 1000.0D);
+        p.scale((float) scale, (float) scale, (float) scale);
+        Quaternion rotation = Vector3f.ZP.rotationDegrees(180.0F);
+        Quaternion tilt = Vector3f.XP.rotationDegrees(pose.tilt());
+        rotation.mul(tilt);
+        p.mulPose(rotation);
+        poses.apply(e, 180 + pose.bodyYaw(), 180 + pose.headYaw(), pose.pitch(), pose, ageTicks, false);
+        EntityRenderDispatcher dispatcher = Minecraft.getInstance().getEntityRenderDispatcher();
+        tilt.conj();
+        dispatcher.overrideCameraOrientation(tilt);
+        dispatcher.setRenderShadow(false);
+        MultiBufferSource.BufferSource buffers = Minecraft.getInstance().renderBuffers().bufferSource();
+        drawn = e;
+        drawStack = p;
+        drawBuffers = buffers;
+        try {
+            RenderSystem.runAsFancy(render);
+            buffers.endBatch();
+        } finally {
+            dispatcher.setRenderShadow(true);
+            poses.restore(e);
+            drawn = null;
+            drawStack = null;
+            drawBuffers = null;
+            RenderSystem.popMatrix();
+        }
+    }
+    *///?} elif >=1.17 <1.19.3 {
+    /*private void ported(LivingEntity e, CgEntityPose pose, float ageTicks, int x, int y, int scale) {
+        PoseStack view = RenderSystem.getModelViewStack();
+        view.pushPose();
+        view.translate(x, y, 1050.0D);
+        view.scale(1.0F, 1.0F, -1.0F);
+        RenderSystem.applyModelViewMatrix();
+        PoseStack p = new PoseStack();
+        p.translate(0.0D, 0.0D, 1000.0D);
+        p.scale((float) scale, (float) scale, (float) scale);
+        Quaternion rotation = Vector3f.ZP.rotationDegrees(180.0F);
+        Quaternion tilt = Vector3f.XP.rotationDegrees(pose.tilt());
+        rotation.mul(tilt);
+        p.mulPose(rotation);
+        poses.apply(e, 180 + pose.bodyYaw(), 180 + pose.headYaw(), pose.pitch(), pose, ageTicks, false);
+        Lighting.setupForEntityInInventory();
+        EntityRenderDispatcher dispatcher = Minecraft.getInstance().getEntityRenderDispatcher();
+        tilt.conj();
+        dispatcher.overrideCameraOrientation(tilt);
+        dispatcher.setRenderShadow(false);
+        MultiBufferSource.BufferSource buffers = Minecraft.getInstance().renderBuffers().bufferSource();
+        drawn = e;
+        drawStack = p;
+        drawBuffers = buffers;
+        try {
+            RenderSystem.runAsFancy(render);
+            buffers.endBatch();
+        } finally {
+            dispatcher.setRenderShadow(true);
+            poses.restore(e);
+            drawn = null;
+            drawStack = null;
+            drawBuffers = null;
+            view.popPose();
+            RenderSystem.applyModelViewMatrix();
+            Lighting.setupFor3DItems();
+        }
+    }
+    *///?} elif >=1.19.3 <1.19.4 {
+    /*private void ported(LivingEntity e, CgEntityPose pose, float ageTicks, int x, int y, int scale) {
+        PoseStack view = RenderSystem.getModelViewStack();
+        view.pushPose();
+        view.translate(x, y, 1050.0D);
+        view.scale(1.0F, 1.0F, -1.0F);
+        RenderSystem.applyModelViewMatrix();
+        PoseStack p = new PoseStack();
+        p.translate(0.0D, 0.0D, 1000.0D);
+        p.scale((float) scale, (float) scale, (float) scale);
+        Quaternionf rotation = new Quaternionf().rotateZ((float) Math.PI);
+        Quaternionf tilt = new Quaternionf().rotateX(pose.tilt() * DEG);
+        rotation.mul(tilt);
+        p.mulPose(rotation);
+        poses.apply(e, 180 + pose.bodyYaw(), 180 + pose.headYaw(), pose.pitch(), pose, ageTicks, false);
+        Lighting.setupForEntityInInventory();
+        EntityRenderDispatcher dispatcher = Minecraft.getInstance().getEntityRenderDispatcher();
+        tilt.conjugate();
+        dispatcher.overrideCameraOrientation(tilt);
+        dispatcher.setRenderShadow(false);
+        MultiBufferSource.BufferSource buffers = Minecraft.getInstance().renderBuffers().bufferSource();
+        drawn = e;
+        drawStack = p;
+        drawBuffers = buffers;
+        try {
+            RenderSystem.runAsFancy(render);
+            buffers.endBatch();
+        } finally {
+            dispatcher.setRenderShadow(true);
+            poses.restore(e);
+            drawn = null;
+            drawStack = null;
+            drawBuffers = null;
+            view.popPose();
+            RenderSystem.applyModelViewMatrix();
+            Lighting.setupFor3DItems();
+        }
+    }
+    *///?}
 
     // The rotation form of each era: feet at a point to 1.20.1; the middle at a point, then in a box, after
     private static void rotated(CgHostDrawContext ctx, LivingEntity e, float scale, float cx, float cy, int x0, int y0, int x1,

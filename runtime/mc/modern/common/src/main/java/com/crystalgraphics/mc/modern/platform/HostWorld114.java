@@ -12,7 +12,6 @@ import org.lwjgl.opengl.GL11;
 
 import com.crystalgraphics.mc.block.CgBlockState;
 import com.crystalgraphics.mc.block.CgBlocks;
-import com.crystalgraphics.mc.entity.CgEntityRef;
 import com.crystalgraphics.mc.item.CgItemStack;
 import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.mc.render.entity.CgEntityPose;
@@ -28,7 +27,6 @@ import net.minecraft.client.renderer.block.model.ItemTransforms;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.EntityBlock;
@@ -42,7 +40,7 @@ import net.minecraft.world.level.block.state.BlockState;
 // from 1.14.3; none on 1.13.2.
 public final class HostWorld114 implements CgHostWorld.Host {
 
-    private final EntityPicturesModern entities = new EntityPicturesModern();
+    private final EntityPosesModern poses = new EntityPosesModern();
     private final Matrix4f view = new Matrix4f();
     private final FloatBuffer matrix = BufferUtils.createFloatBuffer(16);
     private double camX, camY, camZ;
@@ -83,11 +81,6 @@ public final class HostWorld114 implements CgHostWorld.Host {
     }
 
     @Override
-    public Object entity(CgEntityRef ref, @Nullable Object previous) {
-        return entities.entity(ref, previous);
-    }
-
-    @Override
     public Object block(CgBlockState state, @Nullable Object previous) {
         if (previous != null) return previous;
         BlockState s = CgBlocks.toHost(state);
@@ -115,36 +108,11 @@ public final class HostWorld114 implements CgHostWorld.Host {
     public void drawEntity(Object entity, CgEntityPose posed, float ageTicks, Matrix4fc model) {
         Entity e = (Entity) entity;
         push(model);
-        // Its own angles set for the draw and put back, as NR4's pictures pose one
-        float yaw = e.yRot, yawO = e.yRotO, pitch = e.xRot, pitchO = e.xRotO;
-        int age = e.tickCount;
-        LivingEntity living = e instanceof LivingEntity ? (LivingEntity) e : null;
-        float body = 0, bodyO = 0, head = 0, headO = 0;
-        if (living != null) {
-            body = living.yBodyRot;
-            bodyO = living.yBodyRotO;
-            head = living.yHeadRot;
-            headO = living.yHeadRotO;
-            living.yBodyRot = living.yBodyRotO = posed.bodyYaw();
-            living.yHeadRot = living.yHeadRotO = posed.headYaw();
-        }
-        e.yRot = e.yRotO = posed.headYaw();
-        e.xRot = e.xRotO = posed.pitch();
-        e.tickCount = (int) ageTicks;
+        poses.apply(e, posed.bodyYaw(), posed.headYaw(), posed.pitch(), posed, ageTicks, true);
         try {
             Minecraft.getInstance().getEntityRenderDispatcher().render(e, 0, 0, 0, posed.headYaw(), partialTick, false);
         } finally {
-            if (living != null) {
-                living.yBodyRot = body;
-                living.yBodyRotO = bodyO;
-                living.yHeadRot = head;
-                living.yHeadRotO = headO;
-            }
-            e.yRot = yaw;
-            e.yRotO = yawO;
-            e.xRot = pitch;
-            e.xRotO = pitchO;
-            e.tickCount = age;
+            poses.restore(e);
             pop();
         }
     }

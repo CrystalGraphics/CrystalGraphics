@@ -23,6 +23,9 @@ import com.crystalgraphics.world.CgEntityTags;
  * // the server
  * CgEntities.of(zombie).addTag(STUNNED).executeCue(STUN_CUE);
  *
+ * // a client: the same call with the client's entity gives the client's handle
+ * boolean stunned = CgEntities.of(clientZombie).hasTag(STUNNED);
+ *
  * // the owner's client: one input, one prediction window, taken or refused together
  * CgEntities.predicted(() -> CgEntities.local().addTag(CHARGING).addCue(CHARGE_CUE));
  * }</pre>
@@ -64,7 +67,8 @@ public final class CgEntities {
     }
 
     /**
-     * Server: the handle of {@code entity}, the host's own object.
+     * The handle of {@code entity}, the host's own object, on its side: the client's, by its id, where it is the
+     * client level's entity, the server's otherwise.
      *
      * @throws IllegalArgumentException for an object that is no entity
      */
@@ -72,6 +76,8 @@ public final class CgEntities {
         Objects.requireNonNull(entity, "entity");
         int id = CgEntityQueries.idOf(entity);
         if (id < 0) throw new IllegalArgumentException(entity + " is no entity");
+        // A singleplayer game has both sides' objects under one id: the client level's is the client's
+        if (CgEntityQueries.client().entity(id) == entity) return of(id);
         return SERVER.computeIfAbsent(entity, e -> {
             CgEntity bare = new CgEntity(id, "entity");
             bare.serverHost = e;

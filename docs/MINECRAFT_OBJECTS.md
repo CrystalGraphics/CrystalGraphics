@@ -174,22 +174,39 @@ CgEntityPicture me = CgEntityPicture.of(CgEntityRef.player());
 me.pose(CgEntityPose.followingPointer(pointerX - midX, pointerY - midY));   // each frame, as the inventory does
 canvas.picture(me, x, y, 50, 70);                                          // centred in the rect, fitted to its height
 
-CgEntityPicture sheep = CgEntityPicture.of(CgEntityRef.of(CgEntityData.parse("sheep{Color:2b}")))
-        .pose(CgEntityPose.facing(-30, 0)).scale(20);                      // 20 units a block
+CgEntityPicture sheep = CgEntityPicture.of(CgEntityRef.parse("sheep{Color:2b}"))
+        .pose(CgEntityPose.facing(-30, 0).walking(0.4f)).scale(20);        // 20 units a block, walking
+
+CgEntityPicture boss = CgEntityPicture.of(CgEntities.of(bossId));         // a live entity, by its gameplay handle
+CgEntityPicture mine = CgEntityPicture.of(myZombie)                       // the game's own object, drawn as it is
+        .hook(new CgEntityHook() {                                         // around each draw, render thread
+            public void before(Object e, float partialTick) { ((Zombie) e).setItemSlot(MAINHAND, sword); }
+            public void after(Object e) { ((Zombie) e).setItemSlot(MAINHAND, ItemStack.EMPTY); }
+        });
 
 CgBlockPicture chest = CgBlockPicture.of(CgBlockState.parse("chest[facing=south]{Items:[...]}"));
 canvas.picture(chest, x, y, 32, 32);
 ```
 
-- **`CgEntityPicture`** draws what a `CgEntityRef` names: the local player, a live entity by UUID (nothing once it
-  leaves the level), a profile's mannequin (the default skin), or an entity made from `CgEntityData`, client-side and
-  never added to the level. Minecraft's own renderers draw it, so a mod's mob and every layer show as in the game.
-  Drawn every frame it shows; any thread may set its pose.
-- **`CgEntityPose`** is the inventory's angles: `followingPointer(dx, dy)` (the pointer from the middle of the box,
-  right and down positive) ports vanilla's `atan(d / 40)`; `facing(yaw, pitch)` and `of(body, head, pitch)` set them
-  outright. Positive yaw turns the entity to the viewer's left; positive pitch looks down. From 1.19.4 any pose draws;
-  before it (and on legacy and 1.7.10) Minecraft turns a model only toward a pointer, so a yaw past about 60 degrees is
-  the furthest a pointer turns it.
+- **`CgEntityPicture`** draws one of three sources: what a `CgEntityRef` names (the local player, a live entity by
+  UUID, nothing once it leaves the level, a profile's mannequin with the default skin, or an entity made from
+  `CgEntityData`, client-side and never added to the level), a gameplay `CgEntity`, or the game's own entity object,
+  drawn as it is and never copied. Minecraft's own renderers draw it, so a mod's mob and every layer show as in the
+  game. Drawn every frame it shows; any thread may set its pose.
+- **`entity()`** is the game's object it drew last, the author's to change on the render thread; a **`CgEntityHook`**
+  runs `before` and `after` each draw, around the pose, for a change that lasts one draw. A live entity is the level's:
+  what `before` changes, `after` puts back.
+- **One resolver**, `CgHostEntities`: the slot that turns a ref into the game's entity, used by pictures and the
+  world's child entities alike.
+- **`CgEntityPose`** is everything Minecraft's renderer reads that every era can set: body yaw, head yaw and pitch,
+  a tilt of the whole model (`followingPointer(dx, dy)` ports vanilla's `atan(d / 40)`; `facing`, `body`, `head`,
+  `tilt` set them outright), the walk cycle's speed and the arm's swing (`walking`, `swinging`; NaN, the default, is
+  the entity's own). Positive yaw turns the entity to the viewer's left; positive pitch looks down. Every pose draws on
+  every era: where vanilla turns a model only toward a pointer, its inventory call is ported with the pose's angles.
+  Crouching and the other stances resize the entity and are the author's, through a hook; `lerp` tweens two poses.
+- **One pose step per era** (`EntityPosesModern`, `EntityPosesLegacy`, `EntityPoses1710`) sets a pose on the entity
+  for a draw and puts back every field it touched; from 1.19.4 to 1.21.10 the walk cycle's private fields are reached
+  through `WalkAnimationHook` (Forge's SRG twin, Fabric's intermediary aliases).
 - A picture clips to its rect, as Minecraft clips the inventory's player from 1.21.6: a model reaching past its bounding
   box (a plant's leaves, wings) needs a rect with room or a smaller `scale`.
 - **`CgBlockPicture`** is a block as a slot shows a block item, turned the same way: its model, then its block entity's
@@ -199,10 +216,10 @@ canvas.picture(chest, x, y, 32, 32);
 
 | Era | Entities | Blocks |
 |---|---|---|
-| 1.7.10 | `GuiInventory.func_147046_a` (pointer form) | none |
-| legacy 1.8.9 - 1.12.2 | `GuiInventory.drawEntityOnScreen` (pointer form) | by item |
+| 1.7.10 | `GuiInventory.func_147046_a`, ported with the pose's angles | none |
+| legacy 1.8.9 - 1.12.2 | `GuiInventory.drawEntityOnScreen`, ported with the pose's angles | by item |
 | 1.13.2 - 1.14.4 | none | none |
-| 1.15.2 - 1.19.3 | `renderEntityInInventory` (pointer form) | model and block entity |
+| 1.15.2 - 1.19.3 | `renderEntityInInventory`, ported with the pose's angles | model and block entity |
 | 1.19.4 - 1.21.10 | the rotation form of `renderEntityInInventory` | model and block entity to 1.21.5; by item from 1.21.6 |
 | 1.21.11 - 26.x | the entity's render state, submitted as vanilla does | by item |
 
@@ -299,10 +316,10 @@ CgItemStackComponent sword = CgItemStackComponent.of(CgScene.client(), CgItemSta
         .attach(actor.prefab().node("hand_r"), null)        // rides the socket, as any primitive
         .spawn();
 
-CgChildEntityComponent zombie = CgChildEntityComponent.of(CgScene.client(),
-        CgEntityRef.of(CgEntityData.parse("minecraft:zombie{IsBaby:1b}")))
+CgChildEntityComponent zombie = CgChildEntityComponent.of(CgScene.client(), CgEntityRef.parse("zombie{IsBaby:1b}"))
         .at(x, y, z).spawn();                               // its feet at the origin; never added to the level
-zombie.pose(CgEntityPose.of(20, 45, -10));                  // relative to the component's facing
+zombie.pose(CgEntityPose.FRONT.body(20).head(45, -10).walking(0.3f));   // relative to the component's facing
+// CgChildEntityComponent.of(scene, handle) and .of(scene, gameEntity), with .hook(...), as a picture takes them
 
 CgBlockStateComponent chest = CgBlockStateComponent.of(CgScene.client(), CgBlockState.parse("chest[facing=south]"))
         .at(x, y, z).spawn();                               // its corner, as a block's position names it

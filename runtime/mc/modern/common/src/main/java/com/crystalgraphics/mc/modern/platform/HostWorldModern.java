@@ -9,7 +9,6 @@ import org.joml.Vector3f;
 
 import com.crystalgraphics.mc.block.CgBlockState;
 import com.crystalgraphics.mc.block.CgBlocks;
-import com.crystalgraphics.mc.entity.CgEntityRef;
 import com.crystalgraphics.mc.item.CgItemStack;
 import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.mc.render.entity.CgEntityPose;
@@ -22,7 +21,6 @@ import net.minecraft.client.Minecraft;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -59,7 +57,6 @@ import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.client.renderer.block.MovingBlockRenderState;
 import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
-import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.client.renderer.item.ItemStackRenderState;
 import net.minecraft.world.phys.Vec3;
 *///?}
@@ -79,7 +76,7 @@ import net.minecraft.world.phys.Vec3;
  */
 public final class HostWorldModern implements CgHostWorld.Host {
 
-    private final EntityPicturesModern entities = new EntityPicturesModern();
+    private final EntityPosesModern poses = new EntityPosesModern();
     private final Matrix4f base = new Matrix4f();
     private final Quaternionf q = new Quaternionf();
     private final Vector3f v = new Vector3f();
@@ -162,11 +159,6 @@ public final class HostWorldModern implements CgHostWorld.Host {
     }
 
     @Override
-    public Object entity(CgEntityRef ref, @Nullable Object previous) {
-        return entities.entity(ref, previous);
-    }
-
-    @Override
     public Object block(CgBlockState state, @Nullable Object previous) {
         if (previous != null) return previous;
         //? if >=1.15 {
@@ -214,48 +206,16 @@ public final class HostWorldModern implements CgHostWorld.Host {
         int light = light(model);
         //?}
         //? if >=1.15 <1.21.10 {
-        // Posed as NR4's pictures pose one: its own angles set for the draw, put back after (a live entity keeps its own)
-        float yaw = yaw(e), pitch = pitch(e), yawO = e.yRotO, pitchO = e.xRotO;
-        int age = e.tickCount;
-        float body = 0, bodyO = 0, head = 0, headO = 0;
-        LivingEntity living = e instanceof LivingEntity ? (LivingEntity) e : null;
-        if (living != null) {
-            body = living.yBodyRot;
-            bodyO = living.yBodyRotO;
-            head = living.yHeadRot;
-            headO = living.yHeadRotO;
-            living.yBodyRot = living.yBodyRotO = posed.bodyYaw();
-            living.yHeadRot = living.yHeadRotO = posed.headYaw();
-        }
-        yaw(e, posed.headYaw());
-        pitch(e, posed.pitch());
-        e.yRotO = posed.headYaw();
-        e.xRotO = posed.pitch();
-        e.tickCount = (int) ageTicks;
+        poses.apply(e, posed.bodyYaw(), posed.headYaw(), posed.pitch(), posed, ageTicks, true);
         try {
             render(mc, e, p, light);
         } finally {
-            if (living != null) {
-                living.yBodyRot = body;
-                living.yBodyRotO = bodyO;
-                living.yHeadRot = head;
-                living.yHeadRotO = headO;
-            }
-            yaw(e, yaw);
-            pitch(e, pitch);
-            e.yRotO = yawO;
-            e.xRotO = pitchO;
-            e.tickCount = age;
+            poses.restore(e);
         }
         //?} elif >=1.21.10 {
         /*// Its render state, posed as the inventory's 1.21.11 code poses one, lit where the component stands
         EntityRenderState state = mc.getEntityRenderDispatcher().getRenderer(e).createRenderState(e, partialTick);
-        if (state instanceof LivingEntityRenderState) {
-            LivingEntityRenderState living = (LivingEntityRenderState) state;
-            living.bodyRot = posed.bodyYaw();
-            living.yRot = posed.headYaw() - posed.bodyYaw();
-            living.xRot = posed.pitch();
-        }
+        EntityPosesModern.state(state, posed.bodyYaw(), posed.headYaw() - posed.bodyYaw(), posed.pitch(), posed, ageTicks);
         state.ageInTicks = ageTicks;
         state.lightCoords = light;
         state.x = state.y = state.z = 0;
@@ -488,30 +448,6 @@ public final class HostWorldModern implements CgHostWorld.Host {
         return e.getYRot();
         //?} else {
         /*return e.yRot;
-        *///?}
-    }
-
-    private static void yaw(Entity e, float yaw) {
-        //? if >=1.17 {
-        e.setYRot(yaw);
-        //?} else {
-        /*e.yRot = yaw;
-        *///?}
-    }
-
-    private static float pitch(Entity e) {
-        //? if >=1.17 {
-        return e.getXRot();
-        //?} else {
-        /*return e.xRot;
-        *///?}
-    }
-
-    private static void pitch(Entity e, float pitch) {
-        //? if >=1.17 {
-        e.setXRot(pitch);
-        //?} else {
-        /*e.xRot = pitch;
         *///?}
     }
     //?}

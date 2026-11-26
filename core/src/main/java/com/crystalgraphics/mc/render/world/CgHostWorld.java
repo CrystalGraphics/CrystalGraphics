@@ -17,7 +17,6 @@ import org.joml.Matrix4fc;
 
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.mc.block.CgBlockState;
-import com.crystalgraphics.mc.entity.CgEntityRef;
 import com.crystalgraphics.mc.item.CgItemStack;
 import com.crystalgraphics.mc.render.entity.CgEntityPose;
 import com.crystalgraphics.platform.CgPlatform;
@@ -52,10 +51,6 @@ public final class CgHostWorld {
         @Nullable
         Object item(CgItemStack stack, @Nullable Object previous);
 
-        /** The game's entity a component draws, made client-side, never in the level; as NR4's slot makes it. */
-        @Nullable
-        Object entity(CgEntityRef ref, @Nullable Object previous);
-
         /** The game's block state, and its block entity where it has one; null where this node has no block states. */
         @Nullable
         Object block(CgBlockState state, @Nullable Object previous);
@@ -63,14 +58,17 @@ public final class CgHostWorld {
         /** {@code item} under {@code model} (camera-relative), as {@code display} holds it, lit at its position. */
         void drawItem(Object item, CgItemDisplay display, Matrix4fc model);
 
-        /** {@code entity} under {@code model}, its feet at the origin, posed relative to the model's facing. */
+        /**
+         * {@code entity} (from {@code CgHostEntities}) under {@code model}, its feet at the origin, posed relative to the
+         * model's facing; its own angles and motion put back after.
+         */
         void drawEntity(Object entity, CgEntityPose pose, float ageTicks, Matrix4fc model);
 
         /** A block, its corner at the origin, and its block entity. */
         void drawBlock(Object block, Matrix4fc model);
 
         /**
-         * The box Minecraft culls {@code drawn} (what {@link #entity} or {@link #block} answered) by, relative to its
+         * The box Minecraft culls {@code drawn} (an entity, or what {@link #block} answered) by, relative to its
          * origin: an entity's culling box inflated as its renderer inflates it, a block's cube. False where Minecraft
          * never culls it (an entity drawn whole wherever it is, a block entity drawn past its block). Render thread.
          */
@@ -91,7 +89,6 @@ public final class CgHostWorld {
             @Override public void begin(Matrix4fc view, double camX, double camY, double camZ, float partialTick,
                                         boolean fullLight) { }
             @Override public Object item(CgItemStack stack, Object previous) { return null; }
-            @Override public Object entity(CgEntityRef ref, Object previous) { return null; }
             @Override public Object block(CgBlockState state, Object previous) { return state; }
             @Override public void drawItem(Object item, CgItemDisplay display, Matrix4fc model) { }
             @Override public void drawEntity(Object entity, CgEntityPose pose, float ageTicks, Matrix4fc model) { }

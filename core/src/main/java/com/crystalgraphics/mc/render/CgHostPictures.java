@@ -772,8 +772,10 @@ public final class CgHostPictures {
         RETIRING.add(new Retiring(free, CgRHI.get().frameIndex()));
     }
 
-    // Outside a device section, where a host's code may run
+    // Outside a device section, where a host's code may run. Nothing waits before the device exists (1.7.10's loading
+    // screen fires draw points first), as whenRetired asks it for the frame
     private static void runRetired() {
+        if (RETIRING.isEmpty()) return;
         long retired = CgRHI.get().retiredFrame();
         while (!RETIRING.isEmpty() && RETIRING.peekFirst().frame <= retired) RETIRING.pollFirst().free.run();
     }

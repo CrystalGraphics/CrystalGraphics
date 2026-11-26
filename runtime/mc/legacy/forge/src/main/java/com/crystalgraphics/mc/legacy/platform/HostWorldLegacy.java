@@ -13,7 +13,6 @@ import org.lwjgl.opengl.GL11;
 
 import com.crystalgraphics.mc.block.CgBlockState;
 import com.crystalgraphics.mc.block.CgBlocks;
-import com.crystalgraphics.mc.entity.CgEntityRef;
 import com.crystalgraphics.mc.item.CgItemStack;
 import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.mc.legacy.platform.world.ClientLegacy;
@@ -48,7 +47,7 @@ import net.minecraft.util.math.BlockPos;
  */
 public final class HostWorldLegacy implements CgHostWorld.Host {
 
-    private final EntityPicturesLegacy entities = new EntityPicturesLegacy();
+    private final EntityPosesLegacy poses = new EntityPosesLegacy();
     private final Matrix4f view = new Matrix4f();
     private final FloatBuffer matrix = BufferUtils.createFloatBuffer(16);
     private final Map<CgItemDisplay, ItemCameraTransforms.TransformType> displays = new EnumMap<>(CgItemDisplay.class);
@@ -91,11 +90,6 @@ public final class HostWorldLegacy implements CgHostWorld.Host {
         *///?} else {
         return s == null || s.isEmpty() ? null : s;
         //?}
-    }
-
-    @Override
-    public Object entity(CgEntityRef ref, @Nullable Object previous) {
-        return entities.entity(ref, previous);
     }
 
     @Override
@@ -173,22 +167,7 @@ public final class HostWorldLegacy implements CgHostWorld.Host {
     public void drawEntity(Object entity, CgEntityPose posed, float ageTicks, Matrix4fc model) {
         Entity e = (Entity) entity;
         push(model);
-        // Its own angles set for the draw and put back, as NR4's pictures pose one
-        float yaw = e.rotationYaw, yawO = e.prevRotationYaw, pitch = e.rotationPitch, pitchO = e.prevRotationPitch;
-        int age = e.ticksExisted;
-        EntityLivingBase living = e instanceof EntityLivingBase ? (EntityLivingBase) e : null;
-        float body = 0, bodyO = 0, head = 0, headO = 0;
-        if (living != null) {
-            body = living.renderYawOffset;
-            bodyO = living.prevRenderYawOffset;
-            head = living.rotationYawHead;
-            headO = living.prevRotationYawHead;
-            living.renderYawOffset = living.prevRenderYawOffset = posed.bodyYaw();
-            living.rotationYawHead = living.prevRotationYawHead = posed.headYaw();
-        }
-        e.rotationYaw = e.prevRotationYaw = posed.headYaw();
-        e.rotationPitch = e.prevRotationPitch = posed.pitch();
-        e.ticksExisted = (int) ageTicks;
+        poses.apply(e, posed.bodyYaw(), posed.headYaw(), posed.pitch(), posed, ageTicks, true);
         try {
             //? if <1.10 {
             /*Minecraft.getMinecraft().getRenderManager().doRenderEntity(e, 0, 0, 0, posed.headYaw(), partialTick, false);
@@ -198,17 +177,7 @@ public final class HostWorldLegacy implements CgHostWorld.Host {
             Minecraft.getMinecraft().getRenderManager().renderEntity(e, 0, 0, 0, posed.headYaw(), partialTick, false);
             //?}
         } finally {
-            if (living != null) {
-                living.renderYawOffset = body;
-                living.prevRenderYawOffset = bodyO;
-                living.rotationYawHead = head;
-                living.prevRotationYawHead = headO;
-            }
-            e.rotationYaw = yaw;
-            e.prevRotationYaw = yawO;
-            e.rotationPitch = pitch;
-            e.prevRotationPitch = pitchO;
-            e.ticksExisted = age;
+            poses.restore(e);
             pop();
         }
     }
