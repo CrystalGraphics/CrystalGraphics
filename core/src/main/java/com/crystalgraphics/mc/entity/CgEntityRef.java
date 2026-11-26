@@ -5,12 +5,14 @@ import java.util.UUID;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.actor.CgEntity;
 
 /**
  * Which entity a view shows, as a document saves it: one made from data, the local player, any player by name or UUID
- * with their skin, or a live entity in the level. The host finds or makes the entity where it draws it
- * ({@link CgHostEntities}); a picture of the game's own object takes the object instead.
+ * with their skin, or a live entity in the level. {@link #resolve} finds or makes the game's entity it names; a picture
+ * of the game's own object takes the object instead.
  *
  * <pre>{@code
  * CgEntityRef sheep = CgEntityRef.of(CgEntityData.parse("minecraft:sheep{Color:2b}"));
@@ -20,6 +22,8 @@ import com.crystalgraphics.world.actor.CgEntity;
  * CgEntityRef boss = CgEntityRef.of(CgEntities.of(bossId));         // the same, from a gameplay handle
  *
  * switch (ref.kind()) { case DATA -> ref.data(); case PROFILE -> ref.profile(); ... }
+ *
+ * Object entity = ref.resolve(previous);   // render thread: the game's entity, kept while it still is the one named
  * }</pre>
  *
  * <ul>
@@ -82,7 +86,31 @@ public final class CgEntityRef {
     public static CgEntityRef of(CgEntity entity) {
         Object host = Objects.requireNonNull(entity, "entity").entity();
         if (host == null) throw new IllegalStateException(entity + " is not loaded on this side");
-        return live(CgHostEntities.uuid(host));
+        return live(Objects.requireNonNull(CgEntityQueries.uuid(host), "its UUID"));
+    }
+
+    /**
+     * The game's entity this names, on the client: the local player and a live entity found in its level
+     * ({@code CgEntityQueries.client()}), one of data or a profile made once ({@link CgClientEntities}) and never added to
+     * it. {@code previous} is what this answered last for the same holder: kept while it is still the entity named, so
+     * a made entity is made once. Null where there is none. Render thread.
+     */
+    @Nullable
+    public Object resolve(@Nullable Object previous) {
+        switch (kind) {
+            case PLAYER: {
+                CgEntityQuery client = CgEntityQueries.client();
+                int id = client.localPlayer();
+                return id < 0 ? null : client.entity(id);
+            }
+            case LIVE:
+                if (previous != null && CgEntityQueries.alive(previous) && uuid.equals(CgEntityQueries.uuid(previous))) {
+                    return previous;
+                }
+                return CgEntityQueries.client().entity(uuid);
+            default:
+                return previous != null ? previous : CgClientEntities.make(this);
+        }
     }
 
     /**

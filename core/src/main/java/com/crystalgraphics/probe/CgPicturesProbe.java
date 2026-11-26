@@ -11,7 +11,6 @@ import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.block.CgBlockState;
 import com.crystalgraphics.mc.entity.CgEntityData;
 import com.crystalgraphics.mc.entity.CgEntityRef;
-import com.crystalgraphics.mc.entity.CgHostEntities;
 import com.crystalgraphics.mc.item.CgItemStack;
 import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.mc.render.CgHostPicture;
@@ -492,7 +491,7 @@ public final class CgPicturesProbe {
         float x = REF_X + r[0], y = REF_Y + r[1];
         if (c.kind() == Kind.ENTITY) {
             CgEntityPictures.Host host = CgPlatform.get(CgEntityPictures.HOST);
-            Object e = REFERENCE_ENTITIES.compute(c, (k, before) -> CgHostEntities.resolve(ref(k), before));
+            Object e = REFERENCE_ENTITIES.compute(c, (k, before) -> ref(k).resolve(before));
             // Both panels would be empty for an entity the game cannot make: that is a failure, not parity. A host may
             // make it a few frames on (1.7.10), so none is stated only after MAKE_TRIES
             int tries = slotTries.merge(c.name(), 1, Integer::sum);

@@ -6,13 +6,13 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.mc.entity.CgEntityHook;
 import com.crystalgraphics.mc.entity.CgEntityRef;
-import com.crystalgraphics.mc.entity.CgHostEntities;
 import com.crystalgraphics.mc.render.CgHostPicture;
 import com.crystalgraphics.mc.render.CgPictureLighting;
 import com.crystalgraphics.mc.render.CgPictureRefresh;
 import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.render.CgFrameClock;
+import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.actor.CgEntity;
 
 /**
@@ -89,7 +89,7 @@ public final class CgEntityPicture extends CgHostPicture {
      * @throws IllegalArgumentException for an object that is no entity
      */
     public static CgEntityPicture of(Object entity) {
-        return new CgEntityPicture(CgHostEntities.source(entity));
+        return new CgEntityPicture(checked(entity));
     }
 
     /** What it was made from: a {@link CgEntityRef}, a {@link CgEntity} or the game's entity. */
@@ -166,7 +166,7 @@ public final class CgEntityPicture extends CgHostPicture {
     protected void draw(CgHostDrawContext ctx) {
         CgEntityPictures.Host host = CgPlatform.get(CgEntityPictures.HOST);
         if (host.absent() != null) return;
-        Object e = CgHostEntities.resolve(source, entity);
+        Object e = resolve(entity);
         entity = e;
         if (e == null) return;
         double now = CgFrameClock.seconds();
@@ -174,14 +174,29 @@ public final class CgEntityPicture extends CgHostPicture {
         CgEntityHook h = hook;
         h.before(e, PARTIAL_TICK);
         try {
-            name = CgHostEntities.name(e);
-            float tall = CgHostEntities.height(e);
+            name = CgEntityQueries.name(e);
+            float tall = CgEntityQueries.height(e);
             float s = scale > 0 ? scale : inventory ? INVENTORY_SCALE : ctx.height() * 0.9f / Math.max(0.1f, tall);
             float centreY = inventory ? host.inventoryCentreY(ctx.height(), tall, s) : ctx.height() / 2;
             host.draw(ctx, e, pose, (float) ((now - firstDrawn) * 20), s, 0, 0, ctx.width(), ctx.height(), centreY);
         } finally {
             h.after(e);
         }
+    }
+
+    // What its source names now: a ref resolved (kept while it is the one named), a handle's entity, or the object itself
+    @Nullable
+    private Object resolve(@Nullable Object previous) {
+        if (source instanceof CgEntityRef) return ((CgEntityRef) source).resolve(previous);
+        if (source instanceof CgEntity) return ((CgEntity) source).entity();
+        return source;
+    }
+
+    private static Object checked(Object entity) {
+        if (!CgEntityQueries.isEntity(Objects.requireNonNull(entity, "entity"))) {
+            throw new IllegalArgumentException(entity + " is no entity: give a CgEntityRef, a CgEntity or the game's entity");
+        }
+        return entity;
     }
 
     @Override

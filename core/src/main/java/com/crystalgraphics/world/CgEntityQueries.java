@@ -1,5 +1,9 @@
 package com.crystalgraphics.world;
 
+import java.util.UUID;
+
+import javax.annotation.Nullable;
+
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgLevels;
 
@@ -13,6 +17,7 @@ import com.crystalgraphics.platform.world.CgLevels;
  * Entity target = there.entity(hit.entityId());              // the host's entity, on the level's thread
  *
  * int id = CgEntityQueries.idOf(entity);                     // -1 for a non-entity
+ * if (CgEntityQueries.isEntity(o)) label(CgEntityQueries.name(o), CgEntityQueries.height(o));   // in a level or not
  * double[] at = new double[3];
  * if (CgEntityQueries.position(entity, at)) aimAt(at[0], at[1], at[2]);
  * }</pre>
@@ -61,5 +66,30 @@ public final class CgEntityQueries {
     /** Whether an entity is alive and in its level; false for any other object. */
     public static boolean alive(Object entity) {
         return CgLevels.alive(entity);
+    }
+
+    /**
+     * Whether {@code o} is one of the host's entities, in a level or not: one made for a picture has a negative id, so
+     * {@code idOf(o) >= 0} does not tell.
+     */
+    public static boolean isEntity(Object o) {
+        return CgLevels.isEntity(o);
+    }
+
+    /** An entity's height in blocks; 0 for any other object. */
+    public static float height(Object entity) {
+        return CgLevels.height(entity);
+    }
+
+    /** An entity's name as its nametag shows it, plain text: a custom name, else its type's or profile's; null otherwise. */
+    @Nullable
+    public static String name(Object entity) {
+        return CgLevels.name(entity);
+    }
+
+    /** An entity's UUID, what outlives a reload; null for any other object. */
+    @Nullable
+    public static UUID uuid(Object entity) {
+        return CgLevels.uuid(entity);
     }
 }

@@ -19,6 +19,7 @@ import net.minecraft.world.level.storage.LevelResource;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Map;
+import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.function.Supplier;
 
@@ -164,6 +165,31 @@ public final class LevelsModern implements CgLevels.Host {
     @Override
     public boolean alive(Object entity) {
         return entity instanceof Entity && ((Entity) entity).isAlive();
+    }
+
+    @Override
+    public boolean isEntity(Object o) {
+        return o instanceof Entity;
+    }
+
+    @Override
+    public float height(Object entity) {
+        if (!(entity instanceof Entity)) return 0;
+        //? if <1.14.3 {
+        /*return 1;
+        *///?} else {
+        return ((Entity) entity).getBbHeight();
+        //?}
+    }
+
+    @Override
+    public String name(Object entity) {
+        return entity instanceof Entity ? ((Entity) entity).getDisplayName().getString() : null;
+    }
+
+    @Override
+    public UUID uuid(Object entity) {
+        return entity instanceof Entity ? ((Entity) entity).getUUID() : null;
     }
 
     static MinecraftServer serverOf(Object handle) {

@@ -8,13 +8,13 @@ import org.joml.Matrix4fc;
 
 import com.crystalgraphics.mc.entity.CgEntityHook;
 import com.crystalgraphics.mc.entity.CgEntityRef;
-import com.crystalgraphics.mc.entity.CgHostEntities;
 import com.crystalgraphics.mc.render.entity.CgEntityPose;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.component.CgHostDrawnComponent;
 import com.crystalgraphics.shape.bounds.CgAABB;
+import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.actor.CgEntity;
 
 /**
@@ -69,7 +69,7 @@ public final class CgChildEntityComponent extends CgHostDrawnComponent<CgChildEn
      * @throws IllegalArgumentException for an object that is no entity
      */
     public static CgChildEntityComponent of(CgScene scene, Object entity) {
-        return new CgChildEntityComponent(scene, CgHostEntities.source(entity));
+        return new CgChildEntityComponent(scene, checked(entity));
     }
 
     /** What it was made from: a {@link CgEntityRef}, a {@link CgEntity} or the game's entity. */
@@ -111,7 +111,7 @@ public final class CgChildEntityComponent extends CgHostDrawnComponent<CgChildEn
     @Override
     protected void hostDraw(Matrix4fc model) {
         Object was = entity;
-        Object e = CgHostEntities.resolve(source, was);
+        Object e = resolve(was);
         entity = e;
         if (e != was) hostBoundsChanged();
         if (e == null) return;
@@ -144,6 +144,21 @@ public final class CgChildEntityComponent extends CgHostDrawnComponent<CgChildEn
     protected void hostRelease() {
         entity = null;
         spawnedAt = Double.NaN;
+    }
+
+    // What its source names now: a ref resolved (kept while it is the one named), a handle's entity, or the object itself
+    @Nullable
+    private Object resolve(@Nullable Object previous) {
+        if (source instanceof CgEntityRef) return ((CgEntityRef) source).resolve(previous);
+        if (source instanceof CgEntity) return ((CgEntity) source).entity();
+        return source;
+    }
+
+    private static Object checked(Object entity) {
+        if (!CgEntityQueries.isEntity(Objects.requireNonNull(entity, "entity"))) {
+            throw new IllegalArgumentException(entity + " is no entity: give a CgEntityRef, a CgEntity or the game's entity");
+        }
+        return entity;
     }
 
     @Override

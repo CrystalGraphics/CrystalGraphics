@@ -1,8 +1,8 @@
 package com.crystalgraphics.mc.render.entity;
 
 import com.crystalgraphics.api.canvas.CgCanvas;
-import com.crystalgraphics.mc.entity.CgHostEntities;
 import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
+import com.crystalgraphics.world.CgEntityQueries;
 
 /**
  * The host of {@link CgEntityPictures} where no Minecraft runs (the GL debug harness, a test), beside
@@ -26,7 +26,7 @@ public final class CgStandInEntityPictures implements CgEntityPictures.Host {
     public void draw(CgHostDrawContext ctx, Object entity, CgEntityPose pose, float ageTicks, float scale, float x, float y,
                      float w, float h, float centreY) {
         CgCanvas canvas = (CgCanvas) ctx.gui();
-        float tall = CgHostEntities.height(entity) * scale, cx = x + w / 2, top = y + centreY - tall / 2;
+        float tall = CgEntityQueries.height(entity) * scale, cx = x + w / 2, top = y + centreY - tall / 2;
         int colour = colour(entity.toString());
         float body = scale * (0.3f + 0.3f * Math.abs((float) Math.cos(pose.bodyYaw() * DEG)));
         // Legs apart by the walk cycle's swing, as a model's limbs follow its position

@@ -196,8 +196,10 @@ canvas.picture(chest, x, y, 32, 32);
 - **`entity()`** is the game's object it drew last, the author's to change on the render thread; a **`CgEntityHook`**
   runs `before` and `after` each draw, around the pose, for a change that lasts one draw. A live entity is the level's:
   what `before` changes, `after` puts back.
-- **One resolver**, `CgHostEntities`: the slot that turns a ref into the game's entity, used by pictures and the
-  world's child entities alike.
+- **A ref resolves itself** (`CgEntityRef.resolve`): the local player and a live entity through
+  `CgEntityQueries.client()`, data and profiles made once by `CgClientEntities`, the one slot an era fills for this.
+  Pictures and the world's child entities alike ask `CgEntityQueries` an entity's height, name and UUID
+  (`CgLevels`' per-object questions; an entity made for a picture has a negative id, so `isEntity`, not `idOf`).
 - **`CgEntityPose`** is everything Minecraft's renderer reads that every era can set: body yaw, head yaw and pitch,
   a tilt of the whole model (`followingPointer(dx, dy)` ports vanilla's `atan(d / 40)`; `facing`, `body`, `head`,
   `tilt` set them outright), the walk cycle's speed and the arm's swing (`walking`, `swinging`; NaN, the default, is

@@ -59,8 +59,8 @@ public final class CgHostWorld {
         void drawItem(Object item, CgItemDisplay display, Matrix4fc model);
 
         /**
-         * {@code entity} (from {@code CgHostEntities}) under {@code model}, its feet at the origin, posed relative to the
-         * model's facing; its own angles and motion put back after.
+         * {@code entity} (a ref resolved, a handle's, or the author's) under {@code model}, its feet at the origin,
+         * posed relative to the model's facing; its own angles and motion put back after.
          */
         void drawEntity(Object entity, CgEntityPose pose, float ageTicks, Matrix4fc model);
 

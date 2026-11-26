@@ -5,7 +5,7 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.platform.CgService;
 
-/** The slot each era fills to draw a {@link CgEntityPicture}; the entity itself comes from {@code CgHostEntities}. */
+/** The slot each era fills to draw a {@link CgEntityPicture}; the entity itself is the picture's source, resolved. */
 public final class CgEntityPictures {
 
     /** What an era answers, render thread. */

@@ -4,6 +4,7 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgService;
 
 import java.nio.file.Path;
+import java.util.UUID;
 
 /**
  * The host's levels: a {@link CgWorldQuery} and a {@link CgEntityQuery} for any of them, the client's included, and the
@@ -71,6 +72,29 @@ public final class CgLevels {
 
         /** Whether an entity is alive and in its level; false for any other object. */
         boolean alive(Object entity);
+
+        /**
+         * Whether {@code o} is one of the host's entities, in a level or not: an entity made for a picture, never added
+         * to one, has a negative id, so {@link #entityId} does not tell.
+         */
+        default boolean isEntity(Object o) {
+            return false;
+        }
+
+        /** An entity's height in blocks; 0 for any other object. */
+        default float height(Object entity) {
+            return 0;
+        }
+
+        /** An entity's name as its nametag shows it, plain text; null for any other object. */
+        default String name(Object entity) {
+            return null;
+        }
+
+        /** An entity's UUID; null for any other object. */
+        default UUID uuid(Object entity) {
+            return null;
+        }
 
         /** No levels. */
         Host NONE = new Single(CgWorldQuery.NONE, CgEntityQuery.NONE);
@@ -167,6 +191,26 @@ public final class CgLevels {
     /** Whether an entity is alive and in its level; false for any other object. */
     public static boolean alive(Object entity) {
         return host().alive(entity);
+    }
+
+    /** Whether {@code o} is one of the host's entities, in a level or not. */
+    public static boolean isEntity(Object o) {
+        return o != null && host().isEntity(o);
+    }
+
+    /** An entity's height in blocks; 0 for any other object. */
+    public static float height(Object entity) {
+        return host().height(entity);
+    }
+
+    /** An entity's name as its nametag shows it, plain text; null for any other object. */
+    public static String name(Object entity) {
+        return host().name(entity);
+    }
+
+    /** An entity's UUID; null for any other object. */
+    public static UUID uuid(Object entity) {
+        return host().uuid(entity);
     }
 
     /** The id of a numbered dimension: vanilla's three by their modern names, any other {@code "legacy:dim<n>"}. */

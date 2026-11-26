@@ -11,6 +11,7 @@ import net.minecraftforge.common.DimensionManager;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.UUID;
 import java.util.WeakHashMap;
 import java.util.function.Supplier;
 
@@ -135,6 +136,26 @@ public final class LevelsLegacy implements CgLevels.Host {
         Entity e = (Entity) entity;
         World world = worldOf(e);
         return e.isEntityAlive() && world != null && world.getEntityByID(e.getEntityId()) == e;
+    }
+
+    @Override
+    public boolean isEntity(Object o) {
+        return o instanceof Entity;
+    }
+
+    @Override
+    public float height(Object entity) {
+        return entity instanceof Entity ? ((Entity) entity).height : 0;
+    }
+
+    @Override
+    public String name(Object entity) {
+        return entity instanceof Entity ? ((Entity) entity).getDisplayName().getUnformattedText() : null;
+    }
+
+    @Override
+    public UUID uuid(Object entity) {
+        return entity instanceof Entity ? ((Entity) entity).getUniqueID() : null;
     }
 
     static World worldOf(Object handle) {

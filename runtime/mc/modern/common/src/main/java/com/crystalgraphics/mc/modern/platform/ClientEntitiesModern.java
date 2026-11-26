@@ -6,8 +6,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.mc.entity.CgClientEntities;
 import com.crystalgraphics.mc.entity.CgEntityRef;
-import com.crystalgraphics.mc.entity.CgHostEntities;
 import com.crystalgraphics.serialization.nbt.CgNbt;
 import com.mojang.authlib.GameProfile;
 
@@ -30,14 +30,14 @@ import net.minecraft.client.player.RemotePlayer;
 *///?}
 
 /**
- * {@link CgHostEntities} on the modern tree, client: a ref's entity made from its data or profile, never added to the
- * level, or found live in the client's level. Entities from data from 1.14; none on 1.13.2.
+ * {@link CgClientEntities} on the modern tree, client: an entity made from a ref's data or profile in the client's level,
+ * never added to it. From 1.14; none on 1.13.2.
  */
-public final class EntitiesModern implements CgHostEntities.Host {
+public final class ClientEntitiesModern implements CgClientEntities.Host {
 
     /**
-     * Ids for entities a ref makes, counting down from -1 where the game's count up: from 26.2 one made outside a level
-     * has none, and a renderer reading it (a sheep's item models) throws.
+     * Ids for the entities made here, counting down from -1 where the game's count up: from 26.2 one made outside a
+     * level has none, and a renderer reading it (a sheep's item models) throws.
      */
     private static final AtomicInteger IDS = new AtomicInteger(-1);
 
@@ -51,58 +51,18 @@ public final class EntitiesModern implements CgHostEntities.Host {
     }
 
     @Override
-    public Object entity(CgEntityRef ref, @Nullable Object previous) {
+    public Object make(CgEntityRef ref) {
         //? if <1.14 {
         /*return null;
         *///?} else {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null) return null;
         switch (ref.kind()) {
-            case PLAYER:
-                return mc.player;
-            case LIVE:
-                if (previous instanceof Entity && ((Entity) previous).isAlive() && ((Entity) previous).getUUID().equals(ref.uuid())) {
-                    return previous;
-                }
-                // No list of the level's entities to look in before 1.15: a live entity is none there
-                //? if >=1.15 {
-                for (Entity e : mc.level.entitiesForRendering()) {
-                    if (e.getUUID().equals(ref.uuid())) return e instanceof LivingEntity ? e : null;
-                }
-                //?}
-                return null;
-            case PROFILE:
-                if (previous != null) return previous;
-                return identified(player(mc, ref.profile()));
-            default:
-                if (previous != null) return previous;
-                return identified(fromData(mc, CgNbt.toHost(ref.data().toNbt())));
+            case PROFILE: return identified(player(mc, ref.profile()));
+            case DATA: return identified(fromData(mc, CgNbt.toHost(ref.data().toNbt())));
+            default: return null;
         }
         //?}
-    }
-
-    @Override
-    public boolean isEntity(Object o) {
-        return o instanceof Entity;
-    }
-
-    @Override
-    public float height(Object entity) {
-        //? if <1.14 {
-        /*return 1;
-        *///?} else {
-        return ((Entity) entity).getBbHeight();
-        //?}
-    }
-
-    @Override
-    public String name(Object entity) {
-        return ((Entity) entity).getDisplayName().getString();
-    }
-
-    @Override
-    public UUID uuid(Object entity) {
-        return ((Entity) entity).getUUID();
     }
 
     @Nullable
@@ -111,7 +71,7 @@ public final class EntitiesModern implements CgHostEntities.Host {
         return made;
     }
 
-    // A mannequin of a profile, made client-side: the default skin until the skin is fetched (NR4 open item)
+    // A mannequin of a profile: the default skin until the skin is fetched (NR4 open item)
     @Nullable
     private static Object player(Minecraft mc, String nameOrUuid) {
         UUID id;
@@ -132,7 +92,6 @@ public final class EntitiesModern implements CgHostEntities.Host {
         //?}
     }
 
-    // Made, never added to the level: a ref's entity never joins it
     @Nullable
     private static Object fromData(Minecraft mc, CompoundTag tag) {
         //? if <1.14 {
