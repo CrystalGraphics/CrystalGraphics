@@ -15,6 +15,7 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgPropertyValues;
 import com.crystalgraphics.render.graph.CgRecording;
+import javax.annotation.Nullable;
 
 /**
  * Records canvas frames on any thread into a picture of their own, and seals each into a {@link CgCanvasFrame} a
@@ -35,6 +36,14 @@ import com.crystalgraphics.render.graph.CgRecording;
  * recorder.release();                                   // render thread, when the document goes
  * }</pre>
  *
+ * <p>A frame shows only a complete picture: one whose text has no glyph or shadow missing (a lower tier's stand-in is
+ * whole). Otherwise it shows the last complete one, up to {@value CgPictureHold#DEADLINE} frames in a row ({@link CgPictureHold}), and the caller
+ * records again next frame. A caller holds a frame itself for reasons of its own, such as pictures still loading:</p>
+ *
+ * <pre>{@code
+ * CgCanvasFrame frame = recorder.seal(stillLoading);    // executes as any frame; shows the last picture, or none
+ * }</pre>
+ *
  * <p>A picture kept across frames, which a recording may not make itself, is requested:</p>
  *
  * <pre>{@code
@@ -44,7 +53,9 @@ import com.crystalgraphics.render.graph.CgRecording;
  *
  * <ul>
  *   <li>{@code begin} and {@code seal} pair on one thread; a recorder records one frame at a time.</li>
- *   <li>The picture is made when the first frame executes, cleared at creation, and remade when the size changes.</li>
+ *   <li>Its two pictures are made when the first frames execute, cleared at creation, and remade when the size
+ *       changes; a frame at a new size shows what it drew.</li>
+ *   <li>A held frame still executes: what its recording did beside its picture (kept layers, caches) lands.</li>
  *   <li>A requested texture is the caller's until released; {@link #release} frees every one still held.</li>
  * </ul>
  */
@@ -62,7 +73,13 @@ public final class CgCanvasRecorder {
     /** Values of presented frames, cleared for the next seals: two in flight need two. */
     private CgPropertyValues[] spareValues = new CgPropertyValues[2];
     private int spareCount;
+    /** The picture the open frame draws into, and the one on show: never the same texture. */
     private CgGraphTexture picture;
+    @Nullable
+    private CgGraphTexture shown;
+    private final CgPictureHold hold = new CgPictureHold("frame");
+    /** The canvas's incomplete draws as the frame began: more at its seal and the picture has holes. */
+    private long incompleteAtBegin;
     private long frameId;
     private boolean active;
     private int width, height;
@@ -83,29 +100,48 @@ public final class CgCanvasRecorder {
         this.height = Math.max(1, height);
         for (CgGraphTexture released : pendingReleases) recording.release(released);
         pendingReleases.clear();
-        if (picture == null || picture.getWidth() != this.width || picture.getHeight() != this.height) {
+        CgGraphTexture sized = picture != null ? picture : shown;
+        if (sized != null && (sized.getWidth() != this.width || sized.getHeight() != this.height)) {
             if (picture != null) recording.release(picture);
-            picture = requestTexture("canvas_picture", this.width, this.height, PICTURE_FORMAT);
+            if (shown != null) recording.release(shown);
+            picture = shown = null;
+            hold.reset();
         }
+        if (picture == null) picture = requestTexture("canvas_picture", this.width, this.height, PICTURE_FORMAT);
         CgCamera lens = camera.screenLens(this.width, this.height);
         // A clear of its own, so a pass of the caller's into the picture before the canvas's first draw survives
         recording.raster("canvas_picture_clear").color(picture, CgLoad.CLEAR).camera(lens).end();
         canvas.begin(recording, picture, CgLoad.load(), lens, scale);
         // Glass sees the host's frame the picture is composited over, as the frame began, then the picture
         canvas.backdrop.behind(CgGraphTexture.current());
+        incompleteAtBegin = canvas.incompleteDraws();
         active = true;
         return canvas;
     }
 
     /** Ends the frame {@link #begin} started and builds it; the recorder may begin its next at once. Touches no GPU. */
     public CgCanvasFrame seal() {
+        return seal(false);
+    }
+
+    /**
+     * As {@link #seal()}, the last picture shown in place of this frame's while {@code held}: the caller's reason, with
+     * a time limit of its own. Before any picture has shown a held frame shows none.
+     */
+    public CgCanvasFrame seal(boolean held) {
         if (!active) throw new IllegalStateException("seal() without begin()");
         canvas.end();
         try {
             CgPropertyValues values = takeValues();
             graph.add(recording.seal(), values);
             CgFrame frame = builder.build(graph);
-            return new CgCanvasFrame(frame, this, picture, values, frameId, width, height);
+            if (!held && hold.shows(canvas.incompleteDraws() == incompleteAtBegin, shown != null)) {
+                // The next frame draws into the picture shown until now
+                CgGraphTexture was = shown;
+                shown = picture;
+                picture = was;
+            }
+            return new CgCanvasFrame(frame, this, shown, values, frameId, width, height);
         } finally {
             graph.clear();
             recording.reset();
@@ -175,6 +211,8 @@ public final class CgCanvasRecorder {
         for (CgGraphTexture released : pendingReleases) CgExecutor.freeStorage(released);
         pendingReleases.clear();
         if (picture != null) CgExecutor.freeStorage(picture);
-        picture = null;
+        if (shown != null) CgExecutor.freeStorage(shown);
+        picture = shown = null;
+        hold.reset();
     }
 }

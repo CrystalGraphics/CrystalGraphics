@@ -63,7 +63,8 @@ public final class CgCanvasPresenter {
         if (last != null) last.recycle();
         CgPass.Include step = stage.include(frame.frame).timed(GPU_UI);
         if (executed != null) step.then(executed);
-        photograph(stage, frame.picture());
+        CgGraphTexture picture = frame.picture();
+        if (picture != null) photograph(stage, picture);
         composite(stage, frame);
     }
 
@@ -119,7 +120,7 @@ public final class CgCanvasPresenter {
 
     /** The picture over the stage's target in window pixels, premultiplied; row 0 of a target is its bottom. */
     private void composite(CgStageFrame stage, CgCanvasFrame frame) {
-        if (!composites) return;
+        if (!composites || frame.picture() == null) return;
         stage.canvas().box(0, 0, frame.width(), frame.height()).fill(frame.picture()).premultiplied()
                 .region(0f, 1f, 1f, 0f).draw();
     }

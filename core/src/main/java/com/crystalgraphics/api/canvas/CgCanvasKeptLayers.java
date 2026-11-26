@@ -13,8 +13,6 @@ import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.ui.element.CgUiElements;
-import com.crystalgraphics.trace.CgTrace;
-import com.crystalgraphics.util.trace.CgChannels;
 
 /**
  * A canvas's kept layers: each walk drawn into the layer's held picture when its revision or size changed, else
@@ -99,6 +97,7 @@ final class CgCanvasKeptLayers {
         kept.invalidate();
         kept.beginWalk(now, full);
         walk.degradedAtOpen = cv.degradedDraws();
+        walk.incompleteAtOpen = cv.incompleteDraws();
         if (moved && !full) kept.damageMoved();
         CgCanvasLayer l = cv.layers.open(Float.NaN, 0f, 0f, 0f);
         l.kept = walk;
@@ -179,7 +178,7 @@ final class CgCanvasKeptLayers {
 
     /**
      * A drawn walk's end, its layer closed: tenants vacate, the damage is cut into its passes, and the pending picture is
-     * shown if the walk is complete (or past {@link CgKeptLayer#DEGRADED_WALKS} incomplete ones); else the shown one
+     * shown if the walk is complete (or past {@link CgPictureHold#DEADLINE} incomplete ones); else the shown one
      * stands and the layer walks again next frame.
      */
     void finish(CgCanvasLayer l) {
@@ -207,21 +206,17 @@ final class CgCanvasKeptLayers {
                 if (recording.pass(i) instanceof CgRasterPass raster && raster.target() == t) raster.damage(dx, dy, dw, dh);
             }
         }
-        boolean complete = canvas.degradedDraws() == walk.degradedAtOpen;
-        if (complete || kept.shown == null || ++kept.degradedWalks >= CgKeptLayer.DEGRADED_WALKS) {
+        boolean whole = canvas.incompleteDraws() == walk.incompleteAtOpen;
+        if (kept.hold.shows(whole, kept.shown != null)) {
             // Shown: the pending texture swaps with the shown one, which the next walk draws into
             CgGraphTexture was = kept.texture;
             kept.texture = kept.pending;
             kept.pending = was;
             kept.shown = CgKeptLayer.Shown.of(kept.texture, l.w, l.h);
             kept.drawCount++;
-            CgTrace.add(CgChannels.MISC, complete ? "kept.shown-complete" : "kept.shown-degraded", 1);
-            kept.degradedWalks = 0;
-        } else {
-            CgTrace.add(CgChannels.MISC, "kept.held-incomplete", 1);
         }
-        // An incomplete picture, shown or not, walks again next frame
-        kept.revision = complete ? walk.revision : CgKeptLayer.NONE;
+        // A degraded picture, shown or not, walks again next frame
+        kept.revision = canvas.degradedDraws() == walk.degradedAtOpen ? walk.revision : CgKeptLayer.NONE;
         composite(walk);
     }
 
@@ -312,7 +307,7 @@ final class CgCanvasKeptLayers {
             if (kept.pending != null) recording.release(kept.pending);
             if (kept.thumbnail != null) recording.release(kept.thumbnail);
             kept.texture = kept.pending = kept.thumbnail = null;
-            kept.degradedWalks = 0;
+            kept.hold.reset();
             kept.shown = null;
             kept.thumbnailDrawn = -1L;
             kept.invalidate();

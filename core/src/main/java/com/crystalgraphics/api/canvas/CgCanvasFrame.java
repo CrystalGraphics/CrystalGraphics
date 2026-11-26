@@ -3,6 +3,7 @@ package com.crystalgraphics.api.canvas;
 import com.crystalgraphics.render.graph.CgFrame;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgPropertyValues;
+import javax.annotation.Nullable;
 
 /**
  * One sealed canvas frame: the passes that paint it into its picture, ordered, batched and packed, referring to nothing
@@ -33,12 +34,13 @@ public final class CgCanvasFrame {
 
     final CgFrame frame;
     private final CgCanvasRecorder recorder;
+    @Nullable
     private final CgGraphTexture picture;
     private final CgPropertyValues values;
     private final long frameId;
     private final int width, height;
 
-    CgCanvasFrame(CgFrame frame, CgCanvasRecorder recorder, CgGraphTexture picture, CgPropertyValues values,
+    CgCanvasFrame(CgFrame frame, CgCanvasRecorder recorder, @Nullable CgGraphTexture picture, CgPropertyValues values,
                   long frameId, int width, int height) {
         this.frame = frame;
         this.recorder = recorder;
@@ -59,9 +61,18 @@ public final class CgCanvasFrame {
         return frameId;
     }
 
-    /** The texture it paints into, premultiplied, its row 0 at the bottom: what a presenter composites. */
+    /**
+     * The picture it shows, premultiplied, its row 0 at the bottom: what a presenter composites. Its own, or the last
+     * complete one while it is held ({@link CgCanvasRecorder#seal(boolean)}); null while held with none shown yet.
+     */
+    @Nullable
     public CgGraphTexture picture() {
         return picture;
+    }
+
+    /** Whether it shows a picture: false while held with none shown yet. */
+    public boolean shows() {
+        return picture != null;
     }
 
     /** The batches it draws: what a frame costs in draw calls. */

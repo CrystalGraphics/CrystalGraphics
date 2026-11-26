@@ -76,7 +76,7 @@ public final class CgDeferral {
     /**
      * Lets {@link #applyAll()} land this object's work over several frames, within {@code crystalgraphics.deferral.budget}
      * milliseconds and {@code .megabytes} each, as Unreal's texture streaming caps its uploads a frame: a kit's textures decoded together no longer land in
-     * one frame. Only for an owner that {@link #flush()}es before every use (a texture's bind and {@code getId}), so
+     * one frame. Only for an owner that {@link #flush()}es before every use (a texture's {@code getId} and {@code rhiTexture}), so
      * nothing ever draws what has not landed. Answers this.
      */
     public CgDeferral spreadOverFrames() {

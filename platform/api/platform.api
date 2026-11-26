@@ -3513,15 +3513,23 @@ com/crystalgraphics/platform/world/CgLevels
   method public,static dimensionId (I)Ljava/lang/String;
   method public,static entities (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgEntityQuery;
   method public,static entityId (Ljava/lang/Object;)I
+  method public,static height (Ljava/lang/Object;)F
+  method public,static isEntity (Ljava/lang/Object;)Z
   method public,static level (Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/Object;
+  method public,static name (Ljava/lang/Object;)Ljava/lang/String;
   method public,static position (Ljava/lang/Object;[D)Z
   method public,static saveDirectory (Ljava/lang/Object;)Ljava/nio/file/Path;
   method public,static single (Lcom/crystalgraphics/platform/world/CgWorldQuery;Lcom/crystalgraphics/platform/world/CgEntityQuery;)Lcom/crystalgraphics/platform/world/CgLevels$Host;
+  method public,static uuid (Ljava/lang/Object;)Ljava/util/UUID;
   method public,static world (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgWorldQuery;
 com/crystalgraphics/platform/world/CgLevels$Host
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/platform/world/CgLevels$Host;
+  method public height (Ljava/lang/Object;)F
+  method public isEntity (Ljava/lang/Object;)Z
+  method public name (Ljava/lang/Object;)Ljava/lang/String;
+  method public uuid (Ljava/lang/Object;)Ljava/util/UUID;
   method public,abstract alive (Ljava/lang/Object;)Z
   method public,abstract chunkLoaded (Ljava/lang/Object;II)Z
   method public,abstract clientEntities ()Lcom/crystalgraphics/platform/world/CgEntityQuery;

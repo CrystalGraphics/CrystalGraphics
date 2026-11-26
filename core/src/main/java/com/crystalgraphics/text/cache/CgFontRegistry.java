@@ -1,6 +1,5 @@
 package com.crystalgraphics.text.cache;
 
-import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.freetype.FTBitmap;
 import com.crystalgraphics.freetype.FTFace;
 import com.crystalgraphics.freetype.FTLoadFlags;
@@ -1020,12 +1019,14 @@ public class CgFontRegistry {
     }
 
     /**
-     * A bitmap glyph from the atlas, else rasterised here, on the device's thread, while the frame's
-     * {@link #INLINE_NANOS_PER_FRAME} lasts, else
-     * asked of a worker: null, and nothing drawn for it this frame. The budget is what keeps a cold first frame (4810
+     * A bitmap glyph from the atlas, else rasterised here, on whichever thread draws, while the frame's
+     * {@link #INLINE_NANOS_PER_FRAME} lasts, else asked of a worker: null, and nothing drawn for it this frame. The budget is what keeps a cold first frame (4810
      * glyphs, 387 ms in text-3d's, when every miss was made here) to one long frame. Rasterised here past the budget
      * only when the worker route cannot deliver: a job that failed is refused for good, and a rejected submission means
      * nothing is coming.
+     *
+     * <p>Off the device's thread its upload queues on the atlas, which lands it before any frame reads the atlas
+     * ({@code CgTextureAbstract#rhiTexture}): a recording draws the glyph in the frame it was made for.</p>
      *
      * <p>Null is safe to return: {@code submitBatchedQuads} skips it, and {@code CgResolvedGlyphs} refuses to cache a
      * placement array holding one, so the glyph is asked for again next frame.</p>
@@ -1037,11 +1038,7 @@ public class CgFontRegistry {
             CgTrace.add(CgChannels.TEXT, "glyph.bitmap.atlasHit", 1);
             return cached;
         }
-        // Only where the device may be driven: there the upload lands at once. A recording thread's upload is ordered
-        // against the render thread's frame, not its recording, so a glyph placed there could be drawn before its
-        // texels; it goes to the workers, and a kept layer holds its last complete picture meanwhile (Chromium's raster
-        // workers and pending tree)
-        if (inlineNanos < INLINE_NANOS_PER_FRAME && CgRHI.onDeviceThread()) {
+        if (inlineNanos < INLINE_NANOS_PER_FRAME) {
             long start = System.nanoTime();
             CgGlyphPlacement made = ensureBitmapGlyph(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket,
                     currentFrame);

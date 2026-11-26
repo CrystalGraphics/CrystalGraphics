@@ -89,6 +89,8 @@ public abstract class CgTextureAbstract implements CgTexture, CgBinaryAsset, CgR
      */
     @Nullable
     public CgGpuTexture rhiTexture() {
+        // What is queued lands first: a draw reads the storage here, never through getId
+        gpu.flush();
         if (image != null) return image;
         if (textureId == 0) return null;
         return CgDeviceNames.texture(textureId);

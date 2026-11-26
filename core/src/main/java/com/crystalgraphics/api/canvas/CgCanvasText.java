@@ -58,6 +58,11 @@ final class CgCanvasText {
         return batch == null ? 0 : batch.degradedDraws();
     }
 
+    /** Text items that drew a hole: a glyph or shadow with nothing yet. */
+    long incomplete() {
+        return batch == null ? 0 : batch.incompleteDraws();
+    }
+
     private Matrix4f pose() {
         CgCanvas cv = canvas;
         return pose.set(cv.a, cv.b, 0f, 0f, cv.c, cv.d, 0f, 0f, 0f, 0f, 1f, 0f, cv.tx, cv.ty, 0f, 1f);

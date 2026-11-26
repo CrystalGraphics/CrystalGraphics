@@ -149,7 +149,7 @@ public final class CgTextBatch {
     private final Matrix4f camera = new Matrix4f(), viewPose = new Matrix4f(), pixelPose = new Matrix4f();
     private static final Matrix4f IDENTITY = new Matrix4f();
 
-    private long degradedDraws;
+    private long degradedDraws, incompleteDraws;
 
     /** Sort keys, grown to the glyph count. */
     private long[] sortKeys = new long[0];
@@ -224,6 +224,14 @@ public final class CgTextBatch {
     /** How many draws resolved a glyph or shadow below what they asked for. Rises only. */
     public long degradedDraws() {
         return degradedDraws;
+    }
+
+    /**
+     * How many of those drew a hole: a glyph or shadow with nothing yet, not a stand-in at a lower tier. What a held
+     * picture waits out ({@code CgPictureHold}); a stand-in is whole, and only painted again. Rises only.
+     */
+    public long incompleteDraws() {
+        return incompleteDraws;
     }
 
     /** The camera of a batch with no canvas: what its captures are culled and tiered under. */
@@ -632,14 +640,19 @@ public final class CgTextBatch {
         }
         CgTrace.counter(CgChannels.TEXT, "draw.glyphCount", glyphCount);
 
-        // A glyph not yet in the atlas, or refused by the budget at its tier, makes the draw degraded: paint again.
+        // A glyph not yet in the atlas, or refused by the budget at its tier, makes the draw degraded: paint again. One
+        // not in the atlas at all is also a hole.
+        boolean standIn = false, hole = false;
         for (int i = 0; i < glyphCount; i++) {
             CgGlyphPlacement placement = resolvedGlyphs.placements[i];
-            if (placement == null || (wantMsdf && placement.hasGeometry() && !placement.isDistanceField())) {
-                degradedDraws++;
+            if (placement == null) {
+                hole = true;
                 break;
             }
+            if (wantMsdf && placement.hasGeometry() && !placement.isDistanceField()) standIn = true;
         }
+        if (hole || standIn) degradedDraws++;
+        if (hole) incompleteDraws++;
 
         // Lengths are Slate units at the style's size: local pixels times its unit, and in the glyph's own texels
         // painted in local space and transformed with the text, the only form an anisotropic transform can carry.
@@ -659,7 +672,10 @@ public final class CgTextBatch {
                             layout.baked(), glyphCount, fontKey, effectiveTargetPx, outlineTexels, outlineAlign, world,
                             resolved.moving(), frame);
                 }
-                if (degraded) degradedDraws++;
+                if (degraded) {
+                    degradedDraws++;
+                    incompleteDraws++;
+                }
             }
         }
 

@@ -1104,6 +1104,14 @@ public final class CgCanvas {
         return text.degraded();
     }
 
+    /**
+     * Those of {@link #degradedDraws} that drew a hole, a glyph or shadow with nothing yet, rather than a stand-in at a
+     * lower tier: what a picture on show is held back for ({@code CgPictureHold}). Rises only.
+     */
+    public long incompleteDraws() {
+        return text.incomplete();
+    }
+
     // ── Paths ──────────────────────────────────────────────────────────
 
     /** {@code path} filled in one colour, by its fill rule. */

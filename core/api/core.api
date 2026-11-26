@@ -2485,6 +2485,7 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public fill (Lcom/crystalgraphics/api/vector/CgVectorPath;Lcom/crystalgraphics/api/paint/CgPaint;)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public image (Lcom/crystalgraphics/api/paint/brush/CgBrush;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public image (Lcom/crystalgraphics/api/texture/CgTexture;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public incompleteDraws ()J
   method public intensity (F)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public kept (Lcom/crystalgraphics/api/canvas/CgKeptLayer;FFFFJ)Lcom/crystalgraphics/api/canvas/CgKeptLayer$Walk;
   method public layer ()Lcom/crystalgraphics/api/canvas/CgCanvasLayer;
@@ -2558,6 +2559,7 @@ com/crystalgraphics/api/canvas/CgCanvasFrame
   method public frameId ()J
   method public height ()I
   method public picture ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public shows ()Z
   method public values ()Lcom/crystalgraphics/render/graph/CgPropertyValues;
   method public width ()I
 com/crystalgraphics/api/canvas/CgCanvasLayer
@@ -2596,6 +2598,7 @@ com/crystalgraphics/api/canvas/CgCanvasRecorder
   method public releaseTexture (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public requestTexture (Ljava/lang/String;IILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public seal ()Lcom/crystalgraphics/api/canvas/CgCanvasFrame;
+  method public seal (Z)Lcom/crystalgraphics/api/canvas/CgCanvasFrame;
 com/crystalgraphics/api/canvas/CgCanvasSpline
   access public,final
   extends java/lang/Object
@@ -19888,6 +19891,7 @@ com/crystalgraphics/text/render/CgTextBatch
   method public draw (Lcom/crystalgraphics/api/text/CgText;FFILorg/joml/Matrix4f;IIILcom/crystalgraphics/text/render/CgTextGamma;)Z
   method public draw (Lcom/crystalgraphics/text/render/CgTextDraw;)Z
   method public draw (Lorg/joml/Matrix4f;IIIF)Lcom/crystalgraphics/text/render/CgTextDraw;
+  method public incompleteDraws ()J
   method public,static blendsLinearly (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Z
   method public,static drawCaptured (Lcom/crystalgraphics/render/draw/CgChunkBuilder;JLcom/crystalgraphics/text/render/CgTextCapture$Look;Lcom/crystalgraphics/render/draw/CgBufferHandle;ILcom/crystalgraphics/render/draw/CgBufferHandle;Z)V
   method public,static drawCapturedDepth (Lcom/crystalgraphics/render/draw/CgChunkBuilder;JLcom/crystalgraphics/render/draw/CgBufferHandle;ILcom/crystalgraphics/render/draw/CgBufferHandle;)V
@@ -26273,10 +26277,14 @@ com/crystalgraphics/world/CgEntityQueries
   extends java/lang/Object
   method public,static alive (Ljava/lang/Object;)Z
   method public,static client ()Lcom/crystalgraphics/platform/world/CgEntityQuery;
+  method public,static height (Ljava/lang/Object;)F
   method public,static idOf (Ljava/lang/Object;)I
+  method public,static isEntity (Ljava/lang/Object;)Z
+  method public,static name (Ljava/lang/Object;)Ljava/lang/String;
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgEntityQuery;
   method public,static position (Ljava/lang/Object;[D)Z
   method public,static requireId (Ljava/lang/Object;)I
+  method public,static uuid (Ljava/lang/Object;)Ljava/util/UUID;
 com/crystalgraphics/world/CgEntitySaves
   access public,final
   extends java/lang/Object
