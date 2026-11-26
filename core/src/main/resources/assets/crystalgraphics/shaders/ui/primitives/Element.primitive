@@ -52,6 +52,13 @@ void fragment(in v2f i, out vec4 fragColor) {
     vec2 param = i._cg_in_local / size;
     vec4 uvRect = CG_ELEMENT(n).uv;
     vec2 uv = mix(uvRect.xy, uvRect.zw, clamp(param, 0.0, 1.0));
+    // A SAMPLED REGION IS HELD HALF A TEXEL INSIDE ITSELF, Chromium's tex_clamp_rect: a filtered tap at its edge reads
+    // none of what lies past it, an atlas page's gutter or a neighbour. At 1:1 the taps sit on texel centres and nothing moves.
+    if (kind == uint(CG_ELEMENT_TEXTURE) || kind == uint(CG_ELEMENT_MASK) || (flags & uint(CG_ELEMENT_COVERAGE)) != 0u) {
+        vec2 halfTexel = 0.5 / vec2((flags & uint(CG_ELEMENT_ARRAY)) != 0u ? textureSize(_MainArray, 0).xy : textureSize(_MainTex, 0));
+        vec2 lo = min(uvRect.xy, uvRect.zw) + halfTexel, hi = max(uvRect.xy, uvRect.zw) - halfTexel;
+        uv = clamp(uv, min(lo, hi), max(lo, hi));
+    }
     // An array's layer by uv's own gradients: a texture read inside a branch has none of its own
     vec2 uvDx = dFdx(uv), uvDy = dFdy(uv);
     vec4 texel = (flags & uint(CG_ELEMENT_ARRAY)) != 0u
