@@ -48,7 +48,7 @@ public final class CgPlayerSavesProbe {
         /** Each side's own: set, and never saved. */
         static final CgNetField<Integer> TICKS = CgNetField.ofInt("ticks").local();
 
-        static final CgNetType TYPE = CgNetType.define("cgprobe:player_saves")
+        static final CgNetType<CgNetObject> TYPE = CgNetType.define("cgprobe:player_saves")
                 .fields(LEVEL, XP, HEALTH, SPEED, FLYING, TITLE, FORMS, STATS, RIVAL, TARGET, TICKS)
                 .onEntities(type -> type.equals("minecraft:player")).build();
     }

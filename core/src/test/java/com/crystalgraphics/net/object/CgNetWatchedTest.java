@@ -23,13 +23,13 @@ public class CgNetWatchedTest {
     static final CgNetField<Integer> SPEED = CgNetField.ofInt("speed").predicted();
     static final CgNetCommand<Integer> GRIND = CgNetCommand.of("grind", CgCodecs.INT);
     /** A machine's screen: seen only by who has it open. */
-    static final CgNetType GRINDER = CgNetType.define("test:grinder").fields(PROGRESS, SPEED).commands(GRIND)
+    static final CgNetType<CgNetObject> GRINDER = CgNetType.define("test:grinder").fields(PROGRESS, SPEED).commands(GRIND)
             .range(32).watched().build();
 
     static final CgNetField<Float> GLOW = CgNetField.ofFloat("glow");
     static final CgNetField<Integer> FUEL = CgNetField.ofInt("fuel").watched();
     /** A furnace: its glow to everyone in range, its fuel to who has it open. */
-    static final CgNetType FURNACE = CgNetType.define("test:furnace").fields(GLOW, FUEL).range(32).build();
+    static final CgNetType<CgNetObject> FURNACE = CgNetType.define("test:furnace").fields(GLOW, FUEL).range(32).build();
 
     private final List<String> heard = new ArrayList<>();
     private CgNetTestRig rig;

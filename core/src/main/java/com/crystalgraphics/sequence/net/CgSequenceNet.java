@@ -96,7 +96,7 @@ public final class CgSequenceNet {
     static final CgNetEvent<Verdict> VERDICT = CgNetEvent.of("verdict", Verdict.CODEC);
 
     /** The type every served sequence plays as. */
-    public static final CgNetType TYPE;
+    public static final CgNetType<?> TYPE;
 
     /** A viewer's copy by its player: where an owner's jump finds the object it asks through. */
     private static final Map<CgSequencePlayer, CgNetObject> SHOWN = new IdentityHashMap<>();

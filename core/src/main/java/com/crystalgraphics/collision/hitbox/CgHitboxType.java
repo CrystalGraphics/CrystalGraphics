@@ -121,7 +121,7 @@ public final class CgHitboxType {
     /** Doubles per tick in a claimed server copy's ring: box, eyes, the hitbox's age. */
     private static final int PLACE = 10;
 
-    private final CgNetType type;
+    private final CgNetType<?> type;
     private final Function<CgNetObject, CgHitbox> factory;
     private final boolean outlivesSource;
     private final boolean claimed;
@@ -137,7 +137,7 @@ public final class CgHitboxType {
     /** A claimed target's pose, for its speed; server thread. */
     private final double[] speedPose = new double[CgEntityQuery.POSE_LENGTH];
 
-    private CgHitboxType(Builder b, CgNetType type) {
+    private CgHitboxType(Builder b, CgNetType<?> type) {
         this.type = type;
         this.factory = b.factory;
         this.outlivesSource = b.outlivesSource;
@@ -378,7 +378,7 @@ public final class CgHitboxType {
     }
 
     /** The networked object type underneath: what a client's visible objects and the test rig are asked by. */
-    public CgNetType type() {
+    public CgNetType<?> type() {
         return type;
     }
 

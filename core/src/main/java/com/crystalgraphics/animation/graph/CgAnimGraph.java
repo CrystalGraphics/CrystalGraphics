@@ -126,7 +126,7 @@ public final class CgAnimGraph {
      * EntityBinding same = EntityBinding.named("mymod:ki#current");
      * }</pre>
      */
-    public record EntityBinding(CgNetType type, CgNetField<?> field) {
+    public record EntityBinding(CgNetType<?> type, CgNetField<?> field) {
         public EntityBinding {
             Objects.requireNonNull(type, "type");
             Objects.requireNonNull(field, "field");
@@ -138,14 +138,14 @@ public final class CgAnimGraph {
         }
 
         /** {@code field} of {@code type}. */
-        public static EntityBinding of(CgNetType type, CgNetField<?> field) {
+        public static EntityBinding of(CgNetType<?> type, CgNetField<?> field) {
             return new EntityBinding(type, field);
         }
 
         /** {@code field} of the one per-holder type that lists it, the engine's included. */
         public static EntityBinding of(CgNetField<?> field) {
-            CgNetType found = null;
-            for (CgNetType type : CgNetType.all()) {
+            CgNetType<?> found = null;
+            for (CgNetType<?> type : CgNetType.all()) {
                 if (!type.isPerHolder() || !type.lists(field)) continue;
                 if (found != null) {
                     throw new IllegalArgumentException(field.name() + " is listed by " + found.name() + " and " + type.name()
@@ -163,7 +163,7 @@ public final class CgAnimGraph {
          * @throws IllegalArgumentException naming what is missing: the type, the field, or a field no number or bool
          */
         public static EntityBinding named(String name) {
-            CgNetType type;
+            CgNetType<?> type;
             String fieldName;
             if (name.startsWith(CgEntityProperties.PREFIX)) {
                 type = CgEntityProperties.MOTION;
@@ -512,7 +512,7 @@ public final class CgAnimGraph {
         }
 
         /** As {@link #entity(CgAnimVariable, EntityBinding)}, from {@code field} of the entity's object of {@code type}. */
-        public Builder entity(CgAnimVariable<?> variable, CgNetType type, CgNetField<?> field) {
+        public Builder entity(CgAnimVariable<?> variable, CgNetType<?> type, CgNetField<?> field) {
             return entity(variable, EntityBinding.of(type, field));
         }
 

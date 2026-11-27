@@ -35,10 +35,10 @@ public class CgNetObjectsTest {
     static final CgNetField<UUID> TARGET = CgNetField.of("target", CgCodecs.UUID);
     static final CgNetField<Double> RANGE = CgNetField.ofDouble("range").fallback(8.0);
 
-    static final CgNetType TURRET = CgNetType.define("test:turret")
+    static final CgNetType<CgNetObject> TURRET = CgNetType.define("test:turret")
             .fields(HEAT, AMMO, SHOWN, SEED, SECRET, LABEL, TARGET, RANGE).range(32).persisted().build();
-    static final CgNetType SPARK = CgNetType.define("test:spark").fields(HEAT).build();
-    static final CgNetType STORM = CgNetType.define("test:storm").fields(HEAT).build();
+    static final CgNetType<CgNetObject> SPARK = CgNetType.define("test:spark").fields(HEAT).build();
+    static final CgNetType<CgNetObject> STORM = CgNetType.define("test:storm").fields(HEAT).build();
 
     @Rule
     public final TemporaryFolder world = new TemporaryFolder();
@@ -88,7 +88,7 @@ public class CgNetObjectsTest {
         }
     }
 
-    private CgNetObject one(int client, CgNetType type) {
+    private CgNetObject one(int client, CgNetType<?> type) {
         List<CgNetObject> seen = rig.client(client).visible(type);
         assertEquals("client " + client + " sees one " + type.name(), 1, seen.size());
         return seen.get(0);
@@ -303,7 +303,7 @@ public class CgNetObjectsTest {
         Path saved = root.resolve("crystalgraphics/objects/test");
         Files.copy(saved.resolve("turret.jsonc"), saved.resolve("late.jsonc"));
 
-        CgNetType late = CgNetType.define("test:late").fields(HEAT, AMMO, SHOWN, SEED, SECRET, LABEL, TARGET, RANGE)
+        CgNetType<CgNetObject> late = CgNetType.define("test:late").fields(HEAT, AMMO, SHOWN, SEED, SECRET, LABEL, TARGET, RANGE)
                 .persisted().build();
         assertEquals(1, late.size());
         CgNetObject[] back = new CgNetObject[1];

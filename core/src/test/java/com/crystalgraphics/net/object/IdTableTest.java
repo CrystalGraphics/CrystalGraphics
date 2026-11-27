@@ -11,7 +11,7 @@ import org.junit.Test;
 
 public class IdTableTest {
 
-    private static final CgNetType TYPE = CgNetType.define("cgtest:id_table").build();
+    private static final CgNetType<CgNetObject> TYPE = CgNetType.define("cgtest:id_table").build();
 
     /** Backward-shift deletion keeps every probe run whole: checked against a map through growth and churn. */
     @Test

@@ -16,7 +16,7 @@ public final class Form {
     public static final CgNetField<Float> GLOW = CgNetField.ofFloat("glow").local();       // each side's own
     public static final CgNetEvent<Void> TRANSFORMED = CgNetEvent.of("transformed");
 
-    public static final CgNetType TYPE = CgNetType.define("mymod:form").fields(LEVEL, GLOW).events(TRANSFORMED)
+    public static final CgNetType<CgNetObject> TYPE = CgNetType.define("mymod:form").fields(LEVEL, GLOW).events(TRANSFORMED)
             .onEntities(type -> type.equals("minecraft:player"))
             .build();
 }
@@ -51,7 +51,7 @@ entities: players
 ```
 
 ```java
-CgNetType form = CgNetType.named("mymod:form");          // either side, once the game has started
+CgNetType<?> form = CgNetType.named("mymod:form");          // either side, once the game has started
 ```
 
 Every key of the file: [`../reference/net-type-file.md`](../reference/net-type-file.md).

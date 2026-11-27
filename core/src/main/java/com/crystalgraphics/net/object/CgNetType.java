@@ -31,6 +31,8 @@ import com.crystalgraphics.trace.CgTraceNames;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.platform.service.CgStorageLayout;
+import com.crystalgraphics.serialization.CgObjectCodec;
+import com.crystalgraphics.variable.CgVar;
 
 /**
  * A kind of networked object: its fields, who sees it, whether it persists, and what it is on a client. Declared once,
@@ -90,22 +92,26 @@ import com.crystalgraphics.platform.service.CgStorageLayout;
  *   <li>Server calls on the server thread; client callbacks on the client thread.</li>
  * </ul>
  */
-public final class CgNetType {
+public final class CgNetType<T> {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
     private static final Pattern NAME = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
 
-    static final List<CgNetType> REGISTERED = new CopyOnWriteArrayList<>();
-    private static final Map<String, CgNetType> BY_NAME = new ConcurrentHashMap<>();
+    /** Whether an untouched value of a {@code comparesOnTouch()} type is checked at its last unwatch. */
+    static final boolean DEVELOPMENT = CgVar.bool("crystalgraphics.net.checkTouch", false, CgVar.DEV | CgVar.RESTART,
+            "Logs a comparesOnTouch type's value that changed without touch(model), when its last watcher leaves.").get();
+
+    static final List<CgNetType<?>> REGISTERED = new CopyOnWriteArrayList<>();
+    private static final Map<String, CgNetType<?>> BY_NAME = new ConcurrentHashMap<>();
     /** The types {@link Builder#onEntities} put on entities: what an entity's arrival asks. */
-    static final List<CgNetType> ON_ENTITIES = new CopyOnWriteArrayList<>();
+    static final List<CgNetType<?>> ON_ENTITIES = new CopyOnWriteArrayList<>();
     /** The persisted per-holder types: what an entity being saved is asked for. */
-    static final List<CgNetType> SAVED_ON_ENTITIES = new CopyOnWriteArrayList<>();
+    static final List<CgNetType<?>> SAVED_ON_ENTITIES = new CopyOnWriteArrayList<>();
     /** Where what saves goes unless its namespace names a layout ({@link #storage}). */
     static final CgStorageLayout DEFAULT_STORAGE = CgStorageLayout.of("crystalgraphics");
     private static final Map<String, CgStorageLayout> STORAGE = new ConcurrentHashMap<>();
     /** The types that have had an object or a refusal: the per-tick counters' loop, never every declared type. */
-    static final List<CgNetType> USED = new CopyOnWriteArrayList<>();
+    static final List<CgNetType<?>> USED = new CopyOnWriteArrayList<>();
 
     final String name;
     final String namespace;
@@ -143,6 +149,9 @@ public final class CgNetType {
     final Predicate<String> entityTypes;
     /** Every field local: it never touches the wire, each side keeping its own objects. */
     final boolean localOnly;
+    /** A codec type's keys as fields and its instances; null for a type declared field by field. */
+    @Nullable
+    final CgNetModel<T> model;
     /** Server: a per-holder type's live objects by holder (a profile id, an entity, a {@link ChunkKey}). */
     final Map<Object, CgNetObject> holders = new HashMap<>();
 
@@ -168,7 +177,7 @@ public final class CgNetType {
     final CgNetCommand.Handler<?>[] commandHandlers;
 
     @SuppressWarnings("unchecked")
-    private CgNetType(Builder b, int index) {
+    private CgNetType(Builder<T> b, int index) {
         this.name = b.name;
         this.namespace = b.name.substring(0, b.name.indexOf(':'));
         this.index = index;
@@ -215,6 +224,7 @@ public final class CgNetType {
         this.traceViewers = CgTraceNames.intern("net.viewers/" + name);
         this.traceBytes = CgTraceNames.intern("net.bytes/" + name);
         this.traceRefused = CgTraceNames.intern("net.refused/" + name);
+        this.model = b.model;
     }
 
     /** Commands and predictions of this type refused, since the server started. */
@@ -222,16 +232,52 @@ public final class CgNetType {
         return refusedPredictions + refusedCommands;
     }
 
-    /** Starts declaring a type named {@code namespace:path}. */
-    public static Builder define(String name) {
+    /** Starts declaring a type named {@code namespace:path}, field by field: its handlers are handed its objects. */
+    public static Builder<CgNetObject> define(String name) {
         if (!NAME.matcher(name).matches()) {
             throw new IllegalArgumentException("A type name is namespace:path in lowercase, not '" + name + "'");
         }
-        return new Builder(name);
+        return new Builder<>(name);
+    }
+
+    /**
+     * Starts declaring a type from a data class's codec: each key a field, a primitive one unboxed, a key whose codec is
+     * an object codec a part (a child object of its own, watched by itself); its handlers are handed the instance.
+     *
+     * <pre>{@code
+     * public static final CgObjectCodec<PetData> CODEC = CgCodecs.fieldsOf(PetData.class)
+     *         .serverOnly("ownerNotes").readOnly("health").range("maxHealth", 1, 100).build();
+     * public static final CgNetType<PetData> PET = CgNetType.define("mymod:pet", PetData.CODEC).build();
+     *
+     * CgNetObject obj = PET.over(pet);                 // server: the object for this instance
+     * obj.watch(player);                               // its getters are read once a tick while watched
+     * PET.allowEdits((pet, player) -> pet.owner.equals(player.id()));
+     * PET.afterEdit((pet, player) -> pet.markDirty());
+     * PetData mine = PET.instance(clientObject);       // client: its own copy, filled as fields arrive
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Seen by its watchers only: {@link #over} answers the object, made now and ended at its last unwatch.</li>
+     *   <li>A key's {@code serverOnly} never leaves the server; a {@code readOnly} key cannot be edited; every other
+     *       settable key may be set by a watcher, inside its {@code range} and its type's {@link #allowEdits}.</li>
+     *   <li>A primitive is compared by value; anything else by its encoding against the last sent, every tick, unless
+     *       {@link Builder#comparesOnTouch()}.</li>
+     *   <li>A part's type is {@code name/key}, in lowercase: a second key of that spelling fails at build.</li>
+     * </ul>
+     */
+    public static <T> Builder<T> define(String name, CgObjectCodec<T> codec) {
+        Builder<T> b = (Builder<T>) (Builder<?>) define(name);
+        b.codec = Objects.requireNonNull(codec, "codec");
+        b.watched = true;
+        return b;
+    }
+
+    /** A field a codec type's server works out from its instance: {@link Builder#computed}. */
+    record Computed<T, V>(CgNetField<V> field, Function<? super T, ? extends V> value) {
     }
 
     /** Declares a type. */
-    public static final class Builder {
+    public static final class Builder<T> {
         private final String name;
         private final List<CgNetField<?>> fields = new ArrayList<>();
         private final List<CgNetEvent<?>> events = new ArrayList<>();
@@ -250,13 +296,19 @@ public final class CgNetType {
         private boolean keepRefused;
         @Nullable
         private Predicate<String> entityTypes;
+        @Nullable
+        private CgObjectCodec<T> codec;
+        private boolean comparesOnTouch;
+        private final List<Computed<T, ?>> computed = new ArrayList<>();
+        @Nullable
+        private CgNetModel<T> model;
 
         private Builder(String name) {
             this.name = name;
         }
 
         /** Its fields, in the order they are sent and applied. */
-        public Builder fields(CgNetField<?>... fields) {
+        public Builder<T> fields(CgNetField<?>... fields) {
             for (CgNetField<?> field : fields) {
                 Objects.requireNonNull(field, "field");
                 for (CgNetField<?> other : this.fields) {
@@ -268,7 +320,7 @@ public final class CgNetType {
         }
 
         /** What happens to its objects, server to viewers. */
-        public Builder events(CgNetEvent<?>... events) {
+        public Builder<T> events(CgNetEvent<?>... events) {
             for (CgNetEvent<?> event : events) {
                 for (CgNetEvent<?> other : this.events) {
                     if (other.name.equals(event.name)) throw new IllegalArgumentException(name + " lists " + event.name + " twice");
@@ -279,7 +331,7 @@ public final class CgNetType {
         }
 
         /** What its clients may ask of its objects. */
-        public Builder commands(CgNetCommand<?>... commands) {
+        public Builder<T> commands(CgNetCommand<?>... commands) {
             for (CgNetCommand<?> command : commands) {
                 for (CgNetCommand<?> other : this.commands) {
                     if (other.name.equals(command.name)) throw new IllegalArgumentException(name + " lists " + command.name + " twice");
@@ -290,7 +342,7 @@ public final class CgNetType {
         }
 
         /** A point-anchored object is seen within {@code blocks}; without this, by its whole dimension. */
-        public Builder range(double blocks) {
+        public Builder<T> range(double blocks) {
             if (!(blocks > 0)) throw new IllegalArgumentException("range must be positive: " + blocks);
             range = blocks;
             return this;
@@ -304,7 +356,7 @@ public final class CgNetType {
          * .visibleTo((obj, peer) -> team(peer.id()) == obj.getInt(TEAM))
          * }</pre>
          */
-        public Builder visibleTo(BiPredicate<CgNetObject, CgPeer> rule) {
+        public Builder<T> visibleTo(BiPredicate<CgNetObject, CgPeer> rule) {
             visibleTo = Objects.requireNonNull(rule, "rule");
             return this;
         }
@@ -325,7 +377,7 @@ public final class CgNetType {
          *       saves it in every type listing it.</li>
          * </ul>
          */
-        public Builder persisted() {
+        public Builder<T> persisted() {
             persisted = true;
             return this;
         }
@@ -340,7 +392,7 @@ public final class CgNetType {
          *
          * @throws IllegalStateException at {@code build()} when no field is saved: the form would never be asked
          */
-        public Builder savedAs(CgNetSaveForm form) {
+        public Builder<T> savedAs(CgNetSaveForm form) {
             saveForm = Objects.requireNonNull(form, "form");
             return this;
         }
@@ -354,7 +406,7 @@ public final class CgNetType {
          * MANA.of(player).setInt(CURRENT, 80);
          * }</pre>
          */
-        public Builder perHolder() {
+        public Builder<T> perHolder() {
             perHolder = true;
             return this;
         }
@@ -381,20 +433,20 @@ public final class CgNetType {
          *   <li>Otherwise the server makes each entity's object and every client that sees the entity is sent it.</li>
          * </ul>
          */
-        public Builder onEntities(Predicate<String> entityTypes) {
+        public Builder<T> onEntities(Predicate<String> entityTypes) {
             this.entityTypes = Objects.requireNonNull(entityTypes, "entityTypes");
             perHolder = true;
             return this;
         }
 
         /** A player-anchored object outlives its player's death; without this it despawns when they die. */
-        public Builder copyOnDeath() {
+        public Builder<T> copyOnDeath() {
             copyOnDeath = true;
             return this;
         }
 
         /** A player-anchored object is seen by the players tracking its player too, not only by them. */
-        public Builder visibleToTrackers() {
+        public Builder<T> visibleToTrackers() {
             visibleToTrackers = true;
             return this;
         }
@@ -416,35 +468,76 @@ public final class CgNetType {
          *   <li>A watched object is first in a watcher's send budget: an open screen never waits behind the world.</li>
          * </ul>
          */
-        public Builder watched() {
+        public Builder<T> watched() {
             watched = true;
             return this;
         }
 
         /** Server ticks a graceful despawn lets the server behaviour finish in front of its viewers; 200 unless said. */
-        public Builder linger(int ticks) {
+        public Builder<T> linger(int ticks) {
             if (ticks < 0) throw new IllegalArgumentException("linger: " + ticks);
             linger = ticks;
             return this;
         }
 
         /** Client ticks a prediction waits for the server's answer before it counts as refused; 40 unless said. */
-        public Builder predictionTimeout(int ticks) {
+        public Builder<T> predictionTimeout(int ticks) {
             if (ticks <= 0) throw new IllegalArgumentException("predictionTimeout must be positive: " + ticks);
             predictionTimeout = ticks;
             return this;
         }
 
+        /**
+         * A codec type's non-primitive values are compared only after {@link CgNetType#touch}, instead of encoded every
+         * tick: for an instance too large to encode each tick, as Unreal's push model. Run with
+         * {@code -Dcrystalgraphics.net.checkTouch=true} to log a value that changed without one.
+         *
+         * <pre>{@code
+         * NPC = CgNetType.define("mymod:npc", Npc.CODEC).comparesOnTouch().build();
+         * npc.lines.add(text);
+         * NPC.touch(npc);
+         * }</pre>
+         */
+        public Builder<T> comparesOnTouch() {
+            comparesOnTouch = true;
+            return this;
+        }
+
+        /**
+         * {@code field}, set by the server from each instance once a tick while watched: a value worked out, which the
+         * instance does not hold. A codec type's only.
+         *
+         * <pre>{@code
+         * static final CgNetField<Float> HEALTH_PART = CgNetField.ofFloat("healthPart");
+         * PET = CgNetType.define("mymod:pet", PetData.CODEC).computed(HEALTH_PART, p -> p.health / p.maxHealth).build();
+         * }</pre>
+         */
+        public <V> Builder<T> computed(CgNetField<V> field, Function<? super T, ? extends V> value) {
+            if (codec == null) throw new IllegalStateException("computed(...) is for a type defined from a codec");
+            computed.add(new Computed<>(field, value));
+            return this;
+        }
+
         /** A refused prediction ends gracefully, finishing what it shows, instead of at once. */
-        public Builder keepRefused() {
+        public Builder<T> keepRefused() {
             keepRefused = true;
             return this;
         }
 
-        public CgNetType build() {
+        public CgNetType<T> build() {
             synchronized (REGISTERED) {
                 if (BY_NAME.containsKey(name)) throw new IllegalStateException("Type '" + name + "' is already declared");
-                return register();
+                if (codec != null) {
+                    // the codec's keys first, then the fields listed by hand
+                    model = CgNetModel.compile(name, codec, computed, comparesOnTouch);
+                    List<CgNetField<?>> listed = new ArrayList<>(fields);
+                    fields.clear();
+                    fields(model.fields().toArray(new CgNetField<?>[0]));
+                    for (CgNetField<?> field : listed) if (!fields.contains(field)) fields(field);
+                }
+                CgNetType<T> type = register();
+                if (model != null) model.bind(type);
+                return type;
             }
         }
 
@@ -461,18 +554,19 @@ public final class CgNetType {
          * @throws IllegalStateException when a type of its name is declared with other fields, events or rules: its
          *                               shape is fixed until a restart
          */
-        public CgNetType buildOnce() {
+        @SuppressWarnings("unchecked")
+        public CgNetType<T> buildOnce() {
             synchronized (REGISTERED) {
                 CgNetType declared = BY_NAME.get(name);
                 if (declared == null) return register();
                 if (!declared.sameShape(this)) {
                     throw new IllegalStateException(name + " changed its fields, events or rules while declared: restart to change them");
                 }
-                return declared;
+                return (CgNetType<T>) declared;
             }
         }
 
-        private CgNetType register() {
+        private CgNetType<T> register() {
             {
                 for (CgNetField<?> field : fields) {
                     field.freeze();
@@ -486,7 +580,7 @@ public final class CgNetType {
                 for (CgNetField<?> field : fields) local &= field.local;
                 if (local && persisted) throw new IllegalStateException(name + ": its fields are all local, and a local field is never saved");
                 if (local && !commands.isEmpty()) throw new IllegalStateException(name + ": its fields are all local, and nothing reaches the server");
-                CgNetType type = new CgNetType(this, REGISTERED.size());
+                CgNetType<T> type = new CgNetType<>(this, REGISTERED.size());
                 if (saveForm != null && !type.persisted) {
                     throw new IllegalStateException(name + " has a saved form and saves no field: mark the fields it saves persisted()");
                 }
@@ -698,7 +792,116 @@ public final class CgNetType {
      * {@link CgNetBehaviour#done()}, for at most {@link Builder#linger}, its viewers keeping the object meanwhile.
      * Never for a fired object. At init.
      */
-    public CgNetType onServer(Function<CgNetObject, CgNetBehaviour> factory) {
+    // ── A codec type ────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * The object standing for {@code instance}, by identity: made now if it has none, and ended at its last unwatch
+     * (or a tick after this call, if nobody watches it by then). Server thread.
+     *
+     * <pre>{@code
+     * PET.over(pet).watch(player);
+     * }</pre>
+     */
+    public CgNetObject over(T instance) {
+        return requireModel().over(Objects.requireNonNull(instance, "instance"), instance);
+    }
+
+    /**
+     * The object of {@code root}'s part under {@code key} (a key whose codec is an object codec), made now if it has
+     * none: watch it for a watcher to be sent that part. Server thread.
+     *
+     * <pre>{@code
+     * NPC.over(npc).watch(player);
+     * NPC.part(npc, "stats").watch(player);          // the stats tab, opened
+     * }</pre>
+     */
+    public CgNetObject part(T root, String key) {
+        CgNetModel<T> m = requireModel();
+        for (CgNetModel.Key k : m.keys) {
+            if (k.kind == CgNetModel.Kind.PART && k.name.equals(key)) {
+                Object held = k.get.apply(root);
+                if (held == null) throw new IllegalStateException(name + "'s '" + key + "' holds null");
+                return k.part.model.over(held, root);
+            }
+        }
+        throw new IllegalArgumentException(name + " has no part '" + key + "'");
+    }
+
+    /** {@code instance}'s values are compared at the next tick: a {@link Builder#comparesOnTouch()} type's. */
+    public void touch(T instance) {
+        requireModel().touch(instance);
+    }
+
+    /**
+     * Who may change values of this type's objects, and of its parts unless a part says otherwise; a watcher refused
+     * is sent the server's value back. Every watcher may, without one.
+     *
+     * <pre>{@code
+     * PET.allowEdits((pet, player) -> pet.owner.equals(player.id()));
+     * }</pre>
+     */
+    @SuppressWarnings("unchecked")
+    public CgNetType<T> allowEdits(BiPredicate<? super T, CgPeer> guard) {
+        CgNetModel<T> m = requireModel();
+        m.mayEdit = (BiPredicate<Object, CgPeer>) guard;
+        for (CgNetModel.Key k : m.keys) if (k.part != null && k.part.model.mayEdit == null) k.part.model.mayEdit = m.mayEdit;
+        return this;
+    }
+
+    /**
+     * Who may change one part's values, asked with the root instance: a tab only some players may edit.
+     *
+     * <pre>{@code
+     * NPC.allowEdits(Stats.CODEC, (npc, player) -> player.hasPermission("mymod.npc.stats"));
+     * }</pre>
+     */
+    @SuppressWarnings("unchecked")
+    public CgNetType<T> allowEdits(CgObjectCodec<?> part, BiPredicate<? super T, CgPeer> guard) {
+        CgNetModel<T> m = requireModel();
+        for (CgNetModel.Key k : m.keys) {
+            if (k.part != null && k.codec == part) {
+                k.part.model.mayEdit = (BiPredicate<Object, CgPeer>) guard;
+                return this;
+            }
+        }
+        throw new IllegalArgumentException(name + " has no part of that codec");
+    }
+
+    /**
+     * Run on the server after a watcher's edit is stored into the instance (this type's or a part's), with the root
+     * instance and who edited it.
+     *
+     * <pre>{@code
+     * PET.afterEdit((pet, player) -> pet.markDirty());
+     * }</pre>
+     */
+    @SuppressWarnings("unchecked")
+    public CgNetType<T> afterEdit(BiConsumer<? super T, CgPeer> after) {
+        CgNetModel<T> m = requireModel();
+        m.afterEdit.add((BiConsumer<Object, CgPeer>) after);
+        for (CgNetModel.Key k : m.keys) if (k.part != null) k.part.model.afterEdit.add((BiConsumer<Object, CgPeer>) after);
+        return this;
+    }
+
+    /**
+     * {@code obj}'s instance: on the server the one {@link #over} was given, on a client its own copy, made by the
+     * codec's factory and filled through the codec's setters as fields arrive, the same instance for the object's life.
+     * Null for a codec with no factory, on a client.
+     */
+    @Nullable
+    @SuppressWarnings("unchecked")
+    public T instance(CgNetObject obj) {
+        if (obj.type != this) throw new IllegalArgumentException(obj + " is not a " + name);
+        CgNetModel<T> m = requireModel();
+        return (T) (obj.server ? (obj.bound == null ? null : obj.bound.model) : m.instance(obj));
+    }
+
+    private CgNetModel<T> requireModel() {
+        if (model == null) throw new IllegalStateException(name + " is declared field by field: over, part and touch are a codec type's");
+        return model;
+    }
+
+    public CgNetType<T> onServer(Function<CgNetObject, CgNetBehaviour> factory) {
         server = Objects.requireNonNull(factory, "factory");
         return this;
     }
@@ -708,7 +911,7 @@ public final class CgNetType {
      * started, owned by the predicting player. It may change the proposal's fields before answering. Without this,
      * every prediction is refused. At init.
      */
-    public CgNetType acceptPredictionsFrom(BiPredicate<CgPeer, CgNetObject> rule) {
+    public CgNetType<T> acceptPredictionsFrom(BiPredicate<CgPeer, CgNetObject> rule) {
         acceptPredictions = Objects.requireNonNull(rule, "rule");
         return this;
     }
@@ -732,7 +935,7 @@ public final class CgNetType {
     }
 
     /** On a client: what each object of this type is there. Replaces any earlier factory. From client code. */
-    public CgNetType onClient(Function<CgNetObject, CgNetBehaviour> factory) {
+    public CgNetType<T> onClient(Function<CgNetObject, CgNetBehaviour> factory) {
         client = Objects.requireNonNull(factory, "factory");
         return this;
     }
@@ -742,7 +945,7 @@ public final class CgNetType {
      * In addition to any behaviour.
      */
     @SuppressWarnings("unchecked")
-    public <V> CgNetType onChange(CgNetField<V> field, BiConsumer<CgNetObject, V> listener) {
+    public <V> CgNetType<T> onChange(CgNetField<V> field, BiConsumer<CgNetObject, V> listener) {
         int i = indexOf(field);
         if (i < 0) throw new IllegalArgumentException(name + " does not list " + field.name);
         changeListeners[i].add((BiConsumer<CgNetObject, Object>) (BiConsumer<CgNetObject, ?>) listener);
@@ -751,13 +954,13 @@ public final class CgNetType {
 
     /** On a client: called with each {@code event} an object of this type receives. In addition to any behaviour. */
     @SuppressWarnings("unchecked")
-    public <P> CgNetType onEvent(CgNetEvent<P> event, BiConsumer<CgNetObject, P> listener) {
+    public <P> CgNetType<T> onEvent(CgNetEvent<P> event, BiConsumer<CgNetObject, P> listener) {
         eventListeners[requireEvent(event)].add((BiConsumer<CgNetObject, Object>) (BiConsumer<CgNetObject, ?>) listener);
         return this;
     }
 
     /** On the server: what {@code command} does. Replaces any earlier handler. At init. */
-    public <P> CgNetType onCommand(CgNetCommand<P> command, CgNetCommand.Handler<P> handler) {
+    public <P> CgNetType<T> onCommand(CgNetCommand<P> command, CgNetCommand.Handler<P> handler) {
         commandHandlers[requireCommand(command)] = Objects.requireNonNull(handler, "handler");
         return this;
     }
@@ -824,7 +1027,7 @@ public final class CgNetType {
     }
 
     /** Whether {@code b} declares what this type is: its fields, events and commands by name and rule, and its rules. */
-    private boolean sameShape(Builder b) {
+    private boolean sameShape(Builder<?> b) {
         if (fields.length != b.fields.size() || events.length != b.events.size()) return false;
         for (int i = 0; i < fields.length; i++) {
             CgNetField<?> f = fields[i], g = b.fields.get(i);
@@ -882,7 +1085,7 @@ public final class CgNetType {
     }
 
     /** Every declared type, in declaration order. */
-    public static List<CgNetType> all() {
+    public static List<CgNetType<?>> all() {
         return Collections.unmodifiableList(REGISTERED);
     }
 
@@ -931,7 +1134,7 @@ public final class CgNetType {
 
     /** The declared type named {@code name}, or null: what a frame, a prediction or an asset names. */
     @Nullable
-    public static CgNetType named(String name) {
+    public static CgNetType<?> named(String name) {
         return BY_NAME.get(name);
     }
 

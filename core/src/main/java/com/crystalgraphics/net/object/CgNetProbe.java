@@ -65,12 +65,12 @@ public final class CgNetProbe {
         static final CgNetField<Integer> VALUE = CgNetField.ofInt("value");
         static final CgNetField<Long> SENT = CgNetField.ofLong("sent");
 
-        static final CgNetType POOL = CgNetType.define("cgprobe:pool").fields(VALUE).perHolder().copyOnDeath()
+        static final CgNetType<CgNetObject> POOL = CgNetType.define("cgprobe:pool").fields(VALUE).perHolder().copyOnDeath()
                 .visibleToTrackers().build();
-        static final CgNetType BUFF = CgNetType.define("cgprobe:buff").fields(VALUE).perHolder().build();
-        static final CgNetType TURRET = CgNetType.define("cgprobe:turret").fields(VALUE).build();
-        static final CgNetType SOIL = CgNetType.define("cgprobe:soil").fields(VALUE).perHolder().build();
-        static final CgNetType CLOCK = CgNetType.define("cgprobe:clock").fields(SENT).build();
+        static final CgNetType<CgNetObject> BUFF = CgNetType.define("cgprobe:buff").fields(VALUE).perHolder().build();
+        static final CgNetType<CgNetObject> TURRET = CgNetType.define("cgprobe:turret").fields(VALUE).build();
+        static final CgNetType<CgNetObject> SOIL = CgNetType.define("cgprobe:soil").fields(VALUE).perHolder().build();
+        static final CgNetType<CgNetObject> CLOCK = CgNetType.define("cgprobe:clock").fields(SENT).build();
 
         static final CgMessage<String> STEP = CgMessage.toClients("cgprobe:step", CgCodecs.STRING);
         static final CgMessage<String> SEEN = CgMessage.toServer("cgprobe:seen", CgCodecs.STRING);
@@ -444,7 +444,7 @@ public final class CgNetProbe {
             return out.toString();
         }
 
-        static void values(StringBuilder out, String key, CgNetType type) {
+        static void values(StringBuilder out, String key, CgNetType<?> type) {
             out.append(key).append('=');
             List<CgNetObject> visible = type.visible();
             for (int i = 0; i < visible.size(); i++) {

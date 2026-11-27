@@ -24,12 +24,12 @@ public class CgNetAuthorityTest {
 
     static final CgNetEvent<Integer> VENT = CgNetEvent.of("vent", CgCodecs.INT);
 
-    static final CgNetType BEAM = CgNetType.define("test:beam").fields(POWER).events(VENT).linger(5).build();
-    static final CgNetType WARD = CgNetType.define("test:ward2").fields(POWER).persisted().build();
-    static final CgNetType SLASH = CgNetType.define("test:slash").fields(POWER).build();
-    static final CgNetType SPARK = CgNetType.define("test:spark2").fields(POWER).build();
-    static final CgNetType GHOST = CgNetType.define("test:ghost").fields(POWER).keepRefused().build();
-    static final CgNetType TURRET = CgNetType.define("test:turret2").fields(POWER, YAW).build();
+    static final CgNetType<CgNetObject> BEAM = CgNetType.define("test:beam").fields(POWER).events(VENT).linger(5).build();
+    static final CgNetType<CgNetObject> WARD = CgNetType.define("test:ward2").fields(POWER).persisted().build();
+    static final CgNetType<CgNetObject> SLASH = CgNetType.define("test:slash").fields(POWER).build();
+    static final CgNetType<CgNetObject> SPARK = CgNetType.define("test:spark2").fields(POWER).build();
+    static final CgNetType<CgNetObject> GHOST = CgNetType.define("test:ghost").fields(POWER).keepRefused().build();
+    static final CgNetType<CgNetObject> TURRET = CgNetType.define("test:turret2").fields(POWER, YAW).build();
 
     @Rule
     public final TemporaryFolder world = new TemporaryFolder();
@@ -40,7 +40,7 @@ public class CgNetAuthorityTest {
     @Before
     public void setUp() {
         rig = CgNetTestRig.of(2).saveTo(world.getRoot().toPath());
-        for (CgNetType type : new CgNetType[]{BEAM, WARD, SLASH, SPARK, GHOST, TURRET}) {
+        for (CgNetType<?> type : new CgNetType[]{BEAM, WARD, SLASH, SPARK, GHOST, TURRET}) {
             type.onClient(obj -> new CgNetBehaviour() {
                 @Override
                 public void spawned(CgNetObject o, float age) {

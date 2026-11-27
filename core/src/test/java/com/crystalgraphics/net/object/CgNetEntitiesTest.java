@@ -32,13 +32,13 @@ public class CgNetEntitiesTest {
     /** Each side works this out for itself. */
     static final CgNetField<Float> SPEED = CgNetField.ofFloat("speed").local();
     static final CgNetEvent<Void> LANDED = CgNetEvent.of("landed");
-    static final CgNetType MOTION = CgNetType.define("entitytest:motion").fields(SPEED).events(LANDED)
+    static final CgNetType<CgNetObject> MOTION = CgNetType.define("entitytest:motion").fields(SPEED).events(LANDED)
             .onEntities(type -> type.equals("test:zombie")).build();
 
     /** The server's, sent to whoever sees the entity; and one each side keeps. */
     static final CgNetField<Float> KI = CgNetField.ofFloat("ki");
     static final CgNetField<Integer> GEAR = CgNetField.ofInt("gear").local();
-    static final CgNetType POWER = CgNetType.define("entitytest:power").fields(KI, GEAR)
+    static final CgNetType<CgNetObject> POWER = CgNetType.define("entitytest:power").fields(KI, GEAR)
             .onEntities(type -> type.equals("test:zombie")).build();
 
     private static final List<String> HEARD = new ArrayList<>();
@@ -134,7 +134,7 @@ public class CgNetEntitiesTest {
     static final CgNetField<String> RAGE_TARGET = CgNetField.of("target", CgCodecs.STRING).persisted();
     static final CgNetField<Integer> RAGE_SEEN = CgNetField.ofInt("seen");
     static final CgNetField<Integer> RAGE_TICKS = CgNetField.ofInt("ticks").local();
-    static final CgNetType RAGE = CgNetType.define("entitytest:rage").fields(RAGE_LEVEL, RAGE_TARGET, RAGE_SEEN, RAGE_TICKS)
+    static final CgNetType<CgNetObject> RAGE = CgNetType.define("entitytest:rage").fields(RAGE_LEVEL, RAGE_TARGET, RAGE_SEEN, RAGE_TICKS)
             .onEntities(type -> type.equals("test:zombie")).build();
 
     @Test
@@ -179,7 +179,7 @@ public class CgNetEntitiesTest {
 
     /** A second persisted type on the same entities: saved in the same write. */
     static final CgNetField<Float> CALM = CgNetField.ofFloat("calm");
-    static final CgNetType MOOD = CgNetType.define("entitytest:mood").fields(CALM)
+    static final CgNetType<CgNetObject> MOOD = CgNetType.define("entitytest:mood").fields(CALM)
             .onEntities(type -> type.equals("test:zombie")).persisted().build();
 
     @Test
@@ -232,7 +232,7 @@ public class CgNetEntitiesTest {
     /** Two fields saved as one "x,y" text: a saved form of its own. */
     static final CgNetField<Integer> MARK_X = CgNetField.ofInt("x").persisted();
     static final CgNetField<Integer> MARK_Y = CgNetField.ofInt("y").persisted();
-    static final CgNetType MARK = CgNetType.define("entitytest:mark").fields(MARK_X, MARK_Y)
+    static final CgNetType<CgNetObject> MARK = CgNetType.define("entitytest:mark").fields(MARK_X, MARK_Y)
             .onEntities(type -> type.equals("test:zombie"))
             .savedAs(new CgNetSaveForm() {
                 @Override public <T> void write(CgNetObject obj, CgStateMap<T> out) {

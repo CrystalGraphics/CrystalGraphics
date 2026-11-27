@@ -34,14 +34,14 @@ public class CgNetTypeCompilerTest {
         CgAssetKinds.register();
     }
 
-    private static CgNetType compile(String id, String yaml) {
+    private static CgNetType<?> compile(String id, String yaml) {
         return CgNetTypeCompiler.compile(CgAssetData.of(id, CgGameplayKinds.NET_TYPE,
                 (Map<?, ?>) CgAssetYaml.read(yaml), null), (kind, ref) -> null);
     }
 
     @Test
     public void aFileDeclaresTheTypeItsJavaDeclarationIs() {
-        CgNetType ki = compile("filetest:ki", """
+        CgNetType<?> ki = compile("filetest:ki", """
                 _v: 1
                 fields:
                   current: { kind: float, fallback: 5.0, sync: owner, predicted: true }
@@ -59,7 +59,7 @@ public class CgNetTypeCompilerTest {
         assertEquals(5f, ki.field("current").fallbackNumber(), 0f);
         assertTrue(ki.field("scratch").isLocal());
         ki.event("overcharged");
-        CgNetType java = CgNetType.define("filetest:ki").fields(
+        CgNetType<CgNetObject> java = CgNetType.define("filetest:ki").fields(
                         CgNetField.ofFloat("current").fallback(5f).ownerOnly().predicted(),
                         CgNetField.ofBool("charging"),
                         CgNetField.of("aura", CgCodecs.STRING).fallback("calm").initialOnly(),
@@ -72,7 +72,7 @@ public class CgNetTypeCompilerTest {
 
     @Test
     public void aFieldSyncedToWatchersIsWatched() {
-        CgNetType chest = compile("filetest:chest", """
+        CgNetType<?> chest = compile("filetest:chest", """
                 _v: 1
                 fields:
                   open: { kind: bool }
@@ -97,7 +97,7 @@ public class CgNetTypeCompilerTest {
             CgAssetException e = assertThrows(c[2], CgAssetException.class, () -> compile(c[0], "_v: 1\n" + c[1]));
             assertTrue(e.getMessage(), e.getMessage().contains(c[0]) && e.getMessage().contains(c[2]));
         }
-        CgNetType rage = compile("filetest:rage", """
+        CgNetType<?> rage = compile("filetest:rage", """
                 _v: 1
                 fields: { level: { kind: int, persisted: true }, target: { kind: int } }
                 entities: all
@@ -108,7 +108,7 @@ public class CgNetTypeCompilerTest {
                 fields: { level: { kind: int, persisted: true }, target: { kind: int } }
                 entities: all
                 """));
-        CgNetType all = compile("filetest:whole", """
+        CgNetType<?> all = compile("filetest:whole", """
                 _v: 1
                 fields: { level: { kind: int }, mood: { kind: float, sync: local } }
                 persisted: true

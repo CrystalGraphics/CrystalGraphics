@@ -34,7 +34,7 @@ import com.crystalgraphics.serialization.CgCodecs;
  * entities: players
  * }</pre>
  * <pre>{@code
- * CgNetType ki = CgNetType.named("mymod:ki");          // declared as the game started, on both sides
+ * CgNetType<?> ki = CgNetType.named("mymod:ki");          // declared as the game started, on both sides
  * ki.of(player).setFloat((CgNetField<Float>) ki.field("current"), 80f);
  * }</pre>
  *
@@ -60,7 +60,7 @@ public final class CgNetTypeCompiler {
         CgAssetCompiler.register(CgGameplayKinds.NET_TYPE, CgNetTypeCompiler::compile);
     }
 
-    static CgNetType compile(CgAssetData asset, CgAssetCompiler.Dependencies deps) {
+    static CgNetType<?> compile(CgAssetData asset, CgAssetCompiler.Dependencies deps) {
         CgValidation v = asset.validate(CgValidation.Usecase.LOAD);
         if (!v.valid()) {
             for (CgIssue issue : v.issues()) {

@@ -146,7 +146,7 @@ public final class CgEntity {
      * the server's on the server and this client's copy on a client, null until it arrives.
      */
     @Nullable
-    public CgNetObject properties(CgNetType type) {
+    public CgNetObject properties(CgNetType<?> type) {
         if (serverHost != null) return type.isLocal() ? type.of(serverHost) : type.find(serverHost);
         return type.isLocal() ? type.of(id) : type.find(id);
     }

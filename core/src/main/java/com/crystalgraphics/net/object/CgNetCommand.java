@@ -37,7 +37,7 @@ import com.crystalgraphics.serialization.CgPlainOps;
  */
 public final class CgNetCommand<P> {
 
-    private static final Pattern NAME = Pattern.compile("[a-z0-9_./-]+");
+    private static final Pattern NAME = Pattern.compile("[a-zA-Z0-9_./-]+");
 
     /** What the server does with one. */
     @FunctionalInterface
@@ -63,7 +63,7 @@ public final class CgNetCommand<P> {
     CgNetField<P> field;
 
     private CgNetCommand(String name, @Nullable CgCodec<P> codec, @Nullable CgNetWire<P> wire) {
-        if (!NAME.matcher(name).matches()) throw new IllegalArgumentException("a command name is lowercase, not '" + name + "'");
+        if (!NAME.matcher(name).matches()) throw new IllegalArgumentException("a command name is letters, digits and _ . / -, not '" + name + "'");
         this.name = name;
         this.codec = codec;
         this.wire = wire;

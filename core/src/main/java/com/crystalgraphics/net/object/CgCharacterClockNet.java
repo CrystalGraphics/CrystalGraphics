@@ -33,7 +33,7 @@ public final class CgCharacterClockNet {
     private static final CgNetField<Float> RATE = CgNetField.ofFloat("rate");
 
     /** The character clock's net type: one object per tracked character. */
-    public static final CgNetType TYPE = CgNetType.define("crystalgraphics:character_clock")
+    public static final CgNetType<CgNetObject> TYPE = CgNetType.define("crystalgraphics:character_clock")
             .fields(LEVEL_TICK, TICKS, SECONDS, FROZEN, RATE).perHolder().visibleToTrackers().build();
 
     private static volatile LongSupplier clientLevelTick = () -> 0L;

@@ -1,6 +1,7 @@
 package com.crystalgraphics.world;
 
 import com.crystalgraphics.net.object.CgNetField;
+import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetType;
 import com.crystalgraphics.platform.world.CgEntityFacts;
 
@@ -166,7 +167,7 @@ public final class CgEntityProperties {
      * {@code MOTION.of(entityId)}), worked out each server tick and client frame. A graph names its fields
      * {@code entity.<field>}.
      */
-    public static final CgNetType MOTION = CgNetType.define("crystalgraphics:entity_motion").fields(
+    public static final CgNetType<CgNetObject> MOTION = CgNetType.define("crystalgraphics:entity_motion").fields(
             SPEED, VERTICAL_SPEED, MOVE_DIRECTION, ACCELERATION, TURN_RATE,
             INPUT, INPUT_DIRECTION, INPUT_FROM_PLAYER, SPRINT_HELD, JUMP_HELD,
             GROUNDED, AIRBORNE, AIR_TIME, GROUND_DISTANCE, LAND_HEIGHT,

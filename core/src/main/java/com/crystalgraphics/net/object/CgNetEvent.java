@@ -37,7 +37,7 @@ import com.crystalgraphics.serialization.CgPlainOps;
  */
 public final class CgNetEvent<P> {
 
-    private static final Pattern NAME = Pattern.compile("[a-z0-9_./-]+");
+    private static final Pattern NAME = Pattern.compile("[a-zA-Z0-9_./-]+");
 
     final String name;
     @Nullable
@@ -47,7 +47,7 @@ public final class CgNetEvent<P> {
 
     private CgNetEvent(String name, @Nullable CgCodec<P> codec, @Nullable CgNetWire<P> wire) {
         if (!NAME.matcher(name).matches()) {
-            throw new IllegalArgumentException("an event name is lowercase, not '" + name + "'");
+            throw new IllegalArgumentException("an event name is letters, digits and _ . / -, not '" + name + "'");
         }
         this.name = name;
         this.codec = codec;

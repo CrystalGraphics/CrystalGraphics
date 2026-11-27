@@ -1,5 +1,6 @@
 package com.crystalgraphics.net.object;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -243,6 +244,8 @@ public final class CgNetTestRig implements AutoCloseable {
         double x, y, z;
         long bytesReceived;
         int framesReceived;
+        @Nullable
+        ByteArrayOutputStream recorded;
 
         private Client(int index) {
             this.name = "player" + index;
@@ -285,7 +288,7 @@ public final class CgNetTestRig implements AutoCloseable {
         }
 
         /** The objects of {@code type} this client sees now. */
-        public List<CgNetObject> visible(CgNetType type) {
+        public List<CgNetObject> visible(CgNetType<?> type) {
             ClientObjects objects = objects();
             return objects == null ? Collections.emptyList() : objects.visible(type);
         }
@@ -299,13 +302,13 @@ public final class CgNetTestRig implements AutoCloseable {
 
         /** This client's per-holder object of {@code type} on entity {@code entityId}, as {@link CgNetType#find} answers. */
         @Nullable
-        public CgNetObject find(CgNetType type, int entityId) {
+        public CgNetObject find(CgNetType<?> type, int entityId) {
             ClientObjects objects = objects();
             return objects == null ? null : objects.holder(type, entityId);
         }
 
         /** A prediction from this client, as {@link CgNetType#predict} makes one in a game. */
-        public CgNetObject predict(CgNetType type, CgAnchor anchor) {
+        public CgNetObject predict(CgNetType<?> type, CgAnchor anchor) {
             ClientObjects objects = objects();
             if (objects == null) throw new IllegalStateException(this + " is not connected");
             return objects.predict(type, anchor);
@@ -318,6 +321,25 @@ public final class CgNetTestRig implements AutoCloseable {
 
         public int framesReceived() {
             return framesReceived;
+        }
+
+        /**
+         * Keeps every frame the server sends it from now on, for a test that searches the bytes.
+         *
+         * <pre>{@code
+         * rig.client(0).record();
+         * rig.tick(2);
+         * assertFalse(contains(rig.client(0).recorded(), "secret".getBytes(UTF_8)));
+         * }</pre>
+         */
+        public Client record() {
+            recorded = new ByteArrayOutputStream();
+            return this;
+        }
+
+        /** What it received since {@link #record()}, frames end to end; empty without it. */
+        public byte[] recorded() {
+            return recorded == null ? new byte[0] : recorded.toByteArray();
         }
 
         public Client disconnect() {
@@ -404,6 +426,7 @@ public final class CgNetTestRig implements AutoCloseable {
             Client client = (Client) player;
             client.bytesReceived += frame.length;
             client.framesReceived++;
+            if (client.recorded != null) client.recorded.write(frame, 0, frame.length);
             toClients.addLast(new Packet(client, frame, now + latency));
         }
 

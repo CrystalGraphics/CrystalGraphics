@@ -14,7 +14,7 @@ with the entity, like a name written in a notebook the entity carries, so it is 
 public static final CgNetField<Integer> RAGE = CgNetField.ofInt("rage").persisted();    // kept
 public static final CgNetField<Integer> TAUNTS = CgNetField.ofInt("taunts");             // this session's
 
-public static final CgNetType FURY = CgNetType.define("mymod:fury").fields(RAGE, TAUNTS)
+public static final CgNetType<CgNetObject> FURY = CgNetType.define("mymod:fury").fields(RAGE, TAUNTS)
         .onEntities(type -> type.equals("minecraft:zombie"))
         .build();
 ```

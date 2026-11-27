@@ -31,6 +31,7 @@ import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.net.object.CgNetField;
+import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetType;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.rhi.CgRHI;
@@ -260,7 +261,7 @@ public final class CgServerSmoke extends CgGauntletController {
 
     /** Saved when this server stops, so the first run on a fresh world makes one and every run after finds it. */
     private static final CgNetField<String> KEPT_VALUE = CgNetField.of("value", CgCodecs.STRING);
-    private static final CgNetType KEPT = CgNetType.define("crystalgraphics:probe/kept").fields(KEPT_VALUE).persisted().build();
+    private static final CgNetType<CgNetObject> KEPT = CgNetType.define("crystalgraphics:probe/kept").fields(KEPT_VALUE).persisted().build();
 
     private void checkPersistence() {
         int found = KEPT.size();

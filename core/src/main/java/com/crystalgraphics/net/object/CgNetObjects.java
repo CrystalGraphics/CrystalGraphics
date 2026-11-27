@@ -185,7 +185,7 @@ public final class CgNetObjects {
     }
 
     /** Client: the objects of {@code type} this client sees now, or none outside a world. */
-    public static List<CgNetObject> visible(CgNetType type) {
+    public static List<CgNetObject> visible(CgNetType<?> type) {
         CgProtocolConnection<Object> connection = CgNetwork.client();
         if (connection == null || !connection.hasAttachment(ClientObjects.class)) return Collections.emptyList();
         return connection.attachment(ClientObjects.class, ClientObjects::new).visible(type);
@@ -193,7 +193,7 @@ public final class CgNetObjects {
 
     /** Client: this client's per-holder object of {@code type} riding entity {@code entityId}, or null. */
     @Nullable
-    static CgNetObject clientHolder(CgNetType type, int entityId) {
+    static CgNetObject clientHolder(CgNetType<?> type, int entityId) {
         if (local != null) {
             ClientObjects objects = local.get();
             return objects == null ? null : objects.holder(type, entityId);
@@ -256,14 +256,14 @@ public final class CgNetObjects {
                 + ", indexed " + BY_ID.size() + ", fired " + FIRED.size();
     }
 
-    static void forEachLive(CgNetType type, Consumer<CgNetObject> each) {
+    static void forEachLive(CgNetType<?> type, Consumer<CgNetObject> each) {
         for (int i = 0; i < LIVE.size(); i++) {
             CgNetObject obj = LIVE.get(i);
             if (obj.type == type && obj.isLive()) each.accept(obj);
         }
     }
 
-    static int countLive(CgNetType type) {
+    static int countLive(CgNetType<?> type) {
         int n = 0;
         for (CgNetObject obj : LIVE) if (obj.type == type && obj.isLive()) n++;
         return n;
@@ -284,7 +284,7 @@ public final class CgNetObjects {
         FIRED.add(obj);
     }
 
-    private static void markUnsaved(CgNetType type) {
+    private static void markUnsaved(CgNetType<?> type) {
         if (!type.persisted) return;
         if (type.index >= unsaved.length) unsaved = Arrays.copyOf(unsaved, type.index + 8);
         unsaved[type.index] = true;
@@ -319,7 +319,7 @@ public final class CgNetObjects {
     /** The namespaces the hello must announce: every declared type's. */
     public static Map<String, Integer> namespaces() {
         Map<String, Integer> out = new LinkedHashMap<>();
-        for (CgNetType type : CgNetType.REGISTERED) out.put(type.namespace, CgNetwork.version(type.namespace));
+        for (CgNetType<?> type : CgNetType.REGISTERED) out.put(type.namespace, CgNetwork.version(type.namespace));
         return out;
     }
 
@@ -355,6 +355,12 @@ public final class CgNetObjects {
     }
 
     /** The connected players whose slots {@code slots} marks. */
+    /** Whether any slot of {@code slots} is set. */
+    static boolean any(long[] slots) {
+        for (long word : slots) if (word != 0) return true;
+        return false;
+    }
+
     static List<UUID> idsOf(long[] slots) {
         List<UUID> out = new ArrayList<>();
         for (int v = 0; v < VIEWERS.size(); v++) {
@@ -371,11 +377,11 @@ public final class CgNetObjects {
         tick = CgEngineLifecycle.serverTicks();
         Path world = CgWorldQueries.saveDirectory(server);
         if (world == null) return;
-        for (CgNetType type : CgNetType.REGISTERED) if (type.persisted) load(type, world);
+        for (CgNetType<?> type : CgNetType.REGISTERED) if (type.persisted) load(type, world);
     }
 
     /** A persisted type declared once the server is up is loaded now, or its first save writes over the last. */
-    static void declaredLate(CgNetType type) {
+    static void declaredLate(CgNetType<?> type) {
         if (!started) return;
         LOGGER.warn("[cg-net] {} was declared after the server started; declare types at mod init", type.name);
         Path world = CgWorldQueries.saveDirectory(startedServer);
@@ -405,7 +411,7 @@ public final class CgNetObjects {
         LIVE.clear();
         BY_ID.clear();
         FIRED.clear();
-        for (CgNetType type : CgNetType.REGISTERED) type.holders.clear();
+        for (CgNetType<?> type : CgNetType.REGISTERED) type.holders.clear();
         CgNetEntities.clear(true);
         PlayerFiles.reset();
         Arrays.fill(unsaved, false);
@@ -418,9 +424,9 @@ public final class CgNetObjects {
     public static void serverTick() {
         tick = CgEngineLifecycle.serverTicks();
         if (started) PlayerFiles.tickStarted();
-        List<CgNetType> types = CgNetType.USED;
+        List<CgNetType<?>> types = CgNetType.USED;
         for (int t = 0; t < types.size(); t++) {
-            CgNetType type = types.get(t);
+            CgNetType<?> type = types.get(t);
             type.tickLive = type.tickViewers = type.tickBytes = 0;
         }
         if (!LIVE.isEmpty() || !FIRED.isEmpty() || refusals) {
@@ -438,9 +444,9 @@ public final class CgNetObjects {
         CgNetEntities.tickEnded();
     }
 
-    private static void trace(List<CgNetType> types) {
+    private static void trace(List<CgNetType<?>> types) {
         for (int t = 0; t < types.size(); t++) {
-            CgNetType type = types.get(t);
+            CgNetType<?> type = types.get(t);
             if (type.tickLive == 0 && type.tickBytes == 0 && type.refusalsTraced == type.refusals()) continue;
             CgTrace.counter(CgChannels.NET, type.traceLive, type.tickLive);
             CgTrace.counter(CgChannels.NET, type.traceViewers, type.tickViewers);
@@ -463,7 +469,7 @@ public final class CgNetObjects {
     public static String report() {
         StringBuilder out = new StringBuilder();
         int types = 0, objects = 0;
-        for (CgNetType type : CgNetType.USED) {
+        for (CgNetType<?> type : CgNetType.USED) {
             long refused = type.refusals();
             if (type.tickLive == 0 && type.tickBytes == 0 && refused == 0) continue;
             types++;
@@ -486,6 +492,7 @@ public final class CgNetObjects {
         for (int i = 0; i < followed; i++) {
             CgNetObject obj = LIVE.get(i);
             if (obj.behaviourPending && obj.isLive()) serverSpawned(obj);
+            if (obj.bound != null && obj.isLive()) obj.type.model.tick(obj, tick);
             if (obj.isStopping()) serverStopping(obj);
             else if (obj.behaviour != null && obj.isLive() && !obj.dormant) serverTick(obj);
         }
@@ -808,7 +815,7 @@ public final class CgNetObjects {
 
     private static boolean sees(Viewer viewer, CgNetObject obj) {
         if (obj.dormant || !inDimension(viewer, obj)) return false;
-        CgNetType type = obj.type;
+        CgNetType<?> type = obj.type;
         if (type.visibleTo != null) return type.visibleTo.test(obj, viewer.peer);
         switch (obj.kind) {
             case POINT: {
@@ -982,7 +989,18 @@ public final class CgNetObjects {
         if (command.sanitize != null && value != null) value = command.sanitize.apply(obj, value);
         if (value == null && command.codec != null) return;
         if (command.field != null) {
-            obj.predictedSet(obj.type.require(command.field), value, value.equals(sent));
+            int i = obj.type.require(command.field);
+            CgNetModel.Key key = obj.type.model == null ? null : obj.type.model.keyAt(i);
+            if (key != null && !obj.type.model.mayEdit(obj, key, value, viewer.peer)) {
+                // refused: the sender is put back to the server's value
+                command.refused++;
+                obj.type.refusedCommands++;
+                obj.type.markUsed();
+                obj.resend(command.field);
+                return;
+            }
+            obj.predictedSet(i, value, value.equals(sent));
+            if (key != null) obj.type.model.edited(obj, key, value, viewer.peer);
             return;
         }
         CgNetCommand.Handler<P> handler = (CgNetCommand.Handler<P>) obj.type.commandHandlers[index];
@@ -1021,7 +1039,7 @@ public final class CgNetObjects {
         } else if (kind == CgAnchor.Kind.ENTITY.ordinal()) {
             entityId = in.readVarInt();
         }
-        CgNetType type = CgNetType.named(name);
+        CgNetType<?> type = CgNetType.named(name);
         CgNetObject obj = null;
         Object player = viewer.peer.player();
         String dimension = player == null ? null : CgWorldQueries.dimension(player);
@@ -1146,7 +1164,7 @@ public final class CgNetObjects {
             }
         }
 
-        boolean speaks(CgNetType type) {
+        boolean speaks(CgNetType<?> type) {
             if (type.index >= speaks.length) speaks = Arrays.copyOf(speaks, type.index + 8);
             if (speaks[type.index] == 0) {
                 boolean same = CgNetwork.helloVersion(connection, type.namespace) == CgNetwork.version(type.namespace);
@@ -1274,7 +1292,7 @@ public final class CgNetObjects {
 
     // ── Persistence ─────────────────────────────────────────────────────────────────────────────
 
-    private static Path file(Path world, CgNetType type) {
+    private static Path file(Path world, CgNetType<?> type) {
         CgStorageLayout layout = CgNetType.storageOf(type.namespace);
         Path objects = layout.rootIn(world).resolve("objects");
         // the shared folder keeps each namespace apart; a namespace's own needs no second level
@@ -1282,7 +1300,7 @@ public final class CgNetObjects {
         return objects.resolve(type.name.substring(type.namespace.length() + 1) + SaveFiles.EXTENSION);
     }
 
-    private static void load(CgNetType type, Path world) {
+    private static void load(CgNetType<?> type, Path world) {
         Path file = file(world, type);
         List<CgNetObject> loaded = SaveFiles.read(file, new SavedObjects(type));
         if (loaded == null) return;
@@ -1300,13 +1318,13 @@ public final class CgNetObjects {
     private static void save() {
         Path world = CgWorldQueries.saveDirectory(startedServer);
         if (world == null) return;
-        for (CgNetType type : CgNetType.REGISTERED) {
+        for (CgNetType<?> type : CgNetType.REGISTERED) {
             if (!type.persisted || type.index >= unsaved.length || !unsaved[type.index]) continue;
             if (save(type, world)) unsaved[type.index] = false;
         }
     }
 
-    private static boolean save(CgNetType type, Path world) {
+    private static boolean save(CgNetType<?> type, Path world) {
         List<CgNetObject> objects = new ArrayList<>();
         // an entity's are saved with the entity, a player's per-holder ones in the player's file
         for (CgNetObject obj : LIVE) {
@@ -1365,9 +1383,9 @@ public final class CgNetObjects {
     /** One type's live objects as its save file holds them; a decoded object is live but not yet registered. */
     private static final class SavedObjects implements CgCodec<List<CgNetObject>> {
 
-        final CgNetType type;
+        final CgNetType<?> type;
 
-        SavedObjects(CgNetType type) {
+        SavedObjects(CgNetType<?> type) {
             this.type = type;
         }
 
@@ -1420,7 +1438,7 @@ public final class CgNetObjects {
         refusals = false;
         VIEWERS.clear();
         VIEWERS_BY_ID.clear();
-        for (CgNetType type : CgNetType.REGISTERED) type.holders.clear();
+        for (CgNetType<?> type : CgNetType.REGISTERED) type.holders.clear();
         usedSlots = new long[1];
         nextId = 1;
         tick = 0;

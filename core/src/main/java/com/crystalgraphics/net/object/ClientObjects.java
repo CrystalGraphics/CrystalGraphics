@@ -30,12 +30,12 @@ final class ClientObjects {
      */
     private static final class TypeView {
         @Nullable
-        final CgNetType type;
+        final CgNetType<?> type;
         final int[] fields;
         final int[] events;
         final int[] commands;
 
-        TypeView(@Nullable CgNetType type, int[] fields, int[] events, int[] commands) {
+        TypeView(@Nullable CgNetType<?> type, int[] fields, int[] events, int[] commands) {
             this.type = type;
             this.fields = fields;
             this.events = events;
@@ -76,7 +76,16 @@ final class ClientObjects {
     }
 
     /** What this client shows of {@code type}: the server's objects, and its predictions still waiting on it. */
-    List<CgNetObject> visible(CgNetType type) {
+    /** A codec type's part links waiting for their part to arrive, by its id. */
+    final Map<Integer, Runnable> partLinks = new HashMap<>();
+
+    /** The live object of {@code id}, or null. */
+    @Nullable
+    CgNetObject object(int id) {
+        return objects.get(id);
+    }
+
+    List<CgNetObject> visible(CgNetType<?> type) {
         List<CgNetObject> out = new ArrayList<>();
         for (int s = 0; s < objects.capacity(); s++) {
             CgNetObject obj = objects.at(s);
@@ -93,7 +102,7 @@ final class ClientObjects {
 
     /** The per-holder object of {@code type} riding entity {@code entityId}, or null: {@link CgNetType#find}. */
     @Nullable
-    CgNetObject holder(CgNetType type, int entityId) {
+    CgNetObject holder(CgNetType<?> type, int entityId) {
         IdTable table = type.index < holders.length ? holders[type.index] : null;
         return table == null || entityId < 0 ? null : table.get(entityId + 1);
     }
@@ -167,7 +176,7 @@ final class ClientObjects {
     private void define(NetBuffer in) {
         int index = in.readVarInt();
         String name = in.readString();
-        CgNetType type = CgNetType.named(name);
+        CgNetType<?> type = CgNetType.named(name);
         int[] fields = new int[in.readVarInt()];
         for (int i = 0; i < fields.length; i++) {
             String field = in.readString();
@@ -434,7 +443,7 @@ final class ClientObjects {
     }
 
     @Nullable
-    private TypeView viewOf(CgNetType type) {
+    private TypeView viewOf(CgNetType<?> type) {
         return type.index < byLocal.length ? byLocal[type.index] : null;
     }
 
@@ -471,6 +480,7 @@ final class ClientObjects {
     }
 
     private void notifyListeners(CgNetObject obj, int changed) {
+        if (obj.type.model != null && changed > 0) obj.type.model.applied(obj, changedFields, changed);
         for (int c = 0; c < changed; c++) {
             int i = changedFields[c];
             List<BiConsumer<CgNetObject, Object>> listeners = obj.type.changeListeners[i];
@@ -514,7 +524,7 @@ final class ClientObjects {
 
     // ── Predictions ─────────────────────────────────────────────────────────────────────────────
 
-    CgNetObject predict(CgNetType type, CgAnchor anchor) {
+    CgNetObject predict(CgNetType<?> type, CgAnchor anchor) {
         if (type.perHolder) throw new IllegalArgumentException(type.name + " is per holder: its objects are the server's alone");
         if (anchor.kind == CgAnchor.Kind.PLAYER || anchor.kind == CgAnchor.Kind.CHUNK) {
             throw new IllegalArgumentException("a prediction is anchored at a point, on an entity, a dimension or everywhere, not " + anchor);

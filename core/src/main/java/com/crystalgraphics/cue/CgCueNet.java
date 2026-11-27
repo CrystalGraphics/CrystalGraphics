@@ -79,7 +79,7 @@ public final class CgCueNet {
     static final CgNetEvent<Burst> EVENT = CgNetEvent.of("event", Burst.CODEC), RECUR = CgNetEvent.of("recur", Burst.CODEC);
 
     private static final Map<String, Shape> BY_CUE = new ConcurrentHashMap<>();
-    private static final Map<CgNetType, Shape> BY_TYPE = new ConcurrentHashMap<>();
+    private static final Map<CgNetType<?>, Shape> BY_TYPE = new ConcurrentHashMap<>();
     @Nullable
     private static volatile Function<CgNetObject, CgNetBehaviour> view;
     @Nullable
@@ -91,7 +91,7 @@ public final class CgCueNet {
     /** A cue's type: its fields by place and name. One per cue id, fixed until a restart. */
     static final class Shape {
         final String cue;
-        final CgNetType type;
+        final CgNetType<?> type;
         /** Four a {@code writes} name, in the cue's order. */
         final CgNetField<Float>[] writes;
         /** By {@code writes} name's place: whether the play started with a value for it; unset, the systems' defaults hold. */
@@ -100,7 +100,7 @@ public final class CgCueNet {
         final Map<String, CgNetField<?>> fields = new HashMap<>();
 
         @SuppressWarnings("unchecked")
-        Shape(CgCueDefinition cue, CgNetType type) {
+        Shape(CgCueDefinition cue, CgNetType<?> type) {
             this.cue = cue.id();
             this.type = type;
             writes = new CgNetField[cue.writes().size() * 4];
@@ -150,7 +150,7 @@ public final class CgCueNet {
             list.add(CgNetField.ofBool(setName(name)).initialOnly());
         }
         for (Field f : cue.fields()) list.add(field(f));
-        CgNetType type;
+        CgNetType<?> type;
         try {
             type = CgNetType.define(typeName(cue.id())).fields(list.toArray(new CgNetField<?>[0])).events(EVENT, RECUR).buildOnce();
         } catch (IllegalArgumentException | IllegalStateException bad) {
@@ -184,7 +184,7 @@ public final class CgCueNet {
     }
 
     /** The type {@code cue} plays as. */
-    public static CgNetType type(CgCueDefinition cue) {
+    public static CgNetType<?> type(CgCueDefinition cue) {
         return shape(cue).type;
     }
 

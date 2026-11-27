@@ -54,7 +54,7 @@ import com.crystalgraphics.serialization.CgPlainOps;
  */
 public class CgNetField<V> {
 
-    private static final Pattern NAME = Pattern.compile("[a-z0-9_./-]+");
+    private static final Pattern NAME = Pattern.compile("[a-zA-Z0-9_./-]+");
 
     /** What a field holds: a primitive, stored without boxing, or anything with a codec. */
     public enum Kind { INT, LONG, FLOAT, DOUBLE, BOOL, CODEC }
@@ -73,7 +73,7 @@ public class CgNetField<V> {
     private boolean frozen;
 
     CgNetField(String name, Kind kind, CgCodec<V> codec, V fallback, long fallbackBits) {
-        if (!NAME.matcher(name).matches()) throw new IllegalArgumentException("a field name is lowercase, not '" + name + "'");
+        if (!NAME.matcher(name).matches()) throw new IllegalArgumentException("a field name is letters, digits and _ . / -, not '" + name + "'");
         this.name = name;
         this.kind = kind;
         this.codec = Objects.requireNonNull(codec, "codec");
@@ -186,7 +186,7 @@ public class CgNetField<V> {
      * <pre>{@code
      * public static final CgNetField<Integer> RAGE = CgNetField.ofInt("rage").persisted();     // through chunk unloads
      * public static final CgNetField<Integer> TARGET = CgNetField.ofInt("target");             // gone with the session
-     * public static final CgNetType FURY = CgNetType.define("mymod:fury").fields(RAGE, TARGET)
+     * public static final CgNetType<CgNetObject> FURY = CgNetType.define("mymod:fury").fields(RAGE, TARGET)
      *         .onEntities(type -> type.equals("minecraft:zombie")).build();
      * }</pre>
      *

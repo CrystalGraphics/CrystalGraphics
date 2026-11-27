@@ -51,7 +51,7 @@ public final class CgEntitySavesProbe {
         static final CgNetField<Integer> TAUNTS = CgNetField.ofInt("taunts");
 
         // every entity but a player: a stand on most versions, a pig on 1.7.10
-        static final CgNetType TYPE = CgNetType.define("cgprobe:entity_saves").fields(LEVEL, TITLE, TAUNTS)
+        static final CgNetType<CgNetObject> TYPE = CgNetType.define("cgprobe:entity_saves").fields(LEVEL, TITLE, TAUNTS)
                 .onEntities(type -> !type.equals("minecraft:player")).build();
     }
 

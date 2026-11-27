@@ -232,7 +232,7 @@ public class CgCueNetTest {
         beam.field("level", 3);
         ticks(1, () -> false);
         t[0] = 0.05;   // the head leaves as it starts
-        CgNetType type = CgNetType.named("cuenet:cue/beam");
+        CgNetType<?> type = CgNetType.named("cuenet:cue/beam");
         assertNotNull("declared as the cue compiled", type);
         ticks(100, () -> !rig.client(0).visible(type).isEmpty());
         CgNetObject obj = rig.client(0).visible(type).get(0);
@@ -261,7 +261,7 @@ public class CgCueNetTest {
     public void aCuesTypeHoldsAllItsWritesAndAChangedShapeFailsByName() {
         CgCueDefinition.Builder wide = CgCueDefinition.builder("cuenet:wide").looping();
         for (int i = 0; i < 40; i++) wide.writes("W" + i, "write " + i);
-        CgNetType type = CgCueNet.type(wide.build());
+        CgNetType<?> type = CgCueNet.type(wide.build());
         assertEquals("cuenet:cue/wide", type.name());
         type.field("write.w39.3");
         assertSame("the same shape again: the same type", type, CgCueNet.declare(wide.build()).type);

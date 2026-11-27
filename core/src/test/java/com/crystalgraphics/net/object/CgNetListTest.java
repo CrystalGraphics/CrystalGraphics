@@ -26,7 +26,7 @@ public class CgNetListTest {
     }
 
     static final CgNetList<Offer> OFFERS = CgNetList.of("offers", Offer.CODEC, Offer::id).persisted();
-    static final CgNetType TRADER = CgNetType.define("test:trader").fields(OFFERS).range(32).build();
+    static final CgNetType<CgNetObject> TRADER = CgNetType.define("test:trader").fields(OFFERS).range(32).build();
 
     @Rule
     public final TemporaryFolder world = new TemporaryFolder();

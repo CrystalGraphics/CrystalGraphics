@@ -23,7 +23,7 @@ public class CgNetCallsTest {
     static final CgNetCommand<Float> AIM = CgNetCommand.of("aim", CgCodecs.FLOAT).rate(CgRatePolicy.throttle(100)).perSecond(100);
     static final CgNetCommand<Void> POKE = CgNetCommand.of("poke").fromAnyViewer();
 
-    static final CgNetType MACHINE = CgNetType.define("test:machine").fields(HEAT).events(SAID, PING)
+    static final CgNetType<CgNetObject> MACHINE = CgNetType.define("test:machine").fields(HEAT).events(SAID, PING)
             .commands(SET_HEAT, AIM, POKE).range(32).build();
 
     private final List<String> heard = new ArrayList<>();

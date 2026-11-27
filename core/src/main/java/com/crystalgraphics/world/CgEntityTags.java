@@ -80,7 +80,7 @@ public final class CgEntityTags {
 
     private static final CgNetCommand<Change> CHANGE = CgNetCommand.of("change", Change.CODEC).perSecond(20);
     private static final CgNetEvent<Verdict> VERDICT = CgNetEvent.of("verdict", Verdict.CODEC);
-    private static final CgNetType TYPE = CgNetType.define("crystalgraphics:entity_tags").fields(TAGS)
+    private static final CgNetType<CgNetObject> TYPE = CgNetType.define("crystalgraphics:entity_tags").fields(TAGS)
             .events(VERDICT).commands(CHANGE).perHolder().onEntities(type -> type.equals(CgNetEntities.PLAYER)).build();
 
     /** What the server takes of an owner's change to its own entity's tags. */

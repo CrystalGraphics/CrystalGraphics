@@ -100,7 +100,7 @@ public final class CgAssetMounts {
      * <pre>{@code
      * registry.scanResources(folder);
      * CgAssetMounts.declareNetTypes(new CgVfxAssets(registry));
-     * CgNetType form = CgNetType.named("mymod:form");
+     * CgNetType<?> form = CgNetType.named("mymod:form");
      * }</pre>
      */
     public static void declareNetTypes(CgVfxAssets assets) {

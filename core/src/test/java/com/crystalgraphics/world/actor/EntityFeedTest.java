@@ -15,6 +15,7 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.net.object.CgNetField;
+import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetType;
 import com.crystalgraphics.world.CgEntityProperties;
 
@@ -22,7 +23,7 @@ import com.crystalgraphics.world.CgEntityProperties;
 public class EntityFeedTest {
 
     static final CgNetField<Integer> GEAR = CgNetField.ofInt("gear").local();
-    static final CgNetType FLIGHT = CgNetType.define("feedtest:flight").fields(GEAR).perHolder().build();
+    static final CgNetType<CgNetObject> FLIGHT = CgNetType.define("feedtest:flight").fields(GEAR).perHolder().build();
 
     private static final CgSkeleton BONES = CgSkeleton.builder().bone("root", null, new Vector3f()).build();
     private static final CgSkeletalMesh MESH = CgSkeletalMesh.builder(CgMesh.build(CgVertexFormat.SKINNED, m -> {

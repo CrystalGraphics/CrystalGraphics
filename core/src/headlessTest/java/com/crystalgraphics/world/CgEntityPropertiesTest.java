@@ -23,6 +23,7 @@ import com.crystalgraphics.asset.kind.CgBodyKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.net.object.CgNetField;
+import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetType;
 import com.crystalgraphics.serialization.CgCodecs;
 
@@ -40,9 +41,9 @@ public class CgEntityPropertiesTest {
 
     static final CgNetField<Float> CURRENT = CgNetField.ofFloat("current");
     static final CgNetField<String> LABEL = CgNetField.of("label", CgCodecs.STRING);
-    static final CgNetType MANA = CgNetType.define("propertiestest:mana").fields(CURRENT, LABEL)
+    static final CgNetType<CgNetObject> MANA = CgNetType.define("propertiestest:mana").fields(CURRENT, LABEL)
             .onEntities(type -> true).build();
-    static final CgNetType AURA = CgNetType.define("propertiestest:aura").fields(CgNetField.ofFloat("heat")).build();
+    static final CgNetType<CgNetObject> AURA = CgNetType.define("propertiestest:aura").fields(CgNetField.ofFloat("heat")).build();
 
     private static final CgSkeleton BONES = CgSkeleton.builder().bone("root", null, new Vector3f()).build();
 

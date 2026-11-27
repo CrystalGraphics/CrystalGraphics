@@ -140,7 +140,7 @@ public final class CgNetEntities extends CgWorldSubsystem {
 
     // ── The store ───────────────────────────────────────────────────────────────────────────────
 
-    private static synchronized Side side(CgNetType type, boolean onServer) {
+    private static synchronized Side side(CgNetType<?> type, boolean onServer) {
         Side[] sides = onServer ? serverSides : clientSides;
         if (type.index >= sides.length) {
             sides = Arrays.copyOf(sides, type.index + 8);
@@ -154,7 +154,7 @@ public final class CgNetEntities extends CgWorldSubsystem {
 
     /** Server: a local type's object on {@code entity}, made if {@code make} and absent. */
     @Nullable
-    static CgNetObject server(CgNetType type, Object entity, boolean make) {
+    static CgNetObject server(CgNetType<?> type, Object entity, boolean make) {
         Side s = side(type, true);
         CgNetObject obj = s.byEntity.get(entity);
         if (obj != null || !make) return obj;
@@ -169,7 +169,7 @@ public final class CgNetEntities extends CgWorldSubsystem {
 
     /** A client: a local type's object on entity {@code id}, made if {@code make} and absent. */
     @Nullable
-    static CgNetObject client(CgNetType type, int id, boolean make) {
+    static CgNetObject client(CgNetType<?> type, int id, boolean make) {
         if (id < 0) return null;
         Side s = side(type, false);
         CgNetObject obj = s.byId.get(id + 1);
@@ -216,7 +216,7 @@ public final class CgNetEntities extends CgWorldSubsystem {
 
     /** {@code entity} (server) or entity {@code id} (client) of {@code entityType} appeared: its types' objects made. */
     private static void attach(boolean onServer, @Nullable Object entity, int id, String entityType) {
-        for (CgNetType type : CgNetType.ON_ENTITIES) {
+        for (CgNetType<?> type : CgNetType.ON_ENTITIES) {
             if (!type.entityTypes.test(entityType)) continue;
             ensure(onServer);
             if (type.localOnly) {
@@ -356,9 +356,9 @@ public final class CgNetEntities extends CgWorldSubsystem {
         // a client saves entities too (a creative pick): the server's objects are the server thread's alone
         if (unsavedOnEntities == 0 || CgNetwork.side() != CgNetwork.Side.SERVER) return;
         CgNbtCompound saved = null;
-        List<CgNetType> types = CgNetType.SAVED_ON_ENTITIES;
+        List<CgNetType<?>> types = CgNetType.SAVED_ON_ENTITIES;
         for (int i = 0; i < types.size(); i++) {
-            CgNetType type = types.get(i);
+            CgNetType<?> type = types.get(i);
             CgNetObject obj = type.holders.get(entity);
             if (obj == null || !obj.unsavedOnEntity) continue;
             if (saved == null) saved = CgEntitySaves.read(entity);

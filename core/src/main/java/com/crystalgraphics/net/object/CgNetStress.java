@@ -73,13 +73,13 @@ public final class CgNetStress {
     static final CgNetEvent<Long> SHOT = CgNetEvent.of("shot", CgCodecs.LONG);
     static final CgNetCommand<Integer> POKE = CgNetCommand.of("poke", CgCodecs.INT).perSecond(2000).burst(200);
 
-    static final CgNetType SMALL = CgNetType.define("cgstress:small").fields(HEAT).range(64).build();
-    static final CgNetType RICH = CgNetType.define("cgstress:rich").fields(HEAT, AMMO, LABEL).events(SHOT).commands(POKE)
+    static final CgNetType<CgNetObject> SMALL = CgNetType.define("cgstress:small").fields(HEAT).range(64).build();
+    static final CgNetType<CgNetObject> RICH = CgNetType.define("cgstress:rich").fields(HEAT, AMMO, LABEL).events(SHOT).commands(POKE)
             .range(96).build();
-    static final CgNetType FAR = CgNetType.define("cgstress:far").fields(HEAT).build();
+    static final CgNetType<CgNetObject> FAR = CgNetType.define("cgstress:far").fields(HEAT).build();
     // Kept through death: an unattended player in a live run is killed by whatever finds them.
-    static final CgNetType MANA = CgNetType.define("cgstress:mana").fields(HEAT).perHolder().copyOnDeath().build();
-    static final CgNetType TRACKER = CgNetType.define("cgstress:tracker").fields(SENT).build();
+    static final CgNetType<CgNetObject> MANA = CgNetType.define("cgstress:mana").fields(HEAT).perHolder().copyOnDeath().build();
+    static final CgNetType<CgNetObject> TRACKER = CgNetType.define("cgstress:tracker").fields(SENT).build();
 
     static final CgMessage<String> PHASE = CgMessage.toClients("cgstress:phase", CgCodecs.STRING);
     static final CgMessage<String> BULK = CgMessage.toClients("cgstress:bulk", CgCodecs.STRING);

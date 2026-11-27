@@ -127,7 +127,7 @@ public final class CgVfxCue {
     private static final Map<CgVfxLayout, LookFields> LOOK_FIELDS = new IdentityHashMap<>();
 
     private final String id;
-    final CgNetType type;
+    final CgNetType<?> type;
     @Nullable
     final LookFields look;
     private final float range;
@@ -137,7 +137,7 @@ public final class CgVfxCue {
     /** The confirmed hit handed to listeners; client thread. */
     private final CgHit arrived = new CgHit();
 
-    private CgVfxCue(Builder b, CgNetType type) {
+    private CgVfxCue(Builder b, CgNetType<?> type) {
         this.id = b.id;
         this.type = type;
         this.look = b.look == null ? null : lookFields(b.look.layout());
@@ -277,7 +277,7 @@ public final class CgVfxCue {
     }
 
     /** The networked type its plays are objects of. */
-    public CgNetType type() {
+    public CgNetType<?> type() {
         return type;
     }
 

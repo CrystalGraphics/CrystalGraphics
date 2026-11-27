@@ -36,9 +36,9 @@ import com.crystalgraphics.world.CgWorldQueries;
 public final class CgNetObject {
 
     /** STOPPING: despawned gracefully, its server behaviour finishing in front of the viewers who saw it. */
-    private static final int PENDING = 0, LIVE = 1, STOPPING = 2, ENDING = 3, REMOVED = 4;
+    static final int PENDING = 0, LIVE = 1, STOPPING = 2, ENDING = 3, REMOVED = 4;
 
-    final CgNetType type;
+    final CgNetType<?> type;
     final boolean server;
     int id;
 
@@ -138,9 +138,12 @@ public final class CgNetObject {
     private Object local;
     @Nullable
     ClientObjects client;
+    /** A codec type's: the instance this object stands for, on its side. */
+    @Nullable
+    CgNetModel.Bound bound;
 
     /** A server object, pending. */
-    CgNetObject(CgNetType type, CgAnchor anchor) {
+    CgNetObject(CgNetType<?> type, CgAnchor anchor) {
         this(type, true);
         kind = anchor.kind;
         dimension = anchor.dimension;
@@ -155,7 +158,7 @@ public final class CgNetObject {
         if (kind == CgAnchor.Kind.ENTITY) entityId = CgEntityQueries.idOf(holder);
     }
 
-    CgNetObject(CgNetType type, boolean server) {
+    CgNetObject(CgNetType<?> type, boolean server) {
         this.type = type;
         this.server = server;
         if (server) type.markUsed();
@@ -286,7 +289,7 @@ public final class CgNetObject {
 
     // ── Reading ─────────────────────────────────────────────────────────────────────────────────
 
-    public CgNetType type() {
+    public CgNetType<?> type() {
         return type;
     }
 
@@ -713,6 +716,26 @@ public final class CgNetObject {
         }
         mark(set, i);
         return true;
+    }
+
+    /** Server: field {@code i} set from a boxed value, through the same path as {@link #set}. */
+    @SuppressWarnings("unchecked")
+    void setUnchecked(int i, Object value) {
+        set((CgNetField<Object>) type.fields[i], value);
+    }
+
+    /** Server: a codec field's value read again and found changed, though it may be the same instance. */
+    void pulled(int i, Object value) {
+        writable();
+        refs[i] = value;
+        changed(i);
+    }
+
+    /** Field {@code i}'s value, boxed. */
+    @Nullable
+    Object valueAt(int i) {
+        CgNetField<?> field = type.fields[i];
+        return field.kind == CgNetField.Kind.CODEC ? refs[i] : field.box(bits[i]);
     }
 
     /** Server: a value the owner predicted, as sanitized; {@code asSent} when the owner already shows it. */

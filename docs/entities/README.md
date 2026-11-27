@@ -12,7 +12,7 @@ player near them, and saved with the zombie when its chunk unloads.
 public final class Fury {
     public static final CgNetField<Integer> RAGE = CgNetField.ofInt("rage").persisted();
 
-    public static final CgNetType TYPE = CgNetType.define("mymod:fury").fields(RAGE)
+    public static final CgNetType<CgNetObject> TYPE = CgNetType.define("mymod:fury").fields(RAGE)
             .onEntities(type -> type.equals("minecraft:zombie"))
             .build();
 

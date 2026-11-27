@@ -28,12 +28,12 @@ public class CgNetStressTest {
     static final CgNetEvent<Integer> SHOT = CgNetEvent.of("shot", CgCodecs.INT);
     static final CgNetCommand<Integer> POKE = CgNetCommand.of("poke", CgCodecs.INT);
 
-    static final CgNetType SMALL = CgNetType.define("stress:small").fields(HEAT).range(64).build();
-    static final CgNetType RICH = CgNetType.define("stress:rich").fields(HEAT, AMMO, LABEL).events(SHOT).commands(POKE)
+    static final CgNetType<CgNetObject> SMALL = CgNetType.define("stress:small").fields(HEAT).range(64).build();
+    static final CgNetType<CgNetObject> RICH = CgNetType.define("stress:rich").fields(HEAT, AMMO, LABEL).events(SHOT).commands(POKE)
             .range(96).build();
-    static final CgNetType FAR = CgNetType.define("stress:far").fields(HEAT).build();
-    static final CgNetType MANA = CgNetType.define("stress:mana").fields(HEAT).perHolder().build();
-    static final CgNetType TRACKER = CgNetType.define("stress:tracker").fields(HEAT).build();
+    static final CgNetType<CgNetObject> FAR = CgNetType.define("stress:far").fields(HEAT).build();
+    static final CgNetType<CgNetObject> MANA = CgNetType.define("stress:mana").fields(HEAT).perHolder().build();
+    static final CgNetType<CgNetObject> TRACKER = CgNetType.define("stress:tracker").fields(HEAT).build();
 
     static final CgMessage<String> BULK = CgMessage.toClients("stress:bulk", CgCodecs.STRING);
     static final CgMessage<Integer> PING = CgMessage.toClients("stress:ping", CgCodecs.INT);

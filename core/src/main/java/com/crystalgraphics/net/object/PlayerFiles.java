@@ -128,7 +128,7 @@ final class PlayerFiles {
             UUID player = JOINED.get(i);
             for (CgStorageLayout layout : CgNetType.storageLayouts()) {
                 for (String name : new ArrayList<>(open(new File(player, layout)).keySet())) {
-                    CgNetType type = CgNetType.named(name);
+                    CgNetType<?> type = CgNetType.named(name);
                     // a type on entities is made as the player's entity enters
                     if (type != null && type.persisted && type.perHolder && type.entityTypes == null) type.of(player);
                 }
@@ -150,7 +150,7 @@ final class PlayerFiles {
 
     /** Whether an object still saves into {@code file}: one made by {@code of(uuid)} while its player is away. */
     private static boolean hasLive(File file) {
-        List<CgNetType> types = CgNetType.SAVED_ON_ENTITIES;
+        List<CgNetType<?>> types = CgNetType.SAVED_ON_ENTITIES;
         for (int i = 0; i < types.size(); i++) {
             CgNetObject obj = types.get(i).holders.get(file.player());
             if (obj != null && !obj.isRemoved() && file.equals(obj.saveFile) && obj.offline) return true;
@@ -177,9 +177,9 @@ final class PlayerFiles {
         Path path = path(file);
         if (path == null) return;
         Map<String, Object> saved = open(file);
-        List<CgNetType> types = CgNetType.SAVED_ON_ENTITIES;
+        List<CgNetType<?>> types = CgNetType.SAVED_ON_ENTITIES;
         for (int i = 0; i < types.size(); i++) {
-            CgNetType type = types.get(i);
+            CgNetType<?> type = types.get(i);
             CgNetObject obj = type.holders.get(file.player());
             if (obj != null && !obj.isRemoved() && file.equals(obj.saveFile)) {
                 saved.put(type.name, CgNetObjects.encodeFields(CgPlainOps.TEXT, obj));

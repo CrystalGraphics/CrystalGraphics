@@ -22,7 +22,7 @@ import com.crystalgraphics.serialization.CgPlainOps;
  * record Offer(String id, String item, int price) { static final CgCodec<Offer> CODEC = ...; }
  *
  * public static final CgNetList<Offer> OFFERS = CgNetList.of("offers", Offer.CODEC, Offer::id);
- * public static final CgNetType TRADER = CgNetType.define("mymod:trader").fields(OFFERS).watched().build();
+ * public static final CgNetType<CgNetObject> TRADER = CgNetType.define("mymod:trader").fields(OFFERS).watched().build();
  *
  * // server
  * CgNetList.Entries<Offer> offers = trader.list(OFFERS);

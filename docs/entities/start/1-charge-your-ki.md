@@ -40,7 +40,7 @@ public final class Ki {
     public static final CgNetField<Float> CURRENT = CgNetField.ofFloat("current").persisted();
 
     /** One object per player, made as they join. */
-    public static final CgNetType TYPE = CgNetType.define("mymod:ki").fields(CURRENT)
+    public static final CgNetType<CgNetObject> TYPE = CgNetType.define("mymod:ki").fields(CURRENT)
             .onEntities(type -> type.equals("minecraft:player"))
             .build();
 
@@ -161,7 +161,7 @@ entities: players
 ```
 
 ```java
-public static final CgNetType TYPE = CgNetType.named("mymod:ki");
+public static final CgNetType<?> TYPE = CgNetType.named("mymod:ki");
 @SuppressWarnings("unchecked")
 public static final CgNetField<Float> CURRENT = (CgNetField<Float>) TYPE.field("current");
 ```

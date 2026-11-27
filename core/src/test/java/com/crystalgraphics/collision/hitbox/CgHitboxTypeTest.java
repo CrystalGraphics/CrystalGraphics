@@ -61,7 +61,7 @@ public class CgHitboxTypeTest {
                     .part(TIP, CgSphere.of(0.6), 0, 0, 1.5).part(BLADE, CgCapsule.of(0.75, 0.4), 0, 0, 0.75)
                     .rehit(4))
             .build();
-    private static final CgNetType FILLER = CgNetType.define("hitbox_test:filler").fields(TAG).range(96).build();
+    private static final CgNetType<CgNetObject> FILLER = CgNetType.define("hitbox_test:filler").fields(TAG).range(96).build();
 
     static {
         for (CgHitboxType type : new CgHitboxType[]{WAVE, SLOW, SWING}) {

@@ -119,6 +119,31 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
         return out;
     }
 
+    /**
+     * One key as declared, for code that compiles a codec into something else (a networked type's fields): its codec,
+     * how it is read and set, and its rules. {@code setter} is null for a key decoded in place.
+     */
+    public record Key<A, F>(String key, CgCodec<F> codec, Function<? super A, ? extends F> getter,
+                            @Nullable BiConsumer<? super A, ? super F> setter, Policy policy) {
+        /** Decoded into what the object holds, never set. */
+        public boolean inPlace() {
+            return setter == null;
+        }
+    }
+
+    /** Its keys as declared, in the order written. */
+    public List<Key<A, ?>> describe() {
+        List<Key<A, ?>> out = new ArrayList<>(fields.size());
+        for (Field<A, ?> f : fields) out.add(f.describe(policy(f.key)));
+        return out;
+    }
+
+    /** What makes a new object, or null for a codec that decodes only into objects it is handed. */
+    @Nullable
+    public Supplier<A> factory() {
+        return make;
+    }
+
     /** {@code key}'s rules beyond its codec; a key with none answers no rule at all. */
     public Policy policy(String key) {
         return policies.getOrDefault(key, Policy.NONE);
@@ -332,6 +357,10 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
             this.optional = optional;
             this.omitWhen = omitWhen;
             this.comment = comment;
+        }
+
+        Key<A, F> describe(Policy policy) {
+            return new Key<>(key, codec, get, set, policy);
         }
 
         Field<A, F> withComment(String text) {

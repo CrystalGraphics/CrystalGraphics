@@ -28,20 +28,20 @@ public class CgNetAnchorsTest {
 
     static final CgNetField<Integer> CURRENT = CgNetField.ofInt("current");
 
-    static final CgNetType AURA = CgNetType.define("test:aura").fields(CURRENT).build();
-    static final CgNetType QUEST = CgNetType.define("test:quest").fields(CURRENT).build();
-    static final CgNetType BADGE = CgNetType.define("test:badge").fields(CURRENT).visibleToTrackers().build();
-    static final CgNetType MANA = CgNetType.define("test:mana").fields(CURRENT).perHolder().persisted().copyOnDeath().build();
-    static final CgNetType WARD = CgNetType.define("test:ward").fields(CURRENT).persisted().build();
-    static final CgNetType WARDS = CgNetType.define("test:wards").fields(CURRENT).perHolder().persisted().build();
-    static final CgNetType GUARD = CgNetType.define("test:guard").fields(CURRENT).perHolder().build();
-    static final CgNetType FOCUS = CgNetType.define("test:focus").fields(CURRENT).perHolder().persisted().build();
+    static final CgNetType<CgNetObject> AURA = CgNetType.define("test:aura").fields(CURRENT).build();
+    static final CgNetType<CgNetObject> QUEST = CgNetType.define("test:quest").fields(CURRENT).build();
+    static final CgNetType<CgNetObject> BADGE = CgNetType.define("test:badge").fields(CURRENT).visibleToTrackers().build();
+    static final CgNetType<CgNetObject> MANA = CgNetType.define("test:mana").fields(CURRENT).perHolder().persisted().copyOnDeath().build();
+    static final CgNetType<CgNetObject> WARD = CgNetType.define("test:ward").fields(CURRENT).persisted().build();
+    static final CgNetType<CgNetObject> WARDS = CgNetType.define("test:wards").fields(CURRENT).perHolder().persisted().build();
+    static final CgNetType<CgNetObject> GUARD = CgNetType.define("test:guard").fields(CURRENT).perHolder().build();
+    static final CgNetType<CgNetObject> FOCUS = CgNetType.define("test:focus").fields(CURRENT).perHolder().persisted().build();
     static final CgStorageLayout OWN = CgStorageLayout.of("ownmod");
     static {
         CgNetType.storage("ownmod", OWN);
     }
-    static final CgNetType OWN_POOL = CgNetType.define("ownmod:pool").fields(CURRENT).perHolder().persisted().build();
-    static final CgNetType OWN_SHRINE = CgNetType.define("ownmod:shrine").fields(CURRENT).persisted().build();
+    static final CgNetType<CgNetObject> OWN_POOL = CgNetType.define("ownmod:pool").fields(CURRENT).perHolder().persisted().build();
+    static final CgNetType<CgNetObject> OWN_SHRINE = CgNetType.define("ownmod:shrine").fields(CURRENT).persisted().build();
 
     @Rule
     public final TemporaryFolder world = new TemporaryFolder();
@@ -52,7 +52,7 @@ public class CgNetAnchorsTest {
     @Before
     public void setUp() {
         rig = CgNetTestRig.of(3).saveTo(world.getRoot().toPath());
-        for (CgNetType type : new CgNetType[]{AURA, QUEST, BADGE, MANA, WARD, WARDS}) {
+        for (CgNetType<?> type : new CgNetType[]{AURA, QUEST, BADGE, MANA, WARD, WARDS}) {
             type.onClient(obj -> new CgNetBehaviour() {
                 @Override
                 public void despawned(CgNetObject o, boolean killed) {
@@ -68,7 +68,7 @@ public class CgNetAnchorsTest {
         rig.close();
     }
 
-    private int sees(int client, CgNetType type) {
+    private int sees(int client, CgNetType<?> type) {
         return rig.client(client).visible(type).size();
     }
 
@@ -279,7 +279,7 @@ public class CgNetAnchorsTest {
         assertEquals("back from its own folder", 9, shrine[0]);
     }
 
-    private int saved(int client, CgNetType type) {
+    private int saved(int client, CgNetType<?> type) {
         Map<?, ?> file = file(rig.client(client).id(), CgNetType.storageOf(type.namespace()));
         return ((Number) ((Map<?, ?>) file.get(type.name())).get("current")).intValue();
     }

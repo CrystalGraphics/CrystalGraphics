@@ -30,7 +30,7 @@ public final class CgTagNet {
 
     private static final CgNetField<CgTagTable> TABLE = CgNetField.of("table", CgTagTable.CODEC);
 
-    private static final CgNetType TYPE = CgNetType.define("crystalgraphics:tags").fields(TABLE).build();
+    private static final CgNetType<CgNetObject> TYPE = CgNetType.define("crystalgraphics:tags").fields(TABLE).build();
 
     private static CgNetObject object;
     private static CgTagLink server;

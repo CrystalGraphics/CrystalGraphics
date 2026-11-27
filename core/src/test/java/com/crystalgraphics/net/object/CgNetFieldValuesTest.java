@@ -22,13 +22,13 @@ import static org.junit.Assert.assertTrue;
 public class CgNetFieldValuesTest {
 
     static final CgNetField<String> ANIM = CgNetField.of("anim", CgCodecs.STRING).fallback("idle");
-    static final CgNetType ACTOR = CgNetType.define("test:actor").fields(ANIM).persisted().build();
+    static final CgNetType<CgNetObject> ACTOR = CgNetType.define("test:actor").fields(ANIM).persisted().build();
 
     static final CgNetField<Boolean> FLYING = CgNetField.ofBool("flying");
-    static final CgNetType FLIER = CgNetType.define("test:flier").fields(FLYING).build();
+    static final CgNetType<CgNetObject> FLIER = CgNetType.define("test:flier").fields(FLYING).build();
 
     static final CgNetField<Boolean> WINGS = CgNetField.ofBool("wings").predicted().sanitizedBy((obj, wanted) -> false);
-    static final CgNetType GLIDER = CgNetType.define("test:glider").fields(WINGS).build();
+    static final CgNetType<CgNetObject> GLIDER = CgNetType.define("test:glider").fields(WINGS).build();
 
     static final class Stats {
         int power;
@@ -38,7 +38,7 @@ public class CgNetFieldValuesTest {
 
     static final Stats NONE = new Stats();
     static final CgNetField<Stats> STATS = CgNetField.of("stats", Stats.CODEC).fallback(NONE);
-    static final CgNetType FIGHTER = CgNetType.define("test:fighter").fields(STATS).build();
+    static final CgNetType<CgNetObject> FIGHTER = CgNetType.define("test:fighter").fields(STATS).build();
 
     static final List<Boolean> HEARD = new ArrayList<>();
 

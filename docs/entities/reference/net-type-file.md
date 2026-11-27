@@ -52,7 +52,7 @@ entities: players
 The file's type is found by its id, on either side:
 
 ```java
-CgNetType ki = CgNetType.named("mymod:ki");
+CgNetType<?> ki = CgNetType.named("mymod:ki");
 @SuppressWarnings("unchecked")
 CgNetField<Float> current = (CgNetField<Float>) ki.field("current");
 ```

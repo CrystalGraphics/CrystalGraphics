@@ -54,7 +54,7 @@ Then the port: NeoForge 1.20.5 wants a `CustomPacketPayload` with a `StreamCodec
 
 ```java
 public static final CgNetField<Integer> MANA = CgNetField.ofInt("mana").fallback(100);
-public static final CgNetType MANA_BAR = CgNetType.define("mymod:mana").fields(MANA)
+public static final CgNetType<CgNetObject> MANA_BAR = CgNetType.define("mymod:mana").fields(MANA)
         .perHolder().persisted().copyOnDeath().build();
 
 MANA_BAR.of(player).setInt(MANA, 40);                         // server, anywhere
@@ -166,7 +166,7 @@ A furnace-like machine whose heat every nearby player sees:
 ```java
 // common, at init
 public static final CgNetField<Float> HEAT = CgNetField.ofFloat("heat");
-public static final CgNetType MACHINE = CgNetType.define("mymod:machine").fields(HEAT).range(48).build();
+public static final CgNetType<CgNetObject> MACHINE = CgNetType.define("mymod:machine").fields(HEAT).range(48).build();
 
 // server: make one, then change it whenever you like
 CgNetObject machine = MACHINE.spawn(CgAnchor.at(level, x, y, z)).start();
@@ -183,7 +183,7 @@ A player who walks into range later is sent the current heat. A player who walks
 ```java
 // common, at init: one object per player, saved with the world, kept through death
 public static final CgNetField<Integer> MANA = CgNetField.ofInt("mana").fallback(100);
-public static final CgNetType MANA_BAR = CgNetType.define("mymod:mana").fields(MANA)
+public static final CgNetType<CgNetObject> MANA_BAR = CgNetType.define("mymod:mana").fields(MANA)
         .perHolder().persisted().copyOnDeath().build();
 
 // server
@@ -529,13 +529,13 @@ public final class Turret {
     public static final CgNetField<Integer> AMMO   = CgNetField.ofInt("ammo");
     public static final CgNetField<UUID>    TARGET = CgNetField.of("target", CgCodecs.UUID);
 
-    public static final CgNetType TYPE = CgNetType.define("mymod:turret").fields(HEAT, AMMO, TARGET).range(96).build();
+    public static final CgNetType<CgNetObject> TYPE = CgNetType.define("mymod:turret").fields(HEAT, AMMO, TARGET).range(96).build();
 }
 ```
 
 - **The type's name** is `namespace:path`, like a message's.
 - **A field's name** is short (`"heat"`): it only has to be unique within its type, whose name carries your
-  namespace. Lowercase, digits and `_ . / -`.
+  namespace. Letters, digits and `_ . / -`.
 - **Field kinds**: `ofInt`, `ofLong`, `ofFloat`, `ofDouble`, `ofBool`, and `of(name, codec)` for anything else.
 - **List fields in the order a client needs them**: a client's code reacting to one field sees every earlier one
   already in.
@@ -664,7 +664,7 @@ one object per holder, made the first time you ask for it:
 ```java
 public static final CgNetField<Integer> MANA = CgNetField.ofInt("mana").fallback(100);
 public static final CgNetField<Integer> MAX = CgNetField.ofInt("max").fallback(100);
-public static final CgNetType MANA_BAR = CgNetType.define("mymod:mana").fields(MANA, MAX)
+public static final CgNetType<CgNetObject> MANA_BAR = CgNetType.define("mymod:mana").fields(MANA, MAX)
         .perHolder().persisted().copyOnDeath().build();
 
 CgNetObject bar = MANA_BAR.of(player);                        // the player's: made now if absent
@@ -705,7 +705,7 @@ on each side and ended as it leaves: an entity's **properties**. Their guide is 
 declaring them in Java or as a `net_type` file, the engine's own motion type, tags, the gameplay handle and saving.
 
 ```java
-public static final CgNetType KI = CgNetType.define("mymod:ki").fields(CURRENT, GEAR)
+public static final CgNetType<CgNetObject> KI = CgNetType.define("mymod:ki").fields(CURRENT, GEAR)
         .onEntities(type -> type.equals("minecraft:player")).build();
 KI.onServer(obj -> new KiRegen());              // the built type's, not the builder's
 ```
@@ -899,7 +899,7 @@ the rest last as long as the session. One type holds both.
 ```java
 public static final CgNetField<Integer> CHARGE = CgNetField.ofInt("charge").persisted();   // back after a restart
 public static final CgNetField<UUID> TARGET = CgNetField.of("target", CgCodecs.UUID);       // this session's
-public static final CgNetType TURRET = CgNetType.define("mymod:turret").fields(CHARGE, TARGET).range(96).build();
+public static final CgNetType<CgNetObject> TURRET = CgNetType.define("mymod:turret").fields(CHARGE, TARGET).range(96).build();
 ```
 
 `persisted()` on the type saves every field it lists (a cue's, whose fields are shared with every other cue, is saved
@@ -927,7 +927,7 @@ any player joins. A player's and an entity's per-holder ones are saved with them
   ```java
   public static final CgNetField<Integer> RAGE = CgNetField.ofInt("rage").persisted();
   public static final CgNetField<Integer> TAUNTS = CgNetField.ofInt("taunts");
-  public static final CgNetType FURY = CgNetType.define("mymod:fury").fields(RAGE, TAUNTS)
+  public static final CgNetType<CgNetObject> FURY = CgNetType.define("mymod:fury").fields(RAGE, TAUNTS)
           .onEntities(type -> type.equals("minecraft:zombie")).build();
 
   FURY.of(zombie).setInt(RAGE, 3).setInt(TAUNTS, 2);   // server: rage still 3 when the chunk loads again, taunts 0
@@ -942,7 +942,7 @@ any player joins. A player's and an entity's per-holder ones are saved with them
   everywhere the type saves: an entity's data, a player's file, the world's file.
 
   ```java
-  public static final CgNetType MARK = CgNetType.define("mymod:mark").fields(X.persisted(), Y.persisted())
+  public static final CgNetType<CgNetObject> MARK = CgNetType.define("mymod:mark").fields(X.persisted(), Y.persisted())
           .onEntities(type -> type.equals("minecraft:zombie"))
           .savedAs(new CgNetSaveForm() {
               public <T> void write(CgNetObject obj, CgStateMap<T> out) { out.putString("at", obj.getInt(X) + "," + obj.getInt(Y)); }

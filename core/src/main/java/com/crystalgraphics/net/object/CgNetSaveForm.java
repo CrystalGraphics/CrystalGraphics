@@ -10,7 +10,7 @@ import com.crystalgraphics.serialization.CgStateMap;
  *
  * <pre>{@code
  * // two fields saved as one "x,y" text, as an older version of the mod wrote them
- * static final CgNetType TARGET = CgNetType.define("mymod:target").fields(X.persisted(), Y.persisted())
+ * static final CgNetType<CgNetObject> TARGET = CgNetType.define("mymod:target").fields(X.persisted(), Y.persisted())
  *         .onEntities(type -> type.equals("minecraft:zombie"))
  *         .savedAs(new CgNetSaveForm() {
  *             public <T> void write(CgNetObject obj, CgStateMap<T> out) {
