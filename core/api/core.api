@@ -10762,7 +10762,7 @@ com/crystalgraphics/net/object/CgNetEvent
   method public,static of (Ljava/lang/String;Lcom/crystalgraphics/net/object/CgNetWire;)Lcom/crystalgraphics/net/object/CgNetEvent;
   method public,static of (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;)Lcom/crystalgraphics/net/object/CgNetEvent;
 com/crystalgraphics/net/object/CgNetField
-  access public,final
+  access public
   extends java/lang/Object
   method public fallback ()Ljava/lang/Object;
   method public fallback (Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetField;
@@ -10798,6 +10798,41 @@ com/crystalgraphics/net/object/CgNetField$Kind
   field public,static,final LONG Lcom/crystalgraphics/net/object/CgNetField$Kind;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetField$Kind;
   method public,static values ()[Lcom/crystalgraphics/net/object/CgNetField$Kind;
+com/crystalgraphics/net/object/CgNetList
+  access public,final
+  extends com/crystalgraphics/net/object/CgNetField
+  method public initialOnly ()Lcom/crystalgraphics/net/object/CgNetList;
+  method public ownerOnly ()Lcom/crystalgraphics/net/object/CgNetList;
+  method public persisted ()Lcom/crystalgraphics/net/object/CgNetList;
+  method public predicted ()Lcom/crystalgraphics/net/object/CgNetField;
+  method public skipOwner ()Lcom/crystalgraphics/net/object/CgNetList;
+  method public watched ()Lcom/crystalgraphics/net/object/CgNetList;
+  method public,static of (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/util/function/Function;)Lcom/crystalgraphics/net/object/CgNetList;
+com/crystalgraphics/net/object/CgNetList$Entries
+  access public,final
+  extends java/lang/Object
+  method public add (ILjava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetList$Entries;
+  method public add (Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetList$Entries;
+  method public clear ()Lcom/crystalgraphics/net/object/CgNetList$Entries;
+  method public find (Ljava/lang/Object;)Ljava/lang/Object;
+  method public get (I)Ljava/lang/Object;
+  method public indexOf (Ljava/lang/Object;)I
+  method public listen (Lcom/crystalgraphics/net/object/CgNetList$Listener;)Lcom/crystalgraphics/net/object/CgNetList$Entries;
+  method public move (Ljava/lang/Object;I)Lcom/crystalgraphics/net/object/CgNetList$Entries;
+  method public remove (Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetList$Entries;
+  method public set (Ljava/lang/Object;Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetList$Entries;
+  method public size ()I
+  method public snapshot ()Ljava/util/List;
+  method public unlisten (Lcom/crystalgraphics/net/object/CgNetList$Listener;)Lcom/crystalgraphics/net/object/CgNetList$Entries;
+  method public view ()Ljava/util/List;
+com/crystalgraphics/net/object/CgNetList$Listener
+  access public,abstract,interface
+  extends java/lang/Object
+  method public added (ILjava/lang/Object;)V
+  method public moved (II)V
+  method public removed (ILjava/lang/Object;)V
+  method public replaced (ILjava/lang/Object;Ljava/lang/Object;)V
+  method public reset ()V
 com/crystalgraphics/net/object/CgNetObject
   access public,final
   extends java/lang/Object
@@ -10834,6 +10869,7 @@ com/crystalgraphics/net/object/CgNetObject
   method public kill ()V
   method public level ()Ljava/lang/Object;
   method public lifetime (I)Lcom/crystalgraphics/net/object/CgNetObject;
+  method public list (Lcom/crystalgraphics/net/object/CgNetList;)Lcom/crystalgraphics/net/object/CgNetList$Entries;
   method public local ()Ljava/lang/Object;
   method public local (Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetObject;
   method public moveTo (DDD)Lcom/crystalgraphics/net/object/CgNetObject;

@@ -52,7 +52,7 @@ import com.crystalgraphics.serialization.CgPlainOps;
  *       changes, so whatever holds it sees each one.</li>
  * </ul>
  */
-public final class CgNetField<V> {
+public class CgNetField<V> {
 
     private static final Pattern NAME = Pattern.compile("[a-z0-9_./-]+");
 
@@ -72,7 +72,7 @@ public final class CgNetField<V> {
     V fallback;
     private boolean frozen;
 
-    private CgNetField(String name, Kind kind, CgCodec<V> codec, V fallback, long fallbackBits) {
+    CgNetField(String name, Kind kind, CgCodec<V> codec, V fallback, long fallbackBits) {
         if (!NAME.matcher(name).matches()) throw new IllegalArgumentException("a field name is lowercase, not '" + name + "'");
         this.name = name;
         this.kind = kind;
@@ -312,6 +312,11 @@ public final class CgNetField<V> {
             case BOOL: return (V) Boolean.valueOf(bits != 0);
             default: throw new IllegalStateException(name + " is not a primitive");
         }
+    }
+
+    /** One value onto the wire, {@code whole} for a spawn or a baseline: a list sends its changes otherwise. */
+    void write(NetBuffer out, long bits, Object ref, boolean whole) {
+        write(out, bits, ref);
     }
 
     /** One value onto the wire: a primitive directly, anything else through its codec. */

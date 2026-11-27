@@ -568,10 +568,41 @@ public final class CgNetObject {
         return type.require(field);
     }
 
+    /**
+     * The entries of a list field: on the server what changes it, on a client what it holds. Never null.
+     *
+     * <pre>{@code
+     * trader.list(OFFERS).add(new Offer("a", "minecraft:emerald", 3));   // server
+     * obj.list(OFFERS).listen(listener);                                  // client
+     * }</pre>
+     */
+    @SuppressWarnings("unchecked")
+    public <E> CgNetList.Entries<E> list(CgNetList<E> field) {
+        int i = type.require(field);
+        CgNetList.Entries<E> entries = (CgNetList.Entries<E>) refs[i];
+        if (entries == null) {
+            entries = new CgNetList.Entries<>(null, field.key, field.elements);
+            refs[i] = entries;
+            mark(set, i);
+        }
+        // A list loaded from a save, or made here, is bound to its object as it is first reached
+        if (server && entries.owner == null) {
+            entries.owner = this;
+            entries.index = i;
+        }
+        return entries;
+    }
+
+    /** A list field changed: its operations leave with the tick. */
+    void listChanged(int i) {
+        changed(i);
+    }
+
     // ── Writing, on the server ──────────────────────────────────────────────────────────────────
 
     public <V> CgNetObject set(CgNetField<V> field, V value) {
         int i = type.require(field);
+        if (field instanceof CgNetList) throw new IllegalArgumentException(field.name + " is a list: change it through list(field)");
         if (field.local) {
             if (field.kind == CgNetField.Kind.CODEC) refs[i] = value;
             else bits[i] = field.bitsOf(Objects.requireNonNull(value, "a primitive field's value"));
@@ -840,6 +871,7 @@ public final class CgNetObject {
     }
 
     void clearDirty() {
+        for (int i : type.lists) if (refs[i] instanceof CgNetList.Entries<?> entries) entries.sent();
         Arrays.fill(dirty, 0);
         Arrays.fill(ownerHas, 0);
         anyDirty = false;

@@ -894,7 +894,7 @@ public final class CgNetObjects {
             if (onlyWatched && !field.watched) continue;
             if (owner && !spawn && CgNetObject.has(obj.ownerHas, i)) continue;
             VALUE.clear();
-            field.write(VALUE, obj.bits[i], obj.refs[i]);
+            field.write(VALUE, obj.bits[i], obj.refs[i], spawn);
             BLOCK.writeVarInt(i);
             BLOCK.writeVarInt(VALUE.size);
             BLOCK.append(VALUE, 0, VALUE.size);

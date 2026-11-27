@@ -127,6 +127,8 @@ public final class CgNetType {
     final boolean perHolder;
     final boolean copyOnDeath;
     final boolean visibleToTrackers;
+    /** The indices of its list fields: their operations are cleared after each send. */
+    final int[] lists;
     /** Seen only by its watchers. */
     final boolean watched;
     /** It has a field sent only to its watchers, or is {@link #watched} whole: it keeps watchers. */
@@ -189,6 +191,10 @@ public final class CgNetType {
         this.copyOnDeath = b.copyOnDeath;
         this.visibleToTrackers = b.visibleToTrackers;
         this.watched = b.watched;
+        int listCount = 0;
+        for (CgNetField<?> field : fields) if (field instanceof CgNetList) listCount++;
+        this.lists = new int[listCount];
+        for (int i = 0, n = 0; i < fields.length; i++) if (fields[i] instanceof CgNetList) lists[n++] = i;
         boolean anyWatched = b.watched;
         for (CgNetField<?> field : fields) anyWatched |= field.watched;
         this.keepsWatchers = anyWatched;
