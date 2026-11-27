@@ -6,6 +6,7 @@ import net.minecraft.world.item.Items;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.modern.platform.world.EntitySavesModern;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.world.CgPermissions;
 import com.crystalgraphics.world.CgEntitySaves;
 import net.neoforged.neoforge.common.extensions.IEntityExtension;
 import com.crystalgraphics.mc.modern.platform.KeyBindingsModern;
@@ -117,6 +118,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
         LogUtils.getLogger().info("[cg] {}: {}", CrashVariant.LABEL,
                 CrashVariant.report(CrystalGraphicsNeoForge.class));
         PlatformServiceModern.install(ModLoaderNeoForge.INSTANCE);
+        CgPlatform.provide(CgPermissions.HOST, new PermissionsNeoForge());
         MenusNeoForge.install((IEventBus) context);
         // what the engine saves with an entity, in NeoForge's persistent data: through IEntityExtension, which the compile
         // classpath of 1.20.2-1.20.3 does not show on Entity

@@ -49,6 +49,8 @@ import com.crystalgraphics.platform.service.CgScreens;
 import com.crystalgraphics.platform.service.CgGameSession;
 import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.platform.world.CgPlayers;
+import com.crystalgraphics.mc.legacy.platform.world.PermissionsLegacy;
+import com.crystalgraphics.platform.world.CgPermissions;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.serialization.nbt.CgNbt;
 import com.crystalgraphics.platform.CgPlatformService;
@@ -120,6 +122,9 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         // both sides: entities joining a server's levels, for their actors there
         MinecraftForge.EVENT_BUS.register(new ServerActorsLegacy());
         CgPlatform.provide(CgPlayers.HOST, PlayersLegacy.INSTANCE);
+        //? if >=1.10 {
+        CgPlatform.provide(CgPermissions.HOST, new PermissionsLegacy());
+        //?}
         CgPlatform.provide(CgServers.HOST, ServersLegacy.INSTANCE);
         CgPlatform.provide(CgHostShapes.HOST, new HostShapesLegacy());
         CgPlatform.provide(CgMirrorHost.HOST, new MirrorHostLegacy());

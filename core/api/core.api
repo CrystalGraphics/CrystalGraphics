@@ -10595,6 +10595,7 @@ com/crystalgraphics/net/CgNetwork
   method public,static onServerThread ()Z
   method public,static onSessionEnd (Ljava/lang/Runnable;)V
   method public,static openConnections ()I
+  method public,static peer (Ljava/util/UUID;)Lcom/crystalgraphics/net/CgPeer;
   method public,static playerJoined (Ljava/util/UUID;Ljava/lang/String;Ljava/util/function/Supplier;)V
   method public,static playerLeft (Ljava/util/UUID;)V
   method public,static resetForTesting ()V
@@ -10619,11 +10620,37 @@ com/crystalgraphics/net/CgPeer
   extends java/lang/Object
   method public <init> (Ljava/util/UUID;Ljava/lang/String;Ljava/util/function/Supplier;)V
   method public equals (Ljava/lang/Object;)Z
+  method public has (Lcom/crystalgraphics/net/CgPermission;)Z
   method public hashCode ()I
   method public id ()Ljava/util/UUID;
+  method public isOperator ()Z
+  method public isOwner ()Z
   method public name ()Ljava/lang/String;
   method public player ()Ljava/lang/Object;
   method public toString ()Ljava/lang/String;
+com/crystalgraphics/net/CgPermission
+  access public,final
+  extends java/lang/Object
+  field public,static,final EVERYONE Lcom/crystalgraphics/platform/world/CgPermissions$Level;
+  field public,static,final OPERATORS Lcom/crystalgraphics/platform/world/CgPermissions$Level;
+  field public,static,final OWNER Lcom/crystalgraphics/platform/world/CgPermissions$Level;
+  method public defaultLevel ()Lcom/crystalgraphics/platform/world/CgPermissions$Level;
+  method public granted ()Z
+  method public has (Lcom/crystalgraphics/net/CgPeer;)Z
+  method public id ()Ljava/lang/String;
+  method public toString ()Ljava/lang/String;
+  method public,static define (Ljava/lang/String;)Lcom/crystalgraphics/net/CgPermission$Builder;
+  method public,static localOperator ()Z
+  method public,static localOwner ()Z
+  method public,static named (Ljava/lang/String;)Lcom/crystalgraphics/net/CgPermission;
+  method public,static onLocalChange (Ljava/lang/Runnable;)V
+  method public,static recheck (Lcom/crystalgraphics/net/CgPeer;)V
+com/crystalgraphics/net/CgPermission$Builder
+  access public,final
+  extends java/lang/Object
+  method public build ()Lcom/crystalgraphics/net/CgPermission;
+  method public defaultsTo (Lcom/crystalgraphics/platform/world/CgPermissions$Level;)Lcom/crystalgraphics/net/CgPermission$Builder;
+  method public describedAs (Ljava/lang/String;)Lcom/crystalgraphics/net/CgPermission$Builder;
 com/crystalgraphics/net/CgRequest
   access public,final
   extends java/lang/Object
@@ -10989,6 +11016,8 @@ com/crystalgraphics/net/object/CgNetTestRig$Client
   method public id ()Ljava/util/UUID;
   method public local ()Lcom/crystalgraphics/net/object/CgNetTestRig$Client;
   method public moveTo (DDD)Lcom/crystalgraphics/net/object/CgNetTestRig$Client;
+  method public operator (Z)Lcom/crystalgraphics/net/object/CgNetTestRig$Client;
+  method public owner (Z)Lcom/crystalgraphics/net/object/CgNetTestRig$Client;
   method public predict (Lcom/crystalgraphics/net/object/CgNetType;Lcom/crystalgraphics/net/object/CgAnchor;)Lcom/crystalgraphics/net/object/CgNetObject;
   method public readsAs (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetTestRig$Client;
   method public record ()Lcom/crystalgraphics/net/object/CgNetTestRig$Client;
@@ -11009,8 +11038,12 @@ com/crystalgraphics/net/object/CgNetType
   extends java/lang/Object
   method public acceptPredictionsFrom (Ljava/util/function/BiPredicate;)Lcom/crystalgraphics/net/object/CgNetType;
   method public afterEdit (Ljava/util/function/BiConsumer;)Lcom/crystalgraphics/net/object/CgNetType;
+  method public allow (Lcom/crystalgraphics/net/object/CgNetCall;Lcom/crystalgraphics/net/CgPermission;)Lcom/crystalgraphics/net/object/CgNetType;
   method public allow (Lcom/crystalgraphics/net/object/CgNetCall;Ljava/util/function/BiPredicate;)Lcom/crystalgraphics/net/object/CgNetType;
+  method public allow (Lcom/crystalgraphics/net/object/CgNetCommand;Lcom/crystalgraphics/net/CgPermission;)Lcom/crystalgraphics/net/object/CgNetType;
   method public allow (Lcom/crystalgraphics/net/object/CgNetCommand;Ljava/util/function/BiPredicate;)Lcom/crystalgraphics/net/object/CgNetType;
+  method public allowEdits (Lcom/crystalgraphics/net/CgPermission;)Lcom/crystalgraphics/net/object/CgNetType;
+  method public allowEdits (Lcom/crystalgraphics/serialization/CgObjectCodec;Lcom/crystalgraphics/net/CgPermission;)Lcom/crystalgraphics/net/object/CgNetType;
   method public allowEdits (Lcom/crystalgraphics/serialization/CgObjectCodec;Ljava/util/function/BiPredicate;)Lcom/crystalgraphics/net/object/CgNetType;
   method public allowEdits (Ljava/util/function/BiPredicate;)Lcom/crystalgraphics/net/object/CgNetType;
   method public entry (Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetObject;

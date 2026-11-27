@@ -7,6 +7,7 @@ import java.util.function.Supplier;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
+import com.crystalgraphics.platform.world.CgPlayers;
 
 /**
  * A connected player, as a server's connection names it: {@link CgProtocolConnection#peer()} answers one.
@@ -46,6 +47,27 @@ public final class CgPeer {
 
     public String name() {
         return name;
+    }
+
+    /**
+     * Whether this player is an operator now, as the server's op list says.
+     *
+     * <pre>{@code
+     * if (peer.isOperator() || peer.isOwner()) resetWorld();
+     * }</pre>
+     */
+    public boolean isOperator() {
+        return CgPlayers.isOperator(name);
+    }
+
+    /** Whether this player owns the single-player world being served; false on a dedicated server. */
+    public boolean isOwner() {
+        return CgPlayers.isOwner(name);
+    }
+
+    /** Whether this player has {@code permission} now: a permission mod's answer, else its default. */
+    public boolean has(CgPermission permission) {
+        return permission.has(this);
     }
 
     /** The loader's player handle now, or null between a disconnect and this peer being dropped. */

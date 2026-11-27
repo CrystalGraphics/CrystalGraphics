@@ -8,6 +8,7 @@ import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.fluid.CgFluids;
 import com.crystalgraphics.mc.modern.platform.world.EntitySavesModern;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.world.CgPermissions;
 import com.crystalgraphics.world.CgEntitySaves;
 import net.minecraftforge.common.extensions.IForgeEntity;
 import com.crystalgraphics.mc.modern.platform.CrystalGraphics;
@@ -214,6 +215,7 @@ public final class CrystalGraphicsForge implements VariantEntry {
         //?} else {
         /*CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(entity -> ((IForgeEntity) entity).getEntityData(), false));   // no mixins: written as it changes
         *///?}
+        CgPlatform.provide(CgPermissions.HOST, new PermissionsForge());
         if (FMLEnvironment.dist == Dist.CLIENT) {
             PlatformServiceModern.installClient();
             CgPlatform.provide(CgFluids.HOST, new FluidsForge());

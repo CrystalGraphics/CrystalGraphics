@@ -3548,6 +3548,38 @@ com/crystalgraphics/platform/world/CgModelSpace
   field public,static,final NONE Lcom/crystalgraphics/platform/world/CgModelSpace;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   method public,abstract frame ([D[F)Z
+com/crystalgraphics/platform/world/CgPermissions
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static declare (Ljava/lang/String;Lcom/crystalgraphics/platform/world/CgPermissions$Level;Ljava/lang/String;Ljava/util/function/Predicate;)V
+  method public,static declared ()Ljava/util/List;
+  method public,static has (Ljava/util/UUID;Ljava/lang/String;)Ljava/lang/Boolean;
+com/crystalgraphics/platform/world/CgPermissions$Declared
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/platform/world/CgPermissions$Level;Ljava/lang/String;Ljava/util/function/Predicate;)V
+  method public byDefault ()Ljava/util/function/Predicate;
+  method public description ()Ljava/lang/String;
+  method public level ()Lcom/crystalgraphics/platform/world/CgPermissions$Level;
+  method public node ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/platform/world/CgPermissions$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgPermissions$Host;
+  method public declared (Ljava/lang/String;Lcom/crystalgraphics/platform/world/CgPermissions$Level;Ljava/lang/String;Ljava/util/function/Predicate;)V
+  method public has (Ljava/util/UUID;Ljava/lang/String;)Ljava/lang/Boolean;
+com/crystalgraphics/platform/world/CgPermissions$Level
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final EVERYONE Lcom/crystalgraphics/platform/world/CgPermissions$Level;
+  field public,static,final OPERATORS Lcom/crystalgraphics/platform/world/CgPermissions$Level;
+  field public,static,final OWNER Lcom/crystalgraphics/platform/world/CgPermissions$Level;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/world/CgPermissions$Level;
+  method public,static values ()[Lcom/crystalgraphics/platform/world/CgPermissions$Level;
 com/crystalgraphics/platform/world/CgPlayers
   access public,final
   extends java/lang/Object

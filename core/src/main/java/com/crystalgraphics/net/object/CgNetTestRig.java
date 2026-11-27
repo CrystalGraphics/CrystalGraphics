@@ -246,6 +246,7 @@ public final class CgNetTestRig implements AutoCloseable {
         int framesReceived;
         @Nullable
         ByteArrayOutputStream recorded;
+        boolean operator, owner;
 
         private Client(int index) {
             this.name = "player" + index;
@@ -334,6 +335,18 @@ public final class CgNetTestRig implements AutoCloseable {
          */
         public Client record() {
             recorded = new ByteArrayOutputStream();
+            return this;
+        }
+
+        /** Makes it an operator, or no longer one: the server's op list, as {@code /op} changes it. */
+        public Client operator(boolean operator) {
+            this.operator = operator;
+            return this;
+        }
+
+        /** Makes it the single-player world's owner, as the integrated server's host. */
+        public Client owner(boolean owner) {
+            this.owner = owner;
             return this;
         }
 
@@ -457,6 +470,18 @@ public final class CgNetTestRig implements AutoCloseable {
     }
 
     private final class Players implements CgPlayers.Host {
+
+        @Override
+        public boolean isOperator(String name) {
+            for (Client c : clients) if (c.name.equals(name)) return c.connected && c.operator;
+            return false;
+        }
+
+        @Override
+        public boolean isOwner(String name) {
+            for (Client c : clients) if (c.name.equals(name)) return c.owner;
+            return false;
+        }
         private final double[] at = new double[3];
 
         @Override

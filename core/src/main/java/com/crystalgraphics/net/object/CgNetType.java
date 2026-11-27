@@ -28,6 +28,7 @@ import org.apache.logging.log4j.Logger;
 import com.crystalgraphics.job.reply.CgReply;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
+import com.crystalgraphics.net.CgPermission;
 import com.crystalgraphics.trace.CgTraceNames;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.platform.world.CgPlayers;
@@ -1059,6 +1060,33 @@ public final class CgNetType<T> {
     public CgNetType<T> allow(CgNetCommand<?> command, BiPredicate<? super T, CgPeer> guard) {
         guards[requireCommand(command)] = (BiPredicate<Object, CgPeer>) guard;
         return this;
+    }
+
+    /**
+     * Who may send {@code command}: the players with {@code permission}. A client can read the same answer beforehand,
+     * {@code permission.granted()}, and grey out what would be refused.
+     *
+     * <pre>{@code
+     * NPC.allow(RESPAWN, EDIT_NPC);
+     * }</pre>
+     */
+    public CgNetType<T> allow(CgNetCommand<?> command, CgPermission permission) {
+        return allow(command, (subject, peer) -> peer.has(permission));
+    }
+
+    /** {@link #allow(CgNetCommand, CgPermission)} for a call. */
+    public CgNetType<T> allow(CgNetCall<?, ?> call, CgPermission permission) {
+        return allow(call.command, permission);
+    }
+
+    /** Edits of this type's objects, and of its parts unless a part says otherwise, by the players with {@code permission}. */
+    public CgNetType<T> allowEdits(CgPermission permission) {
+        return allowEdits((subject, peer) -> peer.has(permission));
+    }
+
+    /** One part's edits by the players with {@code permission}: {@code NPC.allowEdits(Stats.CODEC, EDIT_NPC)}. */
+    public CgNetType<T> allowEdits(CgObjectCodec<?> part, CgPermission permission) {
+        return allowEdits(part, (subject, peer) -> peer.has(permission));
     }
 
     /** {@link #allow(CgNetCommand, BiPredicate)} for a call. */

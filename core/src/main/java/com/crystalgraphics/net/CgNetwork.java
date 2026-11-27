@@ -269,6 +269,15 @@ public final class CgNetwork {
 
     // ── What a host forwards ────────────────────────────────────────────────────────────────────
 
+    /** Server: the connected player {@code id}, or null. */
+    @Nullable
+    public static CgPeer peer(UUID id) {
+        CgConnections table = server;
+        if (table == null) return null;
+        CgProtocolConnection<Object> connection = table.get(id);
+        return connection == null ? null : (CgPeer) connection.peer();
+    }
+
     /** @param player resolves the live player handle at send time; the entity is replaced on every respawn */
     public static void playerJoined(UUID id, String name, Supplier<Object> player) {
         CgConnections table = server;
@@ -279,12 +288,14 @@ public final class CgNetwork {
             Object live = peer.player();
             if (live != null) wire.sendToPlayer(live, frame);
         });
+        CgPermission.joined(peer);
         LOGGER.info("[cg-net] connection opened for {} ({} open)", name, openConnections());
     }
 
     /** By id: the leave event carries whichever entity the player wears now, not the one that joined. */
     public static void playerLeft(UUID id) {
         CgConnections table = server;
+        CgPermission.left(id);
         if (table != null && table.close(id, "player left")) {
             LOGGER.info("[cg-net] connection closed for {} ({} open)", id, openConnections());
         }
@@ -344,6 +355,7 @@ public final class CgNetwork {
         long started = System.nanoTime();
         long allocated = measureAllocation ? CgThreadAllocation.current() : 0;
         CgNetObjects.serverTick();
+        CgPermission.serverTick();
         long objectsDone = System.nanoTime();
         long objectsAllocated = measureAllocation ? CgThreadAllocation.current() : 0;
         table.tick();
