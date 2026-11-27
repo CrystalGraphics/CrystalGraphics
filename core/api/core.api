@@ -11093,6 +11093,7 @@ com/crystalgraphics/net/object/CgNetType
   method public call (Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetCall;
   method public codec ()Lcom/crystalgraphics/serialization/CgObjectCodec;
   method public command (Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetCommand;
+  method public commands ()Ljava/util/List;
   method public edit (Lcom/crystalgraphics/net/object/CgNetObject;Ljava/lang/Object;Ljava/util/Collection;)Lcom/crystalgraphics/job/reply/CgReply;
   method public entry (Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetObject;
   method public event (Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetEvent;

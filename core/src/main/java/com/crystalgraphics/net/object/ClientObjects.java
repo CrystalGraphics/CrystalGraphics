@@ -192,6 +192,7 @@ final class ClientObjects {
             framed = true;
             while (in.more()) {
                 int start = in.pos;
+                recordFor = null;                   // a record that names no object credits none, after a malformed one too
                 int record = in.readByte();
                 switch (record) {
                     case CgNetObjects.DEFINE: define(in); break;
@@ -214,10 +215,7 @@ final class ClientObjects {
                     default: throw new CgCodecException("unknown object record " + record);
                 }
                 CgNetObject credited = recordFor;
-                if (credited != null) {
-                    credited.bytesReceived += in.pos - start;
-                    recordFor = null;
-                }
+                if (credited != null) credited.bytesReceived += in.pos - start;
             }
         } catch (CgCodecException malformed) {
             if (!reportedMalformed) {

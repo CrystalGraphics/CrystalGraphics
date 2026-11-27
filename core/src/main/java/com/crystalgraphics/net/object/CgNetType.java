@@ -1295,6 +1295,18 @@ public final class CgNetType<T> {
         return null;
     }
 
+    /**
+     * Its commands, each call's own included (its {@code name()} the call's), in declaration order: what an inspector
+     * reads each one's {@code refused()}, {@code dropped()} and {@code malformed()} from.
+     *
+     * <pre>{@code
+     * for (CgNetCommand<?> c : TYPE.commands()) log(c.name() + " refused " + c.refused());
+     * }</pre>
+     */
+    public List<CgNetCommand<?>> commands() {
+        return List.of(commands);
+    }
+
     /** Its call named {@code name}; null for none. */
     @Nullable
     public CgNetCall<?, ?> call(String name) {
