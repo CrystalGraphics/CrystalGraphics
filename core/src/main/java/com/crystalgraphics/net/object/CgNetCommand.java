@@ -102,6 +102,15 @@ public final class CgNetCommand<P> {
         return new CgNetCommand<>(name, null, null);
     }
 
+    /**
+     * What its value is written with; null for one that carries nothing or a fixed-width one. A document's action turns
+     * its plain value into this codec's ({@code codec.decode(CgPlainOps.INSTANCE, plain)}).
+     */
+    @Nullable
+    public CgCodec<P> codec() {
+        return codec;
+    }
+
     /** How often the client lets it go; immediate unless said. */
     public CgNetCommand<P> rate(CgRatePolicy policy) {
         rate = Objects.requireNonNull(policy, "policy");

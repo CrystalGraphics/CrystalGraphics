@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -38,6 +39,9 @@ import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.util.io.CgIO;
+import java.util.TreeMap;
+import java.util.function.Supplier;
+import com.crystalgraphics.net.object.CgNetType;
 
 /**
  * A server's files on a client that lacks its mod: the server offers a namespace, and each client without it fetches
@@ -111,6 +115,10 @@ public final class CgServerMounts {
         @Nullable
         final Path folder;
         final Map<String, Integer> floor = new LinkedHashMap<>();
+        /** Files the server writes itself, by path: made again with each manifest. */
+        final Map<String, Supplier<byte[]>> generated = new ConcurrentHashMap<>();
+        /** The bodies the last manifest made, by hash. */
+        volatile Map<String, byte[]> generatedBodies = Map.of();
         @Nullable
         volatile Manifest manifest;
 
@@ -124,6 +132,37 @@ public final class CgServerMounts {
             floor.put(capability, version);
             manifest = null;
             return this;
+        }
+
+        /**
+         * A file the server writes itself at {@code path} (as under {@code assets/<namespace>/}), made with each manifest:
+         * a description of something declared in code. A file of the same path in the folder gives way to it.
+         *
+         * <pre>{@code
+         * CgServerMounts.offer("mybank").generated("application/bank.json", () -> describe(Bank.APP));
+         * }</pre>
+         */
+        public Offer generated(String path, Supplier<byte[]> body) {
+            if (kindOf(path) == null) throw new IllegalArgumentException(path + " is no kind a client takes");
+            generated.put(path, Objects.requireNonNull(body, "body"));
+            manifest = null;
+            return this;
+        }
+
+        /**
+         * Offers {@code type}, declared in Java, as its {@code net_type} file: a client without the mod declares it for
+         * its connection and reads, sends and hears all of it. Its name's namespace is this offer's.
+         *
+         * <pre>{@code
+         * CgServerMounts.offer("mybank").type(Bank.ACCOUNT);
+         * }</pre>
+         */
+        public Offer type(CgNetType<?> type) {
+            String name = type.name();
+            if (!name.startsWith(namespace + ":")) throw new IllegalArgumentException(name + " is not in " + namespace);
+            String yaml = CgNetTypeCompiler.describe(type);
+            return generated("net_types/" + name.substring(namespace.length() + 1) + ".yaml",
+                    () -> yaml.getBytes(StandardCharsets.UTF_8));
         }
 
         /** Its folder: the one given, else where {@code CgAssetMounts} mounted the namespace. */
@@ -193,12 +232,20 @@ public final class CgServerMounts {
         static Manifest of(Offer offer) {
             Path folder = offer.folder();
             List<Entry> entries = new ArrayList<>();
+            Map<String, byte[]> made = new HashMap<>();
+            for (Map.Entry<String, Supplier<byte[]>> g : new TreeMap<>(offer.generated).entrySet()) {
+                byte[] bytes = g.getValue().get();
+                String hash = sha256(bytes);
+                made.put(hash, bytes);
+                entries.add(new Entry(g.getKey(), kindOf(g.getKey()), hash, bytes.length));
+            }
+            offer.generatedBodies = made;
             if (folder != null && Files.isDirectory(folder)) {
                 try (Stream<Path> walk = Files.walk(folder)) {
                     for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile).sorted()::iterator) {
                         String path = folder.relativize(file).toString().replace('\\', '/');
                         String kind = kindOf(path);
-                        if (kind == null) continue;
+                        if (kind == null || offer.generated.containsKey(path)) continue;
                         byte[] bytes = Files.readAllBytes(file);
                         entries.add(new Entry(path, kind, sha256(bytes), bytes.length));
                     }
@@ -262,6 +309,11 @@ public final class CgServerMounts {
         });
         BODY.onServer((peer, body, reply) -> {
             Offer offer = OFFERS.get(body.namespace());
+            byte[] made = offer == null ? null : offer.generatedBodies.get(body.hash());
+            if (made != null) {
+                reply.ok(made);
+                return;
+            }
             Path folder = offer == null ? null : offer.folder();
             if (folder != null) {
                 for (Entry e : offer.manifest().entries()) {
@@ -310,6 +362,28 @@ public final class CgServerMounts {
     private static final AtomicLong MISMATCHED = new AtomicLong(), REFUSED_KINDS = new AtomicLong(), FETCHED = new AtomicLong();
     private static final List<BiConsumer<String, Path>> ON_MOUNTED = new CopyOnWriteArrayList<>();
     private static final List<Consumer<String>> ON_UNMOUNTED = new CopyOnWriteArrayList<>();
+    private static final List<Mounts> ON_MOUNTS = new CopyOnWriteArrayList<>();
+
+    /** A connection's mounts as they come and go: where one process holds several clients (a test rig). */
+    public interface Mounts {
+        /** {@code namespace} mounted for {@code connection} from {@code folder} (again, after a reload). */
+        void mounted(CgProtocolConnection<Object> connection, String namespace, Path folder);
+
+        /** {@code namespace} unmounted, its connection closed. */
+        default void unmounted(CgProtocolConnection<Object> connection, String namespace) {
+        }
+    }
+
+    /**
+     * Client: {@code listener} with each mount and unmount and its connection.
+     *
+     * <pre>{@code
+     * CgServerMounts.onMounts((connection, namespace, folder) -> kinds.load(connection, folder));
+     * }</pre>
+     */
+    public static void onMounts(Mounts listener) {
+        ON_MOUNTS.add(Objects.requireNonNull(listener, "listener"));
+    }
     private static volatile long cap = 256L * 1024 * 1024;
     @Nullable
     private static volatile Path cacheRoot;
@@ -366,11 +440,32 @@ public final class CgServerMounts {
     /** Client: the hello named what the server offers; each namespace this client lacks is fetched. */
     static void offered(CgProtocolConnection<Object> connection, Map<String, String> offers) {
         if (offers.isEmpty()) return;
-        connection.onClosed(reason -> unmountAll(connection));
+        connection.onClosed(reason -> {
+            PENDING.remove(connection);
+            unmountAll(connection);
+        });
         for (String namespace : offers.keySet()) {
             if (installed(namespace)) continue;
+            PENDING.computeIfAbsent(connection, c -> ConcurrentHashMap.newKeySet()).add(namespace);
             fetch(connection, namespace, false);
         }
+    }
+
+    /** Namespaces each connection's server offered that are on their way: asked for, not yet mounted or refused. */
+    private static final Map<CgProtocolConnection<Object>, Set<String>> PENDING = new ConcurrentHashMap<>();
+
+    /**
+     * Client: whether {@code namespace}'s files are on their way from {@code connection}'s server: offered, and neither
+     * mounted nor refused yet. What waits for a server's files ({@code CgServerMounts.onMounts}) asks first.
+     */
+    public static boolean mounting(CgProtocolConnection<Object> connection, String namespace) {
+        Set<String> waiting = PENDING.get(connection);
+        return waiting != null && waiting.contains(namespace);
+    }
+
+    private static void settled(CgProtocolConnection<Object> connection, String namespace) {
+        Set<String> waiting = PENDING.get(connection);
+        if (waiting != null) waiting.remove(namespace);
     }
 
     /** Whether this client has {@code namespace} itself: a mod, a mounted namespace, or a message namespace declared. */
@@ -384,7 +479,10 @@ public final class CgServerMounts {
         if (language != null) languages.add(language);
         INDEX.ask(connection, new Ask(namespace, languages, new HashMap<>(SUPPORTED)))
                 .then(manifest -> fetchBodies(connection, namespace, manifest, reload))
-                .onError(error -> LOGGER.warn("[cg-net] {}'s files are not mounted: {}", namespace, error.code()));
+                .onError(error -> {
+                    settled(connection, namespace);
+                    LOGGER.warn("[cg-net] {}'s files are not mounted: {}", namespace, error.code());
+                });
     }
 
     private static void fetchBodies(CgProtocolConnection<Object> connection, String namespace, Manifest manifest, boolean reload) {
@@ -453,6 +551,8 @@ public final class CgServerMounts {
             for (Entry e : taken) {
                 if (!e.kind().equals("net_type") || bodies.get(e) == null) continue;
                 String name = e.path().substring("net_types/".length(), e.path().length() - ".yaml".length());
+                // one process serving itself (an integrated server): its own declaration is the type
+                if (CgNetType.named(namespace + ":" + name) != null) continue;
                 try {
                     CgNetTypeCompiler.declareFor(connection, namespace + ":" + name,
                             new String(Files.readAllBytes(folder.resolve(e.path())), StandardCharsets.UTF_8));
@@ -463,6 +563,8 @@ public final class CgServerMounts {
         }
         LOGGER.info("[cg-net] {} mounted from the server: {} files", namespace, taken.size());
         for (BiConsumer<String, Path> listener : ON_MOUNTED) listener.accept(namespace, folder);
+        settled(connection, namespace);
+        for (Mounts listener : ON_MOUNTS) listener.mounted(connection, namespace, folder);
     }
 
     private static void unmountAll(CgProtocolConnection<Object> connection) {
@@ -476,6 +578,7 @@ public final class CgServerMounts {
                 // a file held open stays until the next session's cleanup
             }
             for (Consumer<String> listener : ON_UNMOUNTED) listener.accept(m.namespace);
+            for (Mounts listener : ON_MOUNTS) listener.unmounted(m.connection, m.namespace);
         }
     }
 

@@ -43,6 +43,16 @@ public final class CgNetCall<A, R> {
     }
 
     /** How many one player may make a second, as {@link CgNetCommand#perSecond}. */
+    /** Its arguments' codec. */
+    public CgCodec<A> args() {
+        return command.codec;
+    }
+
+    /** Its answer's codec. */
+    public CgCodec<R> result() {
+        return result;
+    }
+
     public CgNetCall<A, R> perSecond(float count) {
         command.perSecond(count);
         return this;

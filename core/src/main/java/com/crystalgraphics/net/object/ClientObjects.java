@@ -94,6 +94,12 @@ final class ClientObjects {
         if (declared.putIfAbsent(type.name, type) != null) throw new IllegalArgumentException(type.name + " is declared for this connection already");
     }
 
+    /** The type declared for this connection under {@code name}, or null. */
+    @Nullable
+    CgNetType<?> declaredType(String name) {
+        return declared.get(name);
+    }
+
     /** A test rig's: a server type read as another type of this process, as another version of a mod would. */
     final Map<String, String> readsAs = new HashMap<>();
 

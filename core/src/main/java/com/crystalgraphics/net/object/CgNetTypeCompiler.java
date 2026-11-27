@@ -113,6 +113,7 @@ public final class CgNetTypeCompiler {
     }
 
     /** The type a file's resolved tree declares, not yet built; a connection's has no entities to name. */
+    @SuppressWarnings("unchecked")
     private static CgNetType.Builder<CgNetObject> builder(String id, Map<Object, Object> tree, boolean onEntities) {
         boolean persisted = Boolean.TRUE.equals(tree.get("persisted"));
         List<CgNetField<?>> fields = new ArrayList<>();
@@ -137,9 +138,111 @@ public final class CgNetTypeCompiler {
         }
         CgNetType.Builder<CgNetObject> type = CgNetType.define(id).fields(fields.toArray(new CgNetField<?>[0]))
                 .events(events.toArray(new CgNetEvent<?>[0]));
+        // In wire order: a call is a command that answers
+        if (tree.get("commands") instanceof List<?> declared) {
+            for (Object c : declared) {
+                if (!(c instanceof Map<?, ?> m) || m.get("name") == null) throw new CgAssetException(id + ": commands: each has a name");
+                String name = String.valueOf(m.get("name"));
+                Object payload = m.get("payload"), result = m.get("result");
+                if (result != null) {
+                    CgCodec<Object> args = payload == null ? CgCodecs.PLAIN : (CgCodec<Object>) codec(String.valueOf(payload));
+                    type.calls(CgNetCall.of(name, args, (CgCodec<Object>) codec(String.valueOf(result))));
+                } else {
+                    type.commands(payload == null ? CgNetCommand.of(name) : CgNetCommand.of(name, codec(String.valueOf(payload))));
+                }
+            }
+        }
+        if (Boolean.TRUE.equals(tree.get("watched"))) type.watched();
         if (onEntities) type.onEntities(entities(id, tree.get("entities")));
         if (persisted) type.persisted();
         return type;
+    }
+
+    /**
+     * The {@code net_type} file of a type declared in Java: what a server offers a client that lacks its mod, which
+     * declares it for that connection ({@link #declareFor}) and reads every field, sends every command and hears every
+     * event as the mod would. A codec key is {@code kind: value}, read as its plain tree ({@code CgCodecs.PLAIN}).
+     *
+     * <pre>{@code
+     * String yaml = CgNetTypeCompiler.describe(Bank.ACCOUNT);
+     * CgServerMounts.offer("mybank").type(Bank.ACCOUNT);       // the same file, offered
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Fields, commands and calls keep their order: they are numbered by it on the wire.</li>
+     *   <li>A key a part, a map or a keyed list holds, or a fixed-width wire, has no file: it is refused by name.</li>
+     * </ul>
+     *
+     * @throws IllegalArgumentException naming what has no file
+     */
+    public static String describe(CgNetType<?> type) {
+        StringBuilder out = new StringBuilder("{\"_v\": 1");
+        if (type.watched) out.append(", \"watched\": true");
+        out.append(", \"fields\": {");
+        boolean first = true;
+        for (CgNetField<?> f : type.fields) {
+            if (f instanceof CgNetList) throw new IllegalArgumentException(type.name + "." + f.name + ": a keyed list has no net_type file");
+            out.append(first ? "" : ", ").append(quote(f.name)).append(": {\"kind\": ").append(quote(kindOf(type.name, f)));
+            first = false;
+            String sync = f.serverOnly ? "server" : f.local ? "local" : f.ownerOnly ? "owner" : f.watched ? "watched" : null;
+            if (sync != null) out.append(", \"sync\": ").append(quote(sync));
+            if (f.initialOnly) out.append(", \"initial_only\": true");
+            if (f.skipOwner) out.append(", \"skip_owner\": true");
+            if (f.command != null) out.append(", \"predicted\": true");
+            if (f.kind != CgNetField.Kind.CODEC && f.fallback != null) out.append(", \"fallback\": ").append(f.fallback);
+            out.append('}');
+        }
+        out.append("}, \"events\": {");
+        first = true;
+        for (CgNetEvent<?> e : type.events) {
+            if (e.wire != null) throw new IllegalArgumentException(type.name + "." + e.name + ": a fixed-width event has no net_type file");
+            out.append(first ? "" : ", ").append(quote(e.name)).append(": {");
+            if (e.codec != null) out.append("\"payload\": ").append(quote(codecKind(e.codec)));
+            out.append('}');
+            first = false;
+        }
+        out.append("}, \"commands\": [");
+        first = true;
+        for (CgNetCommand<?> c : type.commands) {
+            if (c.field != null) continue;                      // a predicted field's, made again from the field
+            if (c.wire != null) throw new IllegalArgumentException(type.name + "." + c.name + ": a fixed-width command has no net_type file");
+            out.append(first ? "" : ", ").append("{\"name\": ").append(quote(c.name));
+            if (c.codec != null) out.append(", \"payload\": ").append(quote(codecKind(c.codec)));
+            if (c.call != null) out.append(", \"result\": ").append(quote(codecKind(c.call.result)));
+            out.append('}');
+            first = false;
+        }
+        return out.append("]}").toString();
+    }
+
+    private static String kindOf(String type, CgNetField<?> f) {
+        return switch (f.kind) {
+            case INT -> "int";
+            case LONG -> "long";
+            case FLOAT -> "float";
+            case DOUBLE -> "double";
+            case BOOL -> "bool";
+            case CODEC -> codecKind(f.codec);
+        };
+    }
+
+    private static String codecKind(CgCodec<?> codec) {
+        if (codec == CgCodecs.BOOL) return "bool";
+        if (codec == CgCodecs.INT) return "int";
+        if (codec == CgCodecs.LONG) return "long";
+        if (codec == CgCodecs.FLOAT) return "float";
+        if (codec == CgCodecs.DOUBLE) return "double";
+        if (codec == CgCodecs.STRING) return "string";
+        return "value";
+    }
+
+    private static String quote(String text) {
+        StringBuilder q = new StringBuilder("\"");
+        for (char c : text.toCharArray()) {
+            if (c == '"' || c == '\\') q.append('\\');
+            q.append(c);
+        }
+        return q.append('"').toString();
     }
 
     private static CgNetField<?> field(String id, String name, Map<?, ?> f, String sync) {
@@ -150,16 +253,19 @@ public final class CgNetTypeCompiler {
             case "long" -> fallback == null ? CgNetField.ofLong(name) : CgNetField.ofLong(name).fallback(number(id, name, fallback).longValue());
             case "float" -> fallback == null ? CgNetField.ofFloat(name) : CgNetField.ofFloat(name).fallback(number(id, name, fallback).floatValue());
             case "double" -> fallback == null ? CgNetField.ofDouble(name) : CgNetField.ofDouble(name).fallback(number(id, name, fallback).doubleValue());
+            case "value" -> CgNetField.of(name, CgCodecs.PLAIN);
             default -> fallback == null ? CgNetField.of(name, CgCodecs.STRING) : CgNetField.of(name, CgCodecs.STRING).fallback(String.valueOf(fallback));
         };
         switch (sync) {
             case "owner" -> field.ownerOnly();
             case "local" -> field.local();
             case "watched" -> field.watched();
+            case "server" -> field.serverOnly();
             default -> {
             }
         }
         if (Boolean.TRUE.equals(f.get("initial_only"))) field.initialOnly();
+        if (Boolean.TRUE.equals(f.get("skip_owner"))) field.skipOwner();
         if (Boolean.TRUE.equals(f.get("predicted"))) field.predicted();
         if (Boolean.TRUE.equals(f.get("persisted"))) field.persisted();
         return field;
@@ -177,7 +283,8 @@ public final class CgNetTypeCompiler {
             case "long" -> CgCodecs.LONG;
             case "float" -> CgCodecs.FLOAT;
             case "double" -> CgCodecs.DOUBLE;
-            default -> CgCodecs.STRING;
+            case "string" -> CgCodecs.STRING;
+            default -> CgCodecs.PLAIN;
         };
     }
 

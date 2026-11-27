@@ -1285,6 +1285,28 @@ public final class CgNetType<T> {
         throw new IllegalArgumentException(this.name + " has no event " + name);
     }
 
+    /**
+     * Its command named {@code name}, a call's included: how a page from a document sends by name. Null for none, which
+     * a caller refuses and counts.
+     */
+    @Nullable
+    public CgNetCommand<?> command(String name) {
+        for (CgNetCommand<?> command : commands) if (command.name.equals(name) && command.call == null) return command;
+        return null;
+    }
+
+    /** Its call named {@code name}; null for none. */
+    @Nullable
+    public CgNetCall<?, ?> call(String name) {
+        for (CgNetCommand<?> command : commands) if (command.name.equals(name) && command.call != null) return command.call;
+        return null;
+    }
+
+    /** Whether {@code field} is one a viewer may set: a predicted field, sent through its own command. */
+    public boolean settable(CgNetField<?> field) {
+        return field.command != null;
+    }
+
     /** Counts it in the per-tick traffic from its first object or refusal on. */
     void markUsed() {
         if (used) return;

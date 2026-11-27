@@ -87,6 +87,16 @@ public class CgServerMountsTest {
     }
 
     @Test
+    public void aFileTheServerWritesIsMountedAsAFileItsFolderHolds() throws IOException {
+        CgServerMounts.offer("shop", served)
+                .generated("net_types/stall.yaml", () -> "fields:\n  price: { kind: long }\n".getBytes(StandardCharsets.UTF_8))
+                .generated("lang/de_de.json", () -> "{}".getBytes(StandardCharsets.UTF_8));
+        rig = CgNetTestRig.of(1);
+        rig.tick(SETTLE);
+        assertEquals("the written one in place of the folder's", "fields:\n  price: { kind: long }\n", read("shop:net_types/stall.yaml"));
+    }
+
+    @Test
     public void theCacheKeepsUnderItsCapLeastRecentlyUsedFirstOut() throws IOException {
         CgServerMounts.cacheCap(40);
         CgServerMounts.offer("shop", served);

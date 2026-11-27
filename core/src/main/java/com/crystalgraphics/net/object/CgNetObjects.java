@@ -196,6 +196,19 @@ public final class CgNetObjects {
         return connection.attachment(ClientObjects.class, ClientObjects::new).find(id);
     }
 
+    /**
+     * Client: the type named {@code name} as {@code connection} sees it: one its server's files declared for it, else the
+     * process's; null for none. How a page from a server's files finds the type of the state it shows.
+     */
+    @Nullable
+    public static CgNetType<?> type(CgProtocolConnection<Object> connection, String name) {
+        if (connection.hasAttachment(ClientObjects.class)) {
+            CgNetType<?> declared = connection.attachment(ClientObjects.class, ClientObjects::new).declaredType(name);
+            if (declared != null) return declared;
+        }
+        return CgNetType.named(name);
+    }
+
     /** Client: the objects of {@code type} this client sees now, or none outside a world. */
     public static List<CgNetObject> visible(CgNetType<?> type) {
         CgProtocolConnection<Object> connection = CgNetwork.client();

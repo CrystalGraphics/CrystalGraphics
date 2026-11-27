@@ -1,9 +1,14 @@
 package com.crystalgraphics.net.object;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.junit.After;
 import org.junit.Test;
 
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.serialization.CgCodecs;
+import com.crystalgraphics.serialization.CgObjectCodec;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -59,6 +64,58 @@ public class CgConnectionTypesTest {
         assertEquals(7, intOf(second, "c"));
         assertTrue("its own type, not the first connection's", second.type() != seen.type());
         assertNull("nothing reached the process's registry", CgNetType.named("shop:pet"));
+    }
+
+    /** A bank account as a mod declares it: a primitive, a list, a value worked out by the server, two commands. */
+    public static final class Account {
+        public int gold;
+        public List<String> history = new ArrayList<>();
+        public static final CgObjectCodec<Account> CODEC = CgCodecs.fieldsOf(Account.class).build();
+    }
+
+    static final CgNetField<Integer> CARRIED = CgNetField.ofInt("carried");
+    static final CgNetCommand<Integer> DEPOSIT = CgNetCommand.of("deposit", CgCodecs.INT);
+    static final CgNetCommand<Void> CLEAR = CgNetCommand.of("clear");
+    static final CgNetType<Account> ACCOUNT = CgNetType.define("test:connection/account", Account.CODEC)
+            .computed(CARRIED, account -> 40).commands(DEPOSIT, CLEAR).build();
+
+    static {
+        ACCOUNT.onCommand(DEPOSIT, (account, player, amount) -> {
+            account.gold += amount;
+            account.history.add("Deposited " + amount);
+        });
+    }
+
+    @Test
+    public void aJavaTypesDescriptionReadsAndCommandsAsTheModWould() {
+        rig = CgNetTestRig.of(1);
+        CgNetTestRig.Client client = rig.client(0);
+        client.readsAs("test:connection/account", "bank:account");
+        String file = CgNetTypeCompiler.describe(ACCOUNT);
+        CgNetType<?> declared = CgNetTypeCompiler.declareFor(client.connection(), "bank:account", file);
+        assertEquals("fields in wire order", List.of("gold", "history", "carried"), names(declared));
+        rig.tick(3);
+        Account account = new Account();
+        account.gold = 5;
+        account.history.add("Opened");
+        ACCOUNT.over(account).watch(client.id());
+        rig.tick(4);
+        CgNetObject seen = client.visible("bank:account").get(0);
+        assertEquals(5, intOf(seen, "gold"));
+        assertEquals(40, intOf(seen, "carried"));
+        assertEquals(List.of("Opened"), seen.get(declared.field("history")));
+        @SuppressWarnings("unchecked") CgNetCommand<Object> deposit = (CgNetCommand<Object>) declared.command("deposit");
+        seen.send(deposit, 7);
+        rig.tick(4);
+        assertEquals("the server's handler ran on its instance", 12, account.gold);
+        assertEquals(12, intOf(seen, "gold"));
+        assertEquals(List.of("Opened", "Deposited 7"), seen.get(declared.field("history")));
+    }
+
+    private static List<String> names(CgNetType<?> type) {
+        List<String> out = new ArrayList<>();
+        for (CgNetField<?> f : type.fields()) out.add(f.name);
+        return out;
     }
 
     @Test
