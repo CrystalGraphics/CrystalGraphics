@@ -2,6 +2,9 @@ package com.crystalgraphics.mc.modern.platform;
 
 import com.crystalgraphics.mc.render.entity.CgEntityPose;
 
+//? if <1.21.11 {
+import net.minecraft.world.InteractionHand;
+//?}
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 //? if >=1.21.10 {
@@ -31,6 +34,7 @@ final class EntityPosesModern {
     private float yaw, yawO, pitch, pitchO, body, bodyO, head, headO, walkPosition, walkSpeed, walkSpeedOld, attack,
             attackOld;
     private int age;
+    private InteractionHand hand;
     private boolean living, aged, walked, swung;
 
     /**
@@ -69,6 +73,8 @@ final class EntityPosesModern {
             attack = l.attackAnim;
             attackOld = l.oAttackAnim;
             l.attackAnim = l.oAttackAnim = pose.swing();
+            hand = l.swingingArm;
+            l.swingingArm = InteractionHand.MAIN_HAND;
         }
     }
 
@@ -89,6 +95,7 @@ final class EntityPosesModern {
         if (swung) {
             l.attackAnim = attack;
             l.oAttackAnim = attackOld;
+            l.swingingArm = hand;
         }
     }
 

@@ -31,6 +31,9 @@ import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 //? if >=1.20 <26.1 {
 import net.minecraft.client.gui.GuiGraphics;
 //?}
+//? if >=1.21.11 <26.3 {
+/*import net.minecraft.world.InteractionHand;
+*///?}
 //? if >=1.21.11 {
 /*import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
@@ -109,7 +112,15 @@ public final class EntityPicturesModern implements CgEntityPictures.Host {
         Quaternionf rotation = new Quaternionf().rotateZ((float) Math.PI);
         Quaternionf tilt = new Quaternionf().rotateX(pose.tilt() * DEG);
         rotation.mul(tilt);
+        //? if <26.3 {
+        // THE MAIN ARM SWINGS: one never swung would read as its off hand's to 1.21.11; 26.3 picks the main one itself
+        InteractionHand hand = e.swingingArm;
+        if (!pose.ownSwing()) e.swingingArm = InteractionHand.MAIN_HAND;
+        //?}
         EntityRenderState state = Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(e).createRenderState(e, 1.0F);
+        //? if <26.3 {
+        e.swingingArm = hand;
+        //?}
         state.shadowPieces.clear();
         state.outlineColor = 0;
         // No nametag of the game's, as its inventory draws none: a UI draws its own

@@ -4,6 +4,9 @@ import com.crystalgraphics.mc.render.entity.CgEntityPose;
 
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
+//? if >=1.10 {
+import net.minecraft.util.EnumHand;
+//?}
 
 /**
  * The one pose step of legacy Forge's entity draws, pictures and the world's: a {@link CgEntityPose} set on the game's
@@ -19,6 +22,9 @@ final class EntityPosesLegacy {
 
     private float yaw, yawO, pitch, pitchO, body, bodyO, head, headO, limb, limbAmount, limbAmountO, swing, swingO;
     private int age;
+    //? if >=1.10 {
+    private EnumHand hand;
+    //?}
     private boolean living, aged, walked, swung;
 
     /**
@@ -61,6 +67,11 @@ final class EntityPosesLegacy {
             swing = l.swingProgress;
             swingO = l.prevSwingProgress;
             l.swingProgress = l.prevSwingProgress = pose.swing();
+            //? if >=1.10 {
+            // The main arm: one never swung reads as its off hand's (ModelBiped.getMainHand); 1.8.9 has the right only
+            hand = l.swingingHand;
+            l.swingingHand = EnumHand.MAIN_HAND;
+            //?}
         }
     }
 
@@ -85,6 +96,9 @@ final class EntityPosesLegacy {
         if (swung) {
             l.swingProgress = swing;
             l.prevSwingProgress = swingO;
+            //? if >=1.10 {
+            l.swingingHand = hand;
+            //?}
         }
     }
 }
