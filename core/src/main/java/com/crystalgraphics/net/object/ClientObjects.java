@@ -178,6 +178,9 @@ final class ClientObjects {
     /** Object frames received and their bytes, and the largest, since this connection opened. */
     long bytesReceived;
     int framesReceived, largestFrame;
+    /** The object the record being read is for, its bytes credited to it once read. */
+    @Nullable
+    private CgNetObject recordFor;
 
     void receive(byte[] payload) {
         bytesReceived += payload.length;
@@ -188,6 +191,7 @@ final class ClientObjects {
             serverTick = in.readVarLong();
             framed = true;
             while (in.more()) {
+                int start = in.pos;
                 int record = in.readByte();
                 switch (record) {
                     case CgNetObjects.DEFINE: define(in); break;
@@ -208,6 +212,11 @@ final class ClientObjects {
                     }
                     case CgNetObjects.UNWATCH: watching(in.readVarInt(), false); break;
                     default: throw new CgCodecException("unknown object record " + record);
+                }
+                CgNetObject credited = recordFor;
+                if (credited != null) {
+                    credited.bytesReceived += in.pos - start;
+                    recordFor = null;
                 }
             }
         } catch (CgCodecException malformed) {
@@ -292,6 +301,7 @@ final class ClientObjects {
             return;
         }
         obj.id = id;
+        recordFor = obj;
         obj.kind = anchor;
         obj.dimension = dimension;
         obj.mine = (flags & CgNetObjects.FLAG_MINE) != 0;
@@ -360,6 +370,7 @@ final class ClientObjects {
 
     private void change(NetBuffer in) {
         CgNetObject obj = objects.get(in.readVarInt());
+        recordFor = obj;
         TypeView view = obj == null ? null : viewOf(obj.type);
         int changed = readFields(in, view, obj);
         if (obj == null || changed == 0) return;
@@ -426,6 +437,7 @@ final class ClientObjects {
     @SuppressWarnings("unchecked")
     private void event(NetBuffer in) {
         CgNetObject obj = objects.get(in.readVarInt());
+        recordFor = obj;
         int serverIndex = in.readVarInt();
         int length = in.readVarInt();
         TypeView view = obj == null ? null : viewOf(obj.type);

@@ -10933,6 +10933,7 @@ com/crystalgraphics/net/object/CgNetObject
   method public ask (Lcom/crystalgraphics/net/object/CgNetCommand;Ljava/lang/Object;)Lcom/crystalgraphics/job/reply/CgReply;
   method public behaviour ()Lcom/crystalgraphics/net/object/CgNetBehaviour;
   method public behaviour (Lcom/crystalgraphics/net/object/CgNetBehaviour;)Lcom/crystalgraphics/net/object/CgNetObject;
+  method public bytesReceived ()J
   method public call (Lcom/crystalgraphics/net/object/CgNetCall;Ljava/lang/Object;)Lcom/crystalgraphics/job/reply/CgReply;
   method public chunkX ()I
   method public chunkZ ()I
@@ -11046,6 +11047,7 @@ com/crystalgraphics/net/object/CgNetTestRig$Client
   access public,final
   extends java/lang/Object
   method public bytesReceived ()J
+  method public bytesSent ()J
   method public connect ()Lcom/crystalgraphics/net/object/CgNetTestRig$Client;
   method public connection ()Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
   method public die ()Lcom/crystalgraphics/net/object/CgNetTestRig$Client;

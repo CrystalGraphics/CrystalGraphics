@@ -142,6 +142,8 @@ public final class CgNetObject {
     ClientObjects client;
     /** Client: whether this watcher may edit it, as the server told it; a codec type's, true until told. */
     boolean editable = true;
+    /** Client: the bytes of the records it arrived in, its spawn, changes and events. @see #bytesReceived() */
+    long bytesReceived;
     /** A codec type's: the instance this object stands for, on its side. */
     @Nullable
     CgNetModel.Bound bound;
@@ -884,6 +886,20 @@ public final class CgNetObject {
      */
     public boolean isEditable() {
         return editable;
+    }
+
+    /**
+     * Client: the bytes the server's frames have spent on it since it arrived: its spawn, its changes and its events.
+     * An inspector's bytes a second is the difference between two reads.
+     *
+     * <pre>{@code
+     * long before = obj.bytesReceived();
+     * // a second later
+     * long perSecond = obj.bytesReceived() - before;
+     * }</pre>
+     */
+    public long bytesReceived() {
+        return bytesReceived;
     }
 
     private void requireSender(CgNetCommand<?> command) {

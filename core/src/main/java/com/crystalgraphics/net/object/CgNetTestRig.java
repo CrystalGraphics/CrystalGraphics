@@ -242,7 +242,7 @@ public final class CgNetTestRig implements AutoCloseable {
         boolean dead;
         String dimension = DIMENSION;
         double x, y, z;
-        long bytesReceived;
+        long bytesReceived, bytesSent;
         int framesReceived;
         @Nullable
         ByteArrayOutputStream recorded;
@@ -333,6 +333,11 @@ public final class CgNetTestRig implements AutoCloseable {
             return framesReceived;
         }
 
+        /** Bytes it has sent the server: its commands, edits, calls and messages. */
+        public long bytesSent() {
+            return bytesSent;
+        }
+
         /**
          * Keeps every frame the server sends it from now on, for a test that searches the bytes.
          *
@@ -391,7 +396,10 @@ public final class CgNetTestRig implements AutoCloseable {
             if (connected) return this;
             connected = true;
             CgNetwork.playerJoined(id, name, () -> connected ? this : null);
-            clientConnections.open(id, null, frame -> toServer.addLast(new Packet(this, frame, now + latency)));
+            clientConnections.open(id, null, frame -> {
+                bytesSent += frame.length;
+                toServer.addLast(new Packet(this, frame, now + latency));
+            });
             return this;
         }
 
