@@ -74,13 +74,14 @@ CgMessage<Character> SHOW = CgMessage.toClients("mymod:show", Character.CODEC); 
 2. [Quick start](#2-quick-start)
 3. [Writing a codec](#3-writing-a-codec)
 4. [A mutable object: `CgCodecs.object`](#4-a-mutable-object-cgcodecsobject)
-5. [Decoding into a live object](#5-decoding-into-a-live-object)
-6. [Files: binary, JSON, TOML, YAML and JSONC](#6-files-binary-json-toml-yaml-and-jsonc)
-7. [Minecraft's NBT](#7-minecrafts-nbt)
-8. [Formats by hand: `CgDynamicOps`](#8-formats-by-hand-cgdynamicops)
-9. [Changing a saved shape](#9-changing-a-saved-shape)
-10. [Testing](#10-testing)
-11. [Questions people ask](#11-questions-people-ask)
+5. [A class's own fields: `CgCodecs.fieldsOf`](#5-a-classs-own-fields-cgcodecsfieldsof)
+6. [Decoding into a live object](#6-decoding-into-a-live-object)
+7. [Files: binary, JSON, TOML, YAML and JSONC](#7-files-binary-json-toml-yaml-and-jsonc)
+8. [Minecraft's NBT](#8-minecrafts-nbt)
+9. [Formats by hand: `CgDynamicOps`](#9-formats-by-hand-cgdynamicops)
+10. [Changing a saved shape](#10-changing-a-saved-shape)
+11. [Testing](#11-testing)
+12. [Questions people ask](#12-questions-people-ask)
 
 Sending values over the network is `docs/NETWORKING.md`; every message, request and networked object field there
 takes a codec from this page.
@@ -180,7 +181,7 @@ static final CgCodec<List<Spell>> SPELLS = CgCodecs.listOf(Spell.CODEC);
 | `CgCodecs.xmap(base, from, to)` | anything | one codec in terms of another |
 | `CgCodecs.record(...)` | a record | its keys and its constructor, below |
 | `CgCodecs.dispatch(...)` | one of several kinds | below |
-| `CgCodecs.versioned(n, codec)` | a save that changes shape | §9 |
+| `CgCodecs.versioned(n, codec)` | a save that changes shape | §10 |
 
 ### A record of your own: `CgCodecs.record`
 
@@ -267,7 +268,7 @@ CgCodecs.optionalField("hair", Hair.CODEC, Look::hair, Hair.DEFAULT).lenient()
 - **Keys the codec does not declare are ignored**, so a save with a key you since removed still loads.
 - **A required value that is null throws when written**, naming the key: declare it `optionalField(..., null)` instead.
 - **A key's comment** goes in a TOML or YAML file above it, written before the key:
-  `CgCodecs.comment("Master volume, 0 to 1.").field("volume", ...)` (§6).
+  `CgCodecs.comment("Master volume, 0 to 1.").field("volume", ...)` (§7).
 - **Short keys** keep the wire small: a key travels with every send. A file people read can afford long ones.
 
 ### Record, object, or by hand?
@@ -411,7 +412,7 @@ public final class Character {
 | `optional(key, codec, get, set, omitWhen)` | a field usually at its default | as `field`; nothing is written for `omitWhen` |
 | `into(key, codec, get)` | a final member the object owns | always updated in place; a codec that cannot (a string, a record) throws, naming the key |
 | `extend(Parent.CODEC)` | a subclass | the parent's keys first, flat beside its own |
-| `.comment(text)` | the field declared next | written above its key in a TOML or YAML file (§6) |
+| `.comment(text)` | the field declared next | written above its key in a TOML or YAML file (§7) |
 
 - **A key the input lacks leaves the field as it is**: the constructor's default for a new object, the live value
   for a target. A partial file is a patch.
@@ -440,7 +441,80 @@ static final CgObjectCodec<DownState> CODEC = CgCodecs.object(DownState::new)
 
 ---
 
-## 5. Decoding into a live object
+## 5. A class's own fields: `CgCodecs.fieldsOf`
+
+A wide mutable class (an NPC with twenty fields, a machine's state, a settings object that keeps growing) can have
+its codec read from its fields, instead of written out one line per field. You still get an ordinary object codec:
+the same builder, the same rules, every format.
+
+```java
+public class Npc {
+    String name = "";
+    int health = 20;
+    float speed = 0.25f;
+    Mood mood = Mood.CALM;
+    final List<String> lines = new ArrayList<>();      // final: refilled in place
+    transient Entity entity;                          // transient: never saved
+
+    public static final CgObjectCodec<Npc> CODEC = CgCodecs.fieldsOf(Npc.class, MethodHandles.lookup()).build();
+}
+```
+
+The same codec, written out, for comparison:
+
+```java
+public static final CgObjectCodec<Npc> CODEC = CgCodecs.object(Npc::new)
+        .field("health", CgCodecs.INT, n -> n.health, (n, v) -> n.health = v)
+        .into("lines", CgCodecs.listOf(CgCodecs.STRING), n -> n.lines)
+        .field("mood", CgCodecs.enumOf(Mood.class), n -> n.mood, (n, v) -> n.mood = v)
+        .field("name", CgCodecs.STRING, n -> n.name, (n, v) -> n.name = v)
+        .field("speed", CgCodecs.FLOAT, n -> n.speed, (n, v) -> n.speed = v)
+        .build();
+```
+
+Both write exactly the same bytes, NBT and TOML.
+
+- **Which fields**: every one that is not `static` or `transient`, the superclasses' too, keyed by its name, in name
+  order.
+- **Which types**: primitives, `String`, enums, `UUID`, `byte[]`, lists, sets, maps and arrays of these (the element
+  types are read from the field), and any class with a `public static final CgCodec CODEC`. Anything else stops the
+  codec being built, naming the field and both fixes: `with(Type.class, codec)` or `skip("field")`.
+- **A final field** is refilled in place (a list, a map, an object with its own object codec); a final `String` or
+  number cannot be, and stops the build.
+- **Private fields** need your class's own `MethodHandles.lookup()`, as above: it lends your class's access to the
+  codec. `fieldsOf(Npc.class)` alone reaches public fields only.
+- **A no-argument constructor** makes new objects; a class without one decodes into objects you make (§6).
+- **A record is refused**: give it `CgCodecs.record` (§3), which builds it through its constructor.
+
+Everything the builder does still applies, and a few calls are for this form:
+
+```java
+public static final CgObjectCodec<Npc> CODEC = CgCodecs.fieldsOf(Npc.class, MethodHandles.lookup())
+        .key("health", "hp")                  // the field was renamed: old saves still say hp
+        .range("hp", 0, 100)                  // a decoded number is clamped
+        .skip("speed")                        // not saved
+        .readOnly("mood")                     // written, never read back
+        .field("name", CgCodecs.STRING, n -> n.name, (n, v) -> n.name = v.trim())   // written out: replaces the derived one
+        .build();
+```
+
+A field of a type with no codec of its own (a JOML `Vector3f`, a class from another mod) takes one for every field of
+that type: `.with(Vector3f.class, codec)`.
+
+> [!WARNING]
+> **A rename changes a key.** Renaming `health` to `hitPoints` makes old saves' `health` go unread. Keep old saves
+> with `.key("hitPoints", "health")`, and pin the keys in a test so a rename fails there first:
+> `assertEquals(List.of("hp", "lines", "mood", "name"), CgCodecs.keysOf(Npc.CODEC))`.
+
+### Which one?
+
+| Your value | Write | Why |
+|---|---|---|
+| A record, or a small value with short wire names and defaults | `CgCodecs.record` (§3) | it says what the class does not: short keys, fallbacks, a refusing decode |
+| A mutable class whose keys are not its field names, or with a computed getter | `CgCodecs.object` (§4) | each key says exactly what it reads |
+| A wide mutable class whose keys are its field names | `CgCodecs.fieldsOf` | one line, kept up to date as fields are added |
+
+## 6. Decoding into a live object
 
 Every codec has two decodes: one that makes a new value, and one that fills an object you already hold.
 
@@ -481,7 +555,7 @@ Every way in has the target form: `CgFiles.read(file, codec, target)`, `CgFileFo
 
 ---
 
-## 6. Files: binary, JSON, TOML, YAML and JSONC
+## 7. Files: binary, JSON, TOML, YAML and JSONC
 
 | Format | Use it for | What it is |
 |---|---|---|
@@ -490,7 +564,7 @@ Every way in has the target form: `CgFiles.read(file, codec, target)`, `CgFileFo
 | `CgFiles.TOML` | **config files players edit** | TOML 1.0, what Forge and NeoForge configs are: `[sections]` of `key = value`, no indentation to get wrong |
 | `CgFiles.YAML` | hand-edited data that nests deeply: lists of maps, presets | block-style YAML, through SnakeYAML (CrystalGraphics carries it) |
 | `CgFiles.JSONC` | a JSON-shaped file people edit and want to explain | JSON with `//` comments and trailing commas, as VS Code's `settings.json`. `.jsonc` |
-| `CgFiles.NBT` | Minecraft's own files: `level.dat`, structures | binary NBT, gzipped, every tag kept exactly (§7). `.nbt` |
+| `CgFiles.NBT` | Minecraft's own files: `level.dat`, structures | binary NBT, gzipped, every tag kept exactly (§8). `.nbt` |
 | `CgFiles.SNBT` | NBT a person reads and edits | Minecraft's text form, `{count:3b,id:"x"}`. `.snbt` |
 
 **Which for a config?** TOML. Players already know it from every other mod's config, a stray space cannot break it,
@@ -637,7 +711,7 @@ The next time the mod writes the file, **everything the player wrote stays**: `q
 
 ---
 
-## 7. Minecraft's NBT
+## 8. Minecraft's NBT
 
 This is the short form; **[`NBT.md`](NBT.md) is the whole guide** to the tags, paths, SNBT, files and the game's own tags.
 
@@ -693,7 +767,7 @@ CompoundTag fresh = CgNbt.toHost(data);                                      // 
 CgNbtCompound preset = CgNbt.parse("{style:3b,dyed:true,colors:[I;16711680,255]}");   // a preset kept as text
 Hair hair = preset.as(Hair.CODEC);
 
-// NBT is a file format like the rest of §6: binary (gzip detected) or SNBT, written beside and moved over
+// NBT is a file format like the rest of §7: binary (gzip detected) or SNBT, written beside and moved over
 CgNbtCompound level = CgFiles.NBT.read(Path.of("level.dat"), CgNbtCompound.CODEC);
 CgFiles.NBT.write(structure, CgNbtCompound.CODEC, tag);
 CgFiles.SNBT.write(preset, Hair.CODEC, hair);                     // a text file a person edits, every width kept
@@ -737,7 +811,7 @@ How each version spells its tags, and how that is proven: `docs/MINECRAFT_INTEGR
 
 ---
 
-## 8. Formats by hand: `CgDynamicOps`
+## 9. Formats by hand: `CgDynamicOps`
 
 A codec only ever talks to a `CgDynamicOps<T>`: a format's primitives over its tree type `T`. Use one directly when
 something else wants the tree rather than bytes.
@@ -760,7 +834,7 @@ Settings back = Settings.CODEC.decode(CgJsonOps.INSTANCE, json);
 
 ---
 
-## 9. Changing a saved shape
+## 10. Changing a saved shape
 
 Saves outlive the code that wrote them. A player who updates your mod keeps their world, their config and their
 character, and the new code has to read what the old code wrote.
@@ -785,7 +859,7 @@ You do not need it from day one. A save with no version reads as version 1, so a
 make a change like this, starting at 2:
 
 ```java
-// The codec, as it is today. Keep using it for the network: §9 is about saves.
+// The codec, as it is today. Keep using it for the network: §10 is about saves.
 public static final CgCodec<Character> CODEC = ...;
 
 // What is saved. Version 2: "Level" was renamed "level".
@@ -888,7 +962,7 @@ try {
 
 ---
 
-## 10. Testing
+## 11. Testing
 
 A codec runs in a plain JUnit test, no Minecraft:
 
@@ -938,7 +1012,7 @@ A codec runs in a plain JUnit test, no Minecraft:
 
 ---
 
-## 11. Questions people ask
+## 12. Questions people ask
 
 ### Do I need a versioned codec from the start?
 
@@ -961,7 +1035,7 @@ not parse is replaced whole.
 `CgSettings` (`com.crystalgraphics.settings`) is for the options a player changes in a settings screen: each a
 number, toggle or choice with a label, a range and a default, read again while the game runs whenever the file
 changes. It is a `config/<name>.toml` written through `CgFiles.TOML`, so its comments and a player's survive the
-same way. Anything else a mod configures is a codec of its own and `CgFiles.TOML`, as in §6.
+same way. Anything else a mod configures is a codec of its own and `CgFiles.TOML`, as in §7.
 
 ### A codec or a `CgStateMap`?
 
@@ -972,13 +1046,16 @@ implement is handed one, as a CrystalGUI widget's state is: §3, *An object that
 
 A codec here is one API on every version and loader, and Mojang's is not: it is missing from some versions and
 changes between the others. Its `RecordCodecBuilder` answers a new value only, so it cannot decode into an object
-other code holds (§5), and it knows no file formats or comments. The shapes are the same, so a codec ports either
+other code holds (§6), and it knows no file formats or comments. The shapes are the same, so a codec ports either
 way in a few lines.
 
 ### Why not Gson or Jackson reflection?
 
-Reflection guesses your fields from your class: a rename breaks old files silently, a field you did not mean to save
-is saved, and it cannot reach NBT or the wire. A codec says exactly what is stored, under which key.
+Gson's and Jackson's reflection reach JSON alone, and decide for you what a field is. `CgCodecs.fieldsOf` (§5) reads
+your fields the same way, but builds an ordinary codec: it reaches NBT, the wire and every file format, and fails when
+it is built, naming the field, rather than guessing. Two costs stay, and you choose them: a rename changes a key
+(`key` keeps the old one, `keysOf` in a test catches it), and a field you did not mean to save is saved unless it is
+`transient` or skipped. Where that trade is wrong, write the codec out: `record` or `object`.
 
 ### NBT or a file of my own?
 

@@ -621,7 +621,7 @@ A behaviour's calls, in the order they come:
 
 - Install all three **from client code**.
 - On a client, `obj.isMine()` says whether this client's player owns it.
-- **A field whose codec updates in place** (`CgCodecs.object`, a list, a map: `docs/SERIALIZATION.md` §5) keeps its
+- **A field whose codec updates in place** (`CgCodecs.object`, a list, a map: `docs/SERIALIZATION.md` §6) keeps its
   instance on a client: a screen holding `obj.get(STATS)` sees every change without reading it again.
 
 ---
@@ -1008,10 +1008,10 @@ whole of it is **[`docs/SERIALIZATION.md`](SERIALIZATION.md)**:
 
 | You want to | Read |
 |---|---|
-| save a file of your own (binary, compressed) | [§6 Files](SERIALIZATION.md#6-files-binary-json-and-yaml) |
-| write a config people edit (YAML, JSON) | [§6 Files](SERIALIZATION.md#6-files-binary-json-and-yaml) |
-| store a value in an entity's, block entity's or item's NBT | [§7 Minecraft's NBT](SERIALIZATION.md#7-minecrafts-nbt) |
-| reload into an object other code holds | [§5 Decoding into a live object](SERIALIZATION.md#5-decoding-into-a-live-object) |
+| save a file of your own (binary, compressed) | [§7 Files](SERIALIZATION.md#7-files-binary-json-toml-yaml-and-jsonc) |
+| write a config people edit (YAML, JSON) | [§7 Files](SERIALIZATION.md#7-files-binary-json-toml-yaml-and-jsonc) |
+| store a value in an entity's, block entity's or item's NBT | [§8 Minecraft's NBT](SERIALIZATION.md#8-minecrafts-nbt) |
+| reload into an object other code holds | [§6 Decoding into a live object](SERIALIZATION.md#6-decoding-into-a-live-object) |
 
 ```java
 CgFiles.write(file, PlayerData.CODEC, data);                         // a file of your own

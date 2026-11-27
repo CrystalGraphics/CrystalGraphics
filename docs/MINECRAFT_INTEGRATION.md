@@ -70,7 +70,7 @@ CrystalGraphics' binary format, compressed, in core, with no host involved. NBT 
 container (an entity's, block entity's or item's saved data), and there `CgNbt.toHost`/`fromHost` turn any codec's
 value into the running version's real tags and back, so `/data` reads it. Beyond codecs, `CgNbt.of(hostTag)` copies any
 of the game's tags into `CgNbtCompound`/`CgNbtList`/`CgNbtValue`, plain Java the same on every version, and `toHost` and
-`applyTo` put them back. Using it from a mod: [`docs/SERIALIZATION.md` § 7](SERIALIZATION.md#7-minecrafts-nbt).
+`applyTo` put them back. Using it from a mod: [`docs/SERIALIZATION.md` § 8](SERIALIZATION.md#8-minecrafts-nbt).
 
 ```java
 tag.put("character", CgNbt.toHost(Character.CODEC, character));             // typed as put takes it

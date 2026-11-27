@@ -1,5 +1,6 @@
 package com.crystalgraphics.serialization;
 
+import java.lang.invoke.MethodHandles;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -437,6 +438,58 @@ public final class CgCodecs {
     /** An object codec with no factory: the caller makes the object and decodes into it. */
     public static <A> CgObjectCodec.Builder<A> object(Class<A> type) {
         return CgObjectCodec.builder(null, type.getSimpleName() + "'s codec");
+    }
+
+    /**
+     * An object codec filled in from {@code type}'s fields: {@link CgObjectCodec.Builder#field} for each settable one,
+     * {@link CgObjectCodec.Builder#into} for each final one, keyed by its name. Every builder call still applies, and a
+     * field written out replaces the derived one of its key.
+     *
+     * <pre>{@code
+     * public class Npc {
+     *     String name = "";
+     *     int health = 20;
+     *     final List<String> lines = new ArrayList<>();
+     *     transient Entity entity;                       // never saved: transient
+     *
+     *     public static final CgObjectCodec<Npc> CODEC = CgCodecs.fieldsOf(Npc.class, MethodHandles.lookup())
+     *             .key("health", "hp")                    // its old name, so old saves read
+     *             .range("hp", 0, 100)
+     *             .build();
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Fields: every non-static, non-{@code transient} one, superclasses included, keyed in name order. Types:
+     *       primitives, {@code String}, enums, {@code UUID}, lists, sets, maps and arrays of these (element types read
+     *       from the field), a class with a {@code public static final CgCodec CODEC}, or one given by
+     *       {@code with(type, codec)}. Anything else throws when the codec is built, naming the field and both fixes.</li>
+     *   <li>A non-public field needs the class's own {@code MethodHandles.lookup()}; {@link #fieldsOf(Class)} reaches
+     *       public ones only.</li>
+     *   <li>A no-argument constructor is its factory; without one, decode into objects you make.</li>
+     *   <li>A record is refused: {@link #record} builds it through its constructor.</li>
+     *   <li>A rename changes a key, and a field you did not mean to save is saved: pin {@link #keysOf} in a test.</li>
+     * </ul>
+     */
+    public static <A> CgObjectCodec.Builder<A> fieldsOf(Class<A> type, MethodHandles.Lookup lookup) {
+        CgFieldScan<A> scan = new CgFieldScan<>(type, lookup);
+        return new CgObjectCodec.Builder<>(scan, scan.factory());
+    }
+
+    /** {@link #fieldsOf(Class, MethodHandles.Lookup)} for a class whose fields are public. */
+    public static <A> CgObjectCodec.Builder<A> fieldsOf(Class<A> type) {
+        return fieldsOf(type, MethodHandles.publicLookup());
+    }
+
+    /**
+     * An object codec's keys, in the order written: what a test pins, so a rename that would strand old saves fails.
+     *
+     * <pre>{@code
+     * assertEquals(List.of("hp", "lines", "name"), CgCodecs.keysOf(Npc.CODEC));
+     * }</pre>
+     */
+    public static List<String> keysOf(CgObjectCodec<?> codec) {
+        return codec.keys();
     }
 
     // ── Records ─────────────────────────────────────────────────────────────

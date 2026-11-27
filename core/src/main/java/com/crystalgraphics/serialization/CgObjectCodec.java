@@ -4,10 +4,12 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -65,11 +67,23 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
     private final Map<String, Field<A, ?>> byKey;
     /** The object's own comment by null and each field's by its key: one map, handed to every encode. */
     private final Map<String, String> comments;
+    /** Each key's rules beyond its codec, by key. */
+    private final Map<String, Policy> policies;
 
-    private CgObjectCodec(@Nullable Supplier<A> make, String name, List<Field<A, ?>> fields, @Nullable String about) {
+    /**
+     * A key's rules beyond its codec: {@code serverOnly} (kept on the server, which a networked model never sends),
+     * {@code readOnly} (written, never read back), and the range a decoded number is clamped to.
+     */
+    public record Policy(boolean serverOnly, boolean readOnly, double min, double max) {
+        static final Policy NONE = new Policy(false, false, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY);
+    }
+
+    private CgObjectCodec(@Nullable Supplier<A> make, String name, List<Field<A, ?>> fields, @Nullable String about,
+                          Map<String, Policy> policies) {
         this.make = make;
         this.name = name;
         this.fields = fields;
+        this.policies = policies;
         this.byKey = new HashMap<>(fields.size() * 2);
         Map<String, String> notes = new LinkedHashMap<>();
         if (about != null) notes.put(null, about);
@@ -95,7 +109,19 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
     /** This codec, with {@code text} about the object as a whole: see {@link CgCodec#comment}. */
     @Override
     public CgObjectCodec<A> comment(String text) {
-        return new CgObjectCodec<>(make, name, fields, text);
+        return new CgObjectCodec<>(make, name, fields, text, policies);
+    }
+
+    /** Its keys, in the order they are written. {@code CgCodecs.keysOf} answers it for a test to pin. */
+    public List<String> keys() {
+        List<String> out = new ArrayList<>(fields.size());
+        for (Field<A, ?> f : fields) out.add(f.key);
+        return out;
+    }
+
+    /** {@code key}'s rules beyond its codec; a key with none answers no rule at all. */
+    public Policy policy(String key) {
+        return policies.getOrDefault(key, Policy.NONE);
     }
 
     @Override
@@ -110,8 +136,12 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
     public <T> A decode(CgDynamicOps<T> ops, T input, @Nullable A target) {
         if (target == null) return decode(ops, input);
         for (Map.Entry<T, T> e : ops.getMapValue(input).entrySet()) {
-            Field<A, ?> f = byKey.get(ops.getStringValue(e.getKey()));
-            if (f != null) f.read(ops, e.getValue(), target);
+            String key = ops.getStringValue(e.getKey());
+            Field<A, ?> f = byKey.get(key);
+            if (f == null) continue;
+            Policy policy = policies.get(key);
+            if (policy == null) f.read(ops, e.getValue(), target);
+            else if (!policy.readOnly) f.read(ops, e.getValue(), target, policy);
         }
         return target;
     }
@@ -122,6 +152,10 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
         private final Supplier<A> make;
         private final String name;
         private final List<Field<A, ?>> fields = new ArrayList<>();
+        private final Map<String, Policy> policies = new LinkedHashMap<>();
+        /** What {@link CgCodecs#fieldsOf} derives at {@link #build}, or null for a builder written out. */
+        @Nullable
+        private CgFieldScan<A> scan;
         /** The comment for the next field. */
         @Nullable
         private String pending;
@@ -129,6 +163,66 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
         private Builder(@Nullable Supplier<A> make, String name) {
             this.make = make;
             this.name = name;
+        }
+
+        Builder(CgFieldScan<A> scan, @Nullable Supplier<A> make) {
+            this(make, scan.type.getSimpleName() + "'s codec");
+            this.scan = scan;
+        }
+
+        // ── A derived codec's own calls ─────────────────────────────────────────────────────────
+
+        /**
+         * The derived field {@code field} under {@code key} instead of its name: how a rename keeps old saves reading.
+         *
+         * <pre>{@code
+         * CgCodecs.fieldsOf(Npc.class).key("health", "hp").build();     // the field was renamed from hp
+         * }</pre>
+         */
+        public Builder<A> key(String field, String key) {
+            derived("key").keys.put(field, key);
+            return this;
+        }
+
+        /** Leaves {@code fields} out: not saved, not sent, not read. */
+        public Builder<A> skip(String... fields) {
+            Collections.addAll(derived("skip").skipped, fields);
+            return this;
+        }
+
+        /** {@code codec} for every derived field of {@code type}: a type with no codec of its own. */
+        public <T> Builder<A> with(Class<T> type, CgCodec<T> codec) {
+            derived("with").with.put(type, codec);
+            return this;
+        }
+
+        private CgFieldScan<A> derived(String call) {
+            if (scan == null) throw new IllegalStateException(call + "(...) is for a codec from CgCodecs.fieldsOf");
+            return scan;
+        }
+
+        // ── Any key's rules ─────────────────────────────────────────────────────────────────────
+
+        /** {@code key} is kept on the server: a networked model never sends it. Saved as any other. */
+        public Builder<A> serverOnly(String key) {
+            Policy p = policies.getOrDefault(key, Policy.NONE);
+            policies.put(key, new Policy(true, p.readOnly, p.min, p.max));
+            return this;
+        }
+
+        /** {@code key} is written and never read back: a value a reader may see but not set. */
+        public Builder<A> readOnly(String key) {
+            Policy p = policies.getOrDefault(key, Policy.NONE);
+            policies.put(key, new Policy(p.serverOnly, true, p.min, p.max));
+            return this;
+        }
+
+        /** A number decoded for {@code key} is clamped to {@code min..max}: what a client may set, kept fair. */
+        public Builder<A> range(String key, double min, double max) {
+            if (!(min <= max)) throw new IllegalArgumentException("range " + min + ".." + max);
+            Policy p = policies.getOrDefault(key, Policy.NONE);
+            policies.put(key, new Policy(p.serverOnly, p.readOnly, min, max));
+            return this;
         }
 
         /**
@@ -197,7 +291,17 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
         /** @throws IllegalStateException where a comment has no field after it */
         public CgObjectCodec<A> build() {
             if (pending != null) throw new IllegalStateException("comment() goes before the field it describes");
-            return new CgObjectCodec<>(make, name, new ArrayList<>(fields), null);
+            List<Field<A, ?>> all = new ArrayList<>(fields);
+            if (scan != null) {
+                // DERIVED FIRST, in key order; a field written out replaces the derived one of its key
+                Set<String> written = new HashSet<>();
+                for (Field<A, ?> f : fields) written.add(f.key);
+                Builder<A> derived = new Builder<>(make, name);
+                scan.deriveInto(derived, written);
+                all = new ArrayList<>(derived.fields);
+                all.addAll(fields);
+            }
+            return new CgObjectCodec<>(make, name, all, null, new LinkedHashMap<>(policies));
         }
     }
 
@@ -238,6 +342,28 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
             F value = get.apply(owner);
             if (value == null || optional && Objects.equals(value, omitWhen)) return;
             entries.put(ops.createString(key), codec.encode(ops, value));
+        }
+
+        /** {@link #read}, a decoded number clamped to the policy's range. */
+        @SuppressWarnings("unchecked")
+        <T> void read(CgDynamicOps<T> ops, T raw, A owner, Policy policy) {
+            if (set == null || policy.min == Double.NEGATIVE_INFINITY && policy.max == Double.POSITIVE_INFINITY) {
+                read(ops, raw, owner);
+                return;
+            }
+            F value = codec.decode(ops, raw);
+            if (value instanceof Number n) value = (F) clamp(n, policy.min, policy.max);
+            set.accept(owner, value);
+        }
+
+        private static Number clamp(Number n, double min, double max) {
+            double d = Math.max(min, Math.min(max, n.doubleValue()));
+            if (n instanceof Integer) return (int) d;
+            if (n instanceof Long) return (long) d;
+            if (n instanceof Float) return (float) d;
+            if (n instanceof Short) return (short) d;
+            if (n instanceof Byte) return (byte) d;
+            return d;
         }
 
         <T> void read(CgDynamicOps<T> ops, T raw, A owner) {

@@ -443,7 +443,7 @@ A text that does not parse throws `CgCodecException`, naming what it expected an
 
 ## 8. Files and bytes
 
-NBT is a file format like the rest of `docs/SERIALIZATION.md` §6, so it reads and writes like them:
+NBT is a file format like the rest of `docs/SERIALIZATION.md` §7, so it reads and writes like them:
 
 ```java
 CgNbtCompound level = CgFiles.NBT.read(Path.of("level.dat"), CgNbtCompound.CODEC);      // null when there is no file
@@ -514,7 +514,7 @@ How each version spells its tags and how that is proven: `docs/MINECRAFT_INTEGRA
 
 ## 10. Tags in other formats
 
-A tag goes through any file format of `docs/SERIALIZATION.md` §6 by its codec, `CgNbtCompound.CODEC`:
+A tag goes through any file format of `docs/SERIALIZATION.md` §7 by its codec, `CgNbtCompound.CODEC`:
 
 ```java
 CgFiles.JSON.write(export, CgNbtCompound.CODEC, tag);            // JSONC, TOML and YAML the same

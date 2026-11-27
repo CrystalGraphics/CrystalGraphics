@@ -17588,7 +17588,10 @@ com/crystalgraphics/serialization/CgCodecs
   method public,static enumOf (Ljava/lang/Class;)Lcom/crystalgraphics/serialization/CgCodec;
   method public,static field (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/util/function/Function;)Lcom/crystalgraphics/serialization/CgRecordField;
   method public,static fieldOr (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/util/function/Function;Ljava/lang/Object;)Lcom/crystalgraphics/serialization/CgRecordField;
+  method public,static fieldsOf (Ljava/lang/Class;)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
+  method public,static fieldsOf (Ljava/lang/Class;Ljava/lang/invoke/MethodHandles$Lookup;)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
   method public,static inline (Lcom/crystalgraphics/serialization/CgRecordCodec;Ljava/util/function/Function;)Lcom/crystalgraphics/serialization/CgRecordField;
+  method public,static keysOf (Lcom/crystalgraphics/serialization/CgObjectCodec;)Ljava/util/List;
   method public,static listOf (Lcom/crystalgraphics/serialization/CgCodec;)Lcom/crystalgraphics/serialization/CgCodec;
   method public,static map (Lcom/crystalgraphics/serialization/CgDynamicOps;)Lcom/crystalgraphics/serialization/CgCodecs$MapCodecBuilder;
   method public,static mapOf (Lcom/crystalgraphics/serialization/CgCodec;Lcom/crystalgraphics/serialization/CgCodec;)Lcom/crystalgraphics/serialization/CgCodec;
@@ -17671,6 +17674,8 @@ com/crystalgraphics/serialization/CgObjectCodec
   method public decode (Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Object;)Ljava/lang/Object;
   method public decode (Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
   method public encode (Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Object;)Ljava/lang/Object;
+  method public keys ()Ljava/util/List;
+  method public policy (Ljava/lang/String;)Lcom/crystalgraphics/serialization/CgObjectCodec$Policy;
 com/crystalgraphics/serialization/CgObjectCodec$Builder
   access public,final
   extends java/lang/Object
@@ -17679,7 +17684,24 @@ com/crystalgraphics/serialization/CgObjectCodec$Builder
   method public extend (Lcom/crystalgraphics/serialization/CgObjectCodec;)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
   method public field (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/util/function/Function;Ljava/util/function/BiConsumer;)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
   method public into (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/util/function/Function;)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
+  method public key (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
   method public optional (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/util/function/Function;Ljava/util/function/BiConsumer;Ljava/lang/Object;)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
+  method public range (Ljava/lang/String;DD)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
+  method public readOnly (Ljava/lang/String;)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
+  method public serverOnly (Ljava/lang/String;)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
+  method public skip ([Ljava/lang/String;)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
+  method public with (Ljava/lang/Class;Lcom/crystalgraphics/serialization/CgCodec;)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
+com/crystalgraphics/serialization/CgObjectCodec$Policy
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (ZZDD)V
+  method public max ()D
+  method public min ()D
+  method public readOnly ()Z
+  method public serverOnly ()Z
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/serialization/CgPlainOps
   access public,final
   extends java/lang/Object

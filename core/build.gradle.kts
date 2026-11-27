@@ -252,10 +252,9 @@ examplesRoot.walkTopDown()
     }
 tasks.named("check") { dependsOn(compileExamples) }
 
-// T5: the allocation proofs again on the Java 8 copies of core and platform, where a jvmdg stub on a hot path would
-// allocate. By hand: ./gradlew :core:allocationProofsOnJava8Copy
-tasks.register<Test>("allocationProofsOnJava8Copy") {
-    description = "The *AllocationTest proofs against the Java 8 copies of core and platform."
+/** Tests matching {@code pattern}, run against the Java 8 copies of core and platform instead of their Java 25 classes. */
+fun onJava8Copy(name: String, about: String, pattern: String) = tasks.register<Test>(name) {
+    description = about
     group = "verification"
     useJUnit()
     val test = sourceSets["test"]
@@ -267,8 +266,15 @@ tasks.register<Test>("allocationProofsOnJava8Copy") {
     classpath = test.output + sourceSets["downgraded"].output +
             files(platform.dir("downgraded/classes"), platform.dir("resources/main")) +
             test.runtimeClasspath.filter { f -> f !in coreMain.files && !f.toPath().startsWith(platformBuild) }
-    filter { includeTestsMatching("*AllocationTest") }
+    filter { includeTestsMatching(pattern) }
 }
+
+// T5: the allocation proofs again on the Java 8 copies, where a jvmdg stub on a hot path would allocate.
+// By hand: ./gradlew :core:allocationProofsOnJava8Copy
+onJava8Copy("allocationProofsOnJava8Copy", "The *AllocationTest proofs against the Java 8 copies of core and platform.",
+        "*AllocationTest")
+// A codec from a class's fields reflects on what the downgrade made of it: ./gradlew :core:fieldsOfOnJava8Copy
+onJava8Copy("fieldsOfOnJava8Copy", "CgFieldsOfTest against the Java 8 copies of core and platform.", "*CgFieldsOfTest")
 
 // T9: JMH for the innermost loops (GPL-2.0 with the classpath exception: a development tool, never shipped). By hand
 // when a loop changes, B/op from -prof gc reading 0: ./gradlew :core:jmh [-Pjmh.include=CgCurveBench]
