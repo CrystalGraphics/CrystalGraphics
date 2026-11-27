@@ -57,8 +57,9 @@ public final class CgNetObjects {
     static final String METHOD = "cg/objects";
     static final String COMMANDS = "cg/commands";
     static final String PREDICT = "cg/predict";
-    static final int DEFINE = 1, SPAWN = 2, CHANGE = 3, MOVE = 4, DESPAWN = 5, EVENT = 6, REFUSED = 7, STOPPING = 8;
-    static final int FLAG_TRANSIENT = 1, FLAG_MINE = 2, FLAG_PREDICTED = 4;
+    static final int DEFINE = 1, SPAWN = 2, CHANGE = 3, MOVE = 4, DESPAWN = 5, EVENT = 6, REFUSED = 7, STOPPING = 8,
+            WATCH = 9, UNWATCH = 10;
+    static final int FLAG_TRANSIENT = 1, FLAG_MINE = 2, FLAG_PREDICTED = 4, FLAG_WATCHING = 8;
     /** Predictions one player may ask of one type: a second's worth at once, then this many a second. */
     static final float PREDICTIONS_PER_SECOND = 20;
 
@@ -87,8 +88,16 @@ public final class CgNetObjects {
     private static final NetBuffer ENCODED = new NetBuffer(4096);
     private static final NetBuffer BLOCK = new NetBuffer(1024);
     private static final NetBuffer VALUE = new NetBuffer(256);
-    private static final int SPAWN_OWNER = 0, SPAWN_OTHER = 1, CHANGE_OWNER = 2, CHANGE_OTHER = 3;
-    private static final int[] SEGMENT_START = new int[4], SEGMENT_END = new int[4];
+    /**
+     * One object's encodings this tick, shared by every viewer alike: a spawn and a change each by whether the viewer
+     * owns it (+0, +1) and watches it (+2), and the watched fields' baseline for a new watcher, by owner.
+     */
+    private static final int SPAWN_BASE = 0, CHANGE_BASE = 4, BASELINE_OWNER = 8, BASELINE_OTHER = 9, SEGMENTS = 10;
+    private static final int[] SEGMENT_START = new int[SEGMENTS], SEGMENT_END = new int[SEGMENTS];
+    /** Watchers gained and lost while the frames were written, told to server behaviours once they are. */
+    private static final ArrayList<CgNetObject> TOLD_OBJECT = new ArrayList<>();
+    private static final ArrayList<UUID> TOLD_PLAYER = new ArrayList<>();
+    private static final ArrayList<CgNetUnwatched> TOLD_WHY = new ArrayList<>();
     private static final double[] AT = new double[3];
     /** An entity's or a chunk's audience this tick: each viewer whose mark is the current generation. */
     private static long generation;
@@ -330,7 +339,29 @@ public final class CgNetObjects {
         VIEWERS_BY_ID.remove(viewer.peer.id(), viewer);
         PlayerFiles.disconnected(viewer.peer.id());
         CgNetObject.unmark(usedSlots, viewer.slot);
-        for (CgNetObject obj : LIVE) CgNetObject.unmark(obj.seenBy, viewer.slot);
+        for (CgNetObject obj : LIVE) {
+            CgNetObject.unmark(obj.seenBy, viewer.slot);
+            CgNetObject.unmark(obj.watchWanted, viewer.slot);
+            if (!CgNetObject.has(obj.watchedBy, viewer.slot)) continue;
+            CgNetObject.unmark(obj.watchedBy, viewer.slot);
+            tellUnwatched(obj, viewer.peer.id(), CgNetUnwatched.LEFT);
+        }
+    }
+
+    /** The slot of a connected player, or -1. Server thread. */
+    static int slotOf(UUID player) {
+        Viewer viewer = VIEWERS_BY_ID.get(player);
+        return viewer == null ? -1 : viewer.slot;
+    }
+
+    /** The connected players whose slots {@code slots} marks. */
+    static List<UUID> idsOf(long[] slots) {
+        List<UUID> out = new ArrayList<>();
+        for (int v = 0; v < VIEWERS.size(); v++) {
+            Viewer viewer = VIEWERS.get(v);
+            if (CgNetObject.has(slots, viewer.slot)) out.add(viewer.peer.id());
+        }
+        return out;
     }
 
     /** The server is starting: persisted objects are loaded, before any player. */
@@ -473,9 +504,10 @@ public final class CgNetObjects {
                     if (!CgNetObject.has(obj.seenBy, viewer.slot)) continue;
                     int before = viewer.frame.size;
                     boolean owner = isOwner(obj, viewer);
+                    boolean watcher = obj.type.keepsWatchers && CgNetObject.has(obj.watchedBy, viewer.slot);
                     // The tick's changes before its events, ending or not: a listener reads the state they happened in.
                     if (obj.anyDirty) {
-                        int segment = changeSegment(obj, owner);
+                        int segment = changeSegment(obj, owner, watcher);
                         if (SEGMENT_END[segment] > SEGMENT_START[segment]) viewer.append(segment);
                     }
                     if (obj.moved) viewer.move(obj);
@@ -498,6 +530,7 @@ public final class CgNetObjects {
             LIVE.set(keep++, obj);
         }
         for (int i = LIVE.size() - 1; i >= keep; i--) LIVE.remove(i);
+        tellWatchers();
     }
 
     private static void sendFired() {
@@ -511,9 +544,10 @@ public final class CgNetObjects {
             obj.type.tickLive++;
             for (int v = 0; v < VIEWERS.size(); v++) {
                 Viewer viewer = VIEWERS.get(v);
-                if (!viewer.ready || !viewer.speaks(obj.type) || !sees(viewer, obj)) continue;
+                boolean watcher = obj.type.keepsWatchers && CgNetObject.has(obj.watchWanted, viewer.slot);
+                if (!viewer.ready || !viewer.speaks(obj.type) || !sees(viewer, obj) || obj.type.watched && !watcher) continue;
                 int before = viewer.frame.size;
-                viewer.spawn(obj, spawnSegment(obj, isOwner(obj, viewer)));
+                viewer.spawn(obj, spawnSegment(obj, isOwner(obj, viewer), watcher));
                 obj.type.tickBytes += viewer.frame.size - before;
                 obj.type.tickViewers++;
             }
@@ -533,13 +567,38 @@ public final class CgNetObjects {
             int before = viewer.frame.size;
             boolean saw = CgNetObject.has(obj.seenBy, viewer.slot);
             // Stopping, it finishes in front of whoever saw it, wherever they stand, and spawns for nobody new.
-            boolean sees = stopping ? saw && inDimension(viewer, obj) : viewer.speaks(obj.type) && sees(viewer, obj);
+            boolean inView = stopping ? saw && inDimension(viewer, obj) : viewer.speaks(obj.type) && sees(viewer, obj);
+            // WATCHING, AS ASKED, APPLIED HERE AT THE TICK'S END: a watch and an unwatch in one tick are nothing.
+            boolean watcher = false, joined = false, left = false;
+            if (obj.type.keepsWatchers) {
+                boolean was = CgNetObject.has(obj.watchedBy, viewer.slot);
+                boolean wanted = CgNetObject.has(obj.watchWanted, viewer.slot);
+                CgNetUnwatched why = CgNetUnwatched.ASKED;
+                if (wanted && !inView) {
+                    // out of its view: unwatched, as a container closes when its player walks off
+                    CgNetObject.unmark(obj.watchWanted, viewer.slot);
+                    wanted = false;
+                    why = inDimension(viewer, obj) ? CgNetUnwatched.RANGE : CgNetUnwatched.DIMENSION;
+                }
+                if (wanted && !was) {
+                    obj.watchedBy = CgNetObject.marked(obj.watchedBy, viewer.slot);
+                    tellWatched(obj, viewer.peer.id());
+                    joined = true;
+                } else if (!wanted && was) {
+                    CgNetObject.unmark(obj.watchedBy, viewer.slot);
+                    tellUnwatched(obj, viewer.peer.id(), why);
+                    left = true;
+                }
+                watcher = wanted;
+            }
+            boolean sees = inView && (!obj.type.watched || watcher);
             boolean owner = isOwner(obj, viewer);
             if (sees && !saw) {
-                int segment = spawnSegment(obj, owner);
-                // A prediction never waits: its client drops it if the server's copy is late.
+                int segment = spawnSegment(obj, owner, watcher);
+                // A prediction never waits: its client drops it if the server's copy is late. An open screen waits
+                // behind nothing: a watcher's spawn is in the nearest bucket, as an owner's is.
                 boolean predicted = owner && obj.predictionKey != 0;
-                if (!predicted && !viewer.admits(owner ? 0 : bucket(viewer, obj), SEGMENT_END[segment] - SEGMENT_START[segment])) {
+                if (!predicted && !viewer.admits(owner || watcher ? 0 : bucket(viewer, obj), SEGMENT_END[segment] - SEGMENT_START[segment])) {
                     continue;
                 }
                 viewer.spawn(obj, segment);
@@ -548,9 +607,18 @@ public final class CgNetObjects {
                 viewer.despawn(obj.id, true);
                 CgNetObject.unmark(obj.seenBy, viewer.slot);
             } else if (sees) {
+                // A NEW WATCHER'S WATCHED FIELDS ARE A BASELINE, whole: never a delta against a copy it does not hold.
+                boolean baseline = joined && !obj.type.watched;
                 if (obj.anyDirty) {
-                    int segment = changeSegment(obj, owner);
+                    int segment = changeSegment(obj, owner, watcher && !baseline);
                     if (SEGMENT_END[segment] > SEGMENT_START[segment]) viewer.append(segment);
+                }
+                if (baseline) {
+                    viewer.watching(obj.id, true);
+                    int segment = baselineSegment(obj, owner);
+                    if (SEGMENT_END[segment] > SEGMENT_START[segment]) viewer.append(segment);
+                } else if (left && !obj.type.watched) {
+                    viewer.watching(obj.id, false);
                 }
                 if (obj.moved) viewer.move(obj);
                 if (obj.stopSend) viewer.stopping(obj.id);
@@ -565,6 +633,37 @@ public final class CgNetObjects {
 
     private static boolean isOwner(CgNetObject obj, Viewer viewer) {
         return obj.owner != null && obj.owner.equals(viewer.peer.id());
+    }
+
+    private static void tellWatched(CgNetObject obj, UUID player) {
+        if (obj.behaviour == null) return;
+        TOLD_OBJECT.add(obj);
+        TOLD_PLAYER.add(player);
+        TOLD_WHY.add(null);
+    }
+
+    private static void tellUnwatched(CgNetObject obj, UUID player, CgNetUnwatched why) {
+        if (obj.behaviour == null) return;
+        TOLD_OBJECT.add(obj);
+        TOLD_PLAYER.add(player);
+        TOLD_WHY.add(why);
+    }
+
+    /** Server behaviours hear who started and stopped watching, after the frames: what they change goes next tick. */
+    private static void tellWatchers() {
+        for (int i = 0; i < TOLD_OBJECT.size(); i++) {
+            CgNetObject obj = TOLD_OBJECT.get(i);
+            CgNetUnwatched why = TOLD_WHY.get(i);
+            try {
+                if (why == null) obj.behaviour.watched(obj, TOLD_PLAYER.get(i));
+                else obj.behaviour.unwatched(obj, TOLD_PLAYER.get(i), why);
+            } catch (RuntimeException failed) {
+                LOGGER.error("[cg-net] the server behaviour of {} failed on a watcher", obj, failed);
+            }
+        }
+        TOLD_OBJECT.clear();
+        TOLD_PLAYER.clear();
+        TOLD_WHY.clear();
     }
 
     // ── Server behaviours ───────────────────────────────────────────────────────────────────────
@@ -732,48 +831,67 @@ public final class CgNetObjects {
 
     private static void beginObject() {
         ENCODED.clear();
-        for (int s = 0; s < 4; s++) SEGMENT_START[s] = -1;
+        for (int s = 0; s < SEGMENTS; s++) SEGMENT_START[s] = -1;
     }
 
-    private static int spawnSegment(CgNetObject obj, boolean owner) {
-        int segment = owner ? SPAWN_OWNER : SPAWN_OTHER;
+    private static int spawnSegment(CgNetObject obj, boolean owner, boolean watcher) {
+        int segment = SPAWN_BASE + (owner ? 0 : 1) + (watcher ? 2 : 0);
         if (SEGMENT_START[segment] >= 0) return segment;
         SEGMENT_START[segment] = ENCODED.size;
         ENCODED.writeByte(SPAWN);
         ENCODED.writeVarInt(obj.id);
         ENCODED.writeVarInt(obj.type.index);
         boolean predicted = owner && obj.predictionKey != 0;
-        ENCODED.writeByte((obj.transientSpawn ? FLAG_TRANSIENT : 0) | (owner ? FLAG_MINE : 0) | (predicted ? FLAG_PREDICTED : 0));
+        ENCODED.writeByte((obj.transientSpawn ? FLAG_TRANSIENT : 0) | (owner ? FLAG_MINE : 0) | (predicted ? FLAG_PREDICTED : 0)
+                | (watcher ? FLAG_WATCHING : 0));
         if (predicted) ENCODED.writeVarInt(obj.predictionKey);
         ENCODED.writeVarLong(obj.spawnTick);
         ENCODED.writeByte(obj.kind.ordinal());
         if (obj.kind != CgAnchor.Kind.GLOBAL) ENCODED.writeString(obj.dimension);
         writePlace(ENCODED, obj);
-        writeFields(obj, obj.set, owner, true);
+        writeFields(obj, obj.set, owner, watcher, true, false);
         SEGMENT_END[segment] = ENCODED.size;
         return segment;
     }
 
-    private static int changeSegment(CgNetObject obj, boolean owner) {
-        int segment = owner ? CHANGE_OWNER : CHANGE_OTHER;
+    private static int changeSegment(CgNetObject obj, boolean owner, boolean watcher) {
+        int segment = CHANGE_BASE + (owner ? 0 : 1) + (watcher ? 2 : 0);
         if (SEGMENT_START[segment] >= 0) return segment;
         int start = ENCODED.size;
         SEGMENT_START[segment] = start;
         ENCODED.writeByte(CHANGE);
         ENCODED.writeVarInt(obj.id);
-        if (writeFields(obj, obj.dirty, owner, false) == 0) ENCODED.size = start;
+        if (writeFields(obj, obj.dirty, owner, watcher, false, false) == 0) ENCODED.size = start;
         SEGMENT_END[segment] = ENCODED.size;
         return segment;
     }
 
-    /** The fields in {@code which} a viewer may be sent, as a count then (index, length, value) each. */
-    private static int writeFields(CgNetObject obj, long[] which, boolean owner, boolean spawn) {
+    /** Every watched field it holds, for a viewer who started watching: a change record of them all. */
+    private static int baselineSegment(CgNetObject obj, boolean owner) {
+        int segment = owner ? BASELINE_OWNER : BASELINE_OTHER;
+        if (SEGMENT_START[segment] >= 0) return segment;
+        int start = ENCODED.size;
+        SEGMENT_START[segment] = start;
+        ENCODED.writeByte(CHANGE);
+        ENCODED.writeVarInt(obj.id);
+        if (writeFields(obj, obj.set, owner, true, true, true) == 0) ENCODED.size = start;
+        SEGMENT_END[segment] = ENCODED.size;
+        return segment;
+    }
+
+    /**
+     * The fields in {@code which} a viewer may be sent, as a count then (index, length, value) each; only the watched
+     * ones for a baseline.
+     */
+    private static int writeFields(CgNetObject obj, long[] which, boolean owner, boolean watcher, boolean spawn,
+                                   boolean onlyWatched) {
         BLOCK.clear();
         int count = 0;
         CgNetField<?>[] fields = obj.type.fields;
         for (int i = 0; i < fields.length; i++) {
             CgNetField<?> field = fields[i];
-            if (!CgNetObject.has(which, i) || !field.sentTo(owner) || (!spawn && field.initialOnly)) continue;
+            if (!CgNetObject.has(which, i) || !field.sentTo(owner, watcher) || (!spawn && field.initialOnly)) continue;
+            if (onlyWatched && !field.watched) continue;
             if (owner && !spawn && CgNetObject.has(obj.ownerHas, i)) continue;
             VALUE.clear();
             field.write(VALUE, obj.bits[i], obj.refs[i]);
@@ -841,9 +959,10 @@ public final class CgNetObjects {
     @SuppressWarnings("unchecked")
     private static <P> void command(Viewer viewer, CgNetObject obj, CgNetCommand<P> command, int index, NetBuffer in, int length) {
         int end = in.pos + length;
-        boolean allowed = CgNetObject.has(obj.seenBy, viewer.slot)
-                && (command.fromAnyViewer || isOwner(obj, viewer))
-                && viewer.take(command);
+        // A watched type's commands and predicted fields are its watchers', unless the command names its owner.
+        boolean sender = command.fromAnyViewer || (obj.type.watched && !command.fromOwner
+                ? CgNetObject.has(obj.watchedBy, viewer.slot) : isOwner(obj, viewer));
+        boolean allowed = CgNetObject.has(obj.seenBy, viewer.slot) && sender && viewer.take(command);
         if (!allowed) {
             command.refused++;
             obj.type.refusedCommands++;
@@ -1085,6 +1204,13 @@ public final class CgNetObjects {
                 begin();
                 frame.append(obj.events, spans[e * 3], spans[e * 3 + 1]);
             }
+        }
+
+        /** Tells this client it watches an object now, or no longer: unwatched, it clears the watched fields. */
+        void watching(int id, boolean watching) {
+            begin();
+            frame.writeByte(watching ? WATCH : UNWATCH);
+            frame.writeVarInt(id);
         }
 
         void refuse(int key) {

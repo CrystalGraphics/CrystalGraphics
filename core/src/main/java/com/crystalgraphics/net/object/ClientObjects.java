@@ -151,6 +151,8 @@ final class ClientObjects {
                     case CgNetObjects.EVENT: event(in); break;
                     case CgNetObjects.REFUSED: refused(in.readVarInt()); break;
                     case CgNetObjects.STOPPING: stopping(in.readVarInt()); break;
+                    case CgNetObjects.WATCH: watching(in.readVarInt(), true); break;
+                    case CgNetObjects.UNWATCH: watching(in.readVarInt(), false); break;
                     default: throw new CgCodecException("unknown object record " + record);
                 }
             }
@@ -237,6 +239,7 @@ final class ClientObjects {
         obj.kind = anchor;
         obj.dimension = dimension;
         obj.mine = (flags & CgNetObjects.FLAG_MINE) != 0;
+        obj.watching = (flags & CgNetObjects.FLAG_WATCHING) != 0;
         obj.transientSpawn = (flags & CgNetObjects.FLAG_TRANSIENT) != 0;
         obj.spawnTick = spawnTick;
         obj.client = this;
@@ -383,6 +386,39 @@ final class ClientObjects {
     private void despawn(int id, boolean killed) {
         CgNetObject obj = objects.remove(id);
         if (obj != null) end(obj, killed);
+    }
+
+    /**
+     * This client's player watches an object now, or no longer. Unwatched, its watched fields are cleared to their
+     * fallbacks and {@code has} answers false for them: absent, never a value that has stopped being kept current.
+     */
+    private void watching(int id, boolean watching) {
+        CgNetObject obj = objects.get(id);
+        if (obj == null) return;
+        obj.watching = watching;
+        if (watching) return;
+        CgNetField<?>[] fields = obj.type.fields;
+        int changed = 0;
+        for (int i = 0; i < fields.length; i++) {
+            if (!fields[i].watched || !CgNetObject.has(obj.set, i)) continue;
+            CgNetObject.unmark(obj.set, i);
+            obj.bits[i] = fields[i].fallbackBits;
+            if (fields[i].kind == CgNetField.Kind.CODEC) obj.refs[i] = fields[i].fallback;
+            if (changed == changedFields.length) changedFields = Arrays.copyOf(changedFields, changed * 2);
+            changedFields[changed++] = i;
+        }
+        if (changed == 0) return;
+        if (obj.behaviour != null) {
+            for (int c = 0; c < changed; c++) {
+                try {
+                    obj.behaviour.changed(obj, fields[changedFields[c]]);
+                } catch (RuntimeException failed) {
+                    LOGGER.error("[cg-net] the client behaviour of {} failed on a change", obj, failed);
+                }
+            }
+            received(obj);
+        }
+        notifyListeners(obj, changed);
     }
 
     private void stopping(int id) {

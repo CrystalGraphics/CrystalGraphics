@@ -53,7 +53,7 @@ public final class CgNetCommand<P> {
     CgRatePolicy rate = CgRatePolicy.IMMEDIATE;
     float perSecond = 20;
     float burst = -1;
-    boolean fromAnyViewer;
+    boolean fromAnyViewer, fromOwner;
     @Nullable
     BiFunction<CgNetObject, P, P> sanitize;
     long refused;
@@ -105,6 +105,16 @@ public final class CgNetCommand<P> {
     public CgNetCommand<P> burst(float count) {
         if (!(count >= 1)) throw new IllegalArgumentException("burst must be at least 1: " + count);
         burst = count;
+        return this;
+    }
+
+    /**
+     * Only the object's owner may send it, on a {@linkplain CgNetType.Builder#watched watched} type whose commands come
+     * from its watchers otherwise. A command of any other type is its owner's already.
+     */
+    public CgNetCommand<P> fromOwner() {
+        if (fromAnyViewer) throw new IllegalStateException(this + " is fromAnyViewer");
+        fromOwner = true;
         return this;
     }
 

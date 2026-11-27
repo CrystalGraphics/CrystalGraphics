@@ -1,6 +1,7 @@
 package com.crystalgraphics.net.object;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -115,6 +116,12 @@ public final class CgNetObject {
 
     /** Server: by viewer slot, who has been sent its spawn. */
     long[] seenBy = new long[1];
+    /** Server, by viewer slot: who was asked to watch it, applied into {@link #watchedBy} at the tick's end. */
+    long[] watchWanted = new long[1];
+    /** Server, by viewer slot: who watches it. */
+    long[] watchedBy = new long[1];
+    /** On a client: this client's player watches it. */
+    boolean watching;
     /** Server: this tick's events, encoded, and per event its start, end and whether it is the owner's alone. */
     @Nullable
     NetBuffer events;
@@ -402,6 +409,61 @@ public final class CgNetObject {
         return mine;
     }
 
+    /** On a client: this client's player watches it, so its watched fields are sent here. */
+    public boolean isWatching() {
+        return watching;
+    }
+
+    // ── Watchers ────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Server: {@code player} watches it from the end of this tick: sent its watched fields (or, for a watched type, the
+     * whole object) then, and their changes after. A player entity or a profile id, connected.
+     *
+     * <pre>{@code
+     * grinder.watch(player);        // they opened its screen
+     * grinder.unwatch(player);      // they closed it; a watch and an unwatch in one tick send nothing
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Its type must be {@code watched()} or have a {@code watched()} field.</li>
+     *   <li>A watcher who leaves, changes dimension or goes out of its range is unwatched, and its server behaviour
+     *       hears {@link CgNetBehaviour#unwatched} with why.</li>
+     * </ul>
+     */
+    public CgNetObject watch(Object playerOrId) {
+        watchWanted = marked(watchWanted, watcherSlot(playerOrId));
+        return this;
+    }
+
+    /** Server: {@code player} stops watching it at the end of this tick; their client clears its watched fields. */
+    public CgNetObject unwatch(Object playerOrId) {
+        unmark(watchWanted, watcherSlot(playerOrId));
+        return this;
+    }
+
+    /** Server: the players watching it, as of the last tick's end. */
+    public List<UUID> watchers() {
+        if (!server) throw new IllegalStateException("watchers are the server's");
+        return CgNetObjects.idsOf(watchedBy);
+    }
+
+    private int watcherSlot(Object playerOrId) {
+        if (!server) throw new IllegalStateException("watching is the server's to decide");
+        if (!type.keepsWatchers) throw new IllegalStateException(type.name + " has nothing watched: declare watched() on it or a field");
+        UUID id = playerOrId instanceof UUID ? (UUID) playerOrId : CgPlayers.idOf(Objects.requireNonNull(playerOrId, "playerOrId"));
+        if (id == null) throw new IllegalArgumentException("not a player: " + playerOrId);
+        int slot = CgNetObjects.slotOf(id);
+        if (slot < 0) throw new IllegalArgumentException(id + " is not connected: only a connected player watches");
+        return slot;
+    }
+
+    static long[] marked(long[] bits, int slot) {
+        long[] out = slot >>> 6 >= bits.length ? Arrays.copyOf(bits, (slot >>> 6) + 1) : bits;
+        mark(out, slot);
+        return out;
+    }
+
     /** Server ticks since it spawned, on either side. */
     public long age() {
         long now = server ? CgNetObjects.currentTick() : client == null ? spawnTick : client.serverTick;
@@ -615,7 +677,9 @@ public final class CgNetObject {
         if (server || state != LIVE || client == null) return false;
         CgNetField<?> field = type.fields[i];
         if (field.command == null) throw new IllegalStateException(field.name + " is not predicted: it is the server's to change");
-        if (!mine) throw new IllegalStateException(field.name + " is its owner's to predict, and this client does not own " + this);
+        if (!mine && !(type.watched && watching)) {
+            throw new IllegalStateException(field.name + " is its owner's to predict, and this client does not own " + this);
+        }
         mark(set, i);
         return true;
     }
@@ -699,7 +763,7 @@ public final class CgNetObject {
     public <P> CgNetObject send(CgNetCommand<P> command, @Nullable P value) {
         if (server) throw new IllegalStateException("a command is a client's to send; the server handles it");
         type.requireCommand(command);
-        if (!mine && !command.fromAnyViewer) {
+        if (!mine && !command.fromAnyViewer && !(type.watched && watching && !command.fromOwner)) {
             throw new IllegalStateException(command + " is its owner's to send, and this client does not own " + this);
         }
         if (client != null && (state == LIVE || state == STOPPING)) client.send(this, command, value);

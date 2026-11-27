@@ -45,6 +45,8 @@ import com.crystalgraphics.serialization.CgCodecs;
  *       declaration of the same shape are one type.</li>
  *   <li>A field's {@code persisted: true} saves it with the entity, through chunk unloads; the type's saves every field.
  *       A local field persisted fails at load, naming it.</li>
+ *   <li>A field's {@code sync}: {@code all} (the default), {@code owner} (its owner alone), {@code local} (never sent)
+ *       or {@code watched} (the players watching its object alone).</li>
  *   <li>A reload that changes its fields, events or holders fails by name until a restart.</li>
  * </ul>
  */
@@ -111,6 +113,7 @@ public final class CgNetTypeCompiler {
         switch (sync) {
             case "owner" -> field.ownerOnly();
             case "local" -> field.local();
+            case "watched" -> field.watched();
             default -> {
             }
         }

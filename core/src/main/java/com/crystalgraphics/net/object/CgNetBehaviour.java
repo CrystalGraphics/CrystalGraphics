@@ -1,5 +1,7 @@
 package com.crystalgraphics.net.object;
 
+import java.util.UUID;
+
 /**
  * What a networked object is on one side: an effect, a HUD element, a hitbox, the server's authority over it. The
  * layer replicates; a behaviour reacts. A type makes one per object on each client that sees it
@@ -94,6 +96,14 @@ public interface CgNetBehaviour {
 
     /** {@code killed}: ended at once, or left view, rather than despawned gracefully. */
     default void despawned(CgNetObject obj, boolean killed) {
+    }
+
+    /** Server: {@code player} watches it now, at the end of the tick {@link CgNetObject#watch} was called in. */
+    default void watched(CgNetObject obj, UUID player) {
+    }
+
+    /** Server: {@code player} no longer watches it, for {@code why}: asked, or the game took them away from it. */
+    default void unwatched(CgNetObject obj, UUID player, CgNetUnwatched why) {
     }
 
     /** Whether a graceful end has finished. A transient object is dropped once this says so. */

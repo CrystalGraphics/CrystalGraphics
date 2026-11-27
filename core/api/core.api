@@ -10714,11 +10714,14 @@ com/crystalgraphics/net/object/CgNetBehaviour
   method public spawned (Lcom/crystalgraphics/net/object/CgNetObject;F)V
   method public stopping (Lcom/crystalgraphics/net/object/CgNetObject;)V
   method public tick (Lcom/crystalgraphics/net/object/CgNetObject;)V
+  method public unwatched (Lcom/crystalgraphics/net/object/CgNetObject;Ljava/util/UUID;Lcom/crystalgraphics/net/object/CgNetUnwatched;)V
+  method public watched (Lcom/crystalgraphics/net/object/CgNetObject;Ljava/util/UUID;)V
 com/crystalgraphics/net/object/CgNetCommand
   access public,final
   extends java/lang/Object
   method public burst (F)Lcom/crystalgraphics/net/object/CgNetCommand;
   method public fromAnyViewer ()Lcom/crystalgraphics/net/object/CgNetCommand;
+  method public fromOwner ()Lcom/crystalgraphics/net/object/CgNetCommand;
   method public malformed ()J
   method public name ()Ljava/lang/String;
   method public perSecond (F)Lcom/crystalgraphics/net/object/CgNetCommand;
@@ -10777,6 +10780,7 @@ com/crystalgraphics/net/object/CgNetField
   method public serverOnly ()Lcom/crystalgraphics/net/object/CgNetField;
   method public skipOwner ()Lcom/crystalgraphics/net/object/CgNetField;
   method public toString ()Ljava/lang/String;
+  method public watched ()Lcom/crystalgraphics/net/object/CgNetField;
   method public,static of (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;)Lcom/crystalgraphics/net/object/CgNetField;
   method public,static ofBool (Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetField;
   method public,static ofDouble (Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetField;
@@ -10826,6 +10830,7 @@ com/crystalgraphics/net/object/CgNetObject
   method public isRemoved ()Z
   method public isServer ()Z
   method public isStopping ()Z
+  method public isWatching ()Z
   method public kill ()V
   method public level ()Ljava/lang/Object;
   method public lifetime (I)Lcom/crystalgraphics/net/object/CgNetObject;
@@ -10847,6 +10852,9 @@ com/crystalgraphics/net/object/CgNetObject
   method public start ()Lcom/crystalgraphics/net/object/CgNetObject;
   method public toString ()Ljava/lang/String;
   method public type ()Lcom/crystalgraphics/net/object/CgNetType;
+  method public unwatch (Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetObject;
+  method public watch (Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetObject;
+  method public watchers ()Ljava/util/List;
   method public within (Lcom/crystalgraphics/net/object/CgPredictionKey;)Lcom/crystalgraphics/net/object/CgNetObject;
   method public x ()D
   method public y ()D
@@ -10978,10 +10986,20 @@ com/crystalgraphics/net/object/CgNetType$Builder
   method public savedAs (Lcom/crystalgraphics/net/object/CgNetSaveForm;)Lcom/crystalgraphics/net/object/CgNetType$Builder;
   method public visibleTo (Ljava/util/function/BiPredicate;)Lcom/crystalgraphics/net/object/CgNetType$Builder;
   method public visibleToTrackers ()Lcom/crystalgraphics/net/object/CgNetType$Builder;
+  method public watched ()Lcom/crystalgraphics/net/object/CgNetType$Builder;
 com/crystalgraphics/net/object/CgNetTypeCompiler
   access public,final
   extends java/lang/Object
   method public,static register ()V
+com/crystalgraphics/net/object/CgNetUnwatched
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final ASKED Lcom/crystalgraphics/net/object/CgNetUnwatched;
+  field public,static,final DIMENSION Lcom/crystalgraphics/net/object/CgNetUnwatched;
+  field public,static,final LEFT Lcom/crystalgraphics/net/object/CgNetUnwatched;
+  field public,static,final RANGE Lcom/crystalgraphics/net/object/CgNetUnwatched;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetUnwatched;
+  method public,static values ()[Lcom/crystalgraphics/net/object/CgNetUnwatched;
 com/crystalgraphics/net/object/CgNetWire
   access public,abstract,interface
   extends java/lang/Object

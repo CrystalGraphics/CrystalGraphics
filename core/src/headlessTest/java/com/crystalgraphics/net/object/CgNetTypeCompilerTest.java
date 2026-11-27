@@ -71,6 +71,19 @@ public class CgNetTypeCompilerTest {
     }
 
     @Test
+    public void aFieldSyncedToWatchersIsWatched() {
+        CgNetType chest = compile("filetest:chest", """
+                _v: 1
+                fields:
+                  open: { kind: bool }
+                  contents: { kind: string, sync: watched }
+                entities: all
+                """);
+        assertTrue("sent only to who has it open", chest.field("contents").watched);
+        assertTrue(chest.keepsWatchers && !chest.field("open").watched);
+    }
+
+    @Test
     public void aFileFailsAtLoadByName() {
         String[][] cases = {
                 {"filetest:localsaved", """

@@ -166,7 +166,7 @@ public final class CgGameplayKinds {
     static final CgType NET_FIELD = CgTypes.struct("crystalgraphics:net_type.field")
             .property("kind", NET_KIND).required()
             .property("fallback", VALUE)
-            .property("sync", CgValueType.enumOf("all", "owner", "local")).defaultValue("all")
+            .property("sync", CgValueType.enumOf("all", "owner", "local", "watched")).defaultValue("all")
             .property("initial_only", BOOL).defaultValue(false)
             .property("predicted", BOOL).defaultValue(false)
             .property("persisted", BOOL).defaultValue(false)

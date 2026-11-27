@@ -127,6 +127,10 @@ public final class CgNetType {
     final boolean perHolder;
     final boolean copyOnDeath;
     final boolean visibleToTrackers;
+    /** Seen only by its watchers. */
+    final boolean watched;
+    /** It has a field sent only to its watchers, or is {@link #watched} whole: it keeps watchers. */
+    final boolean keepsWatchers;
     /** Server ticks a graceful despawn lets the server behaviour finish. */
     final int linger;
     /** Client ticks a prediction waits for the server before it counts as refused. */
@@ -184,6 +188,10 @@ public final class CgNetType {
         this.perHolder = b.perHolder;
         this.copyOnDeath = b.copyOnDeath;
         this.visibleToTrackers = b.visibleToTrackers;
+        this.watched = b.watched;
+        boolean anyWatched = b.watched;
+        for (CgNetField<?> field : fields) anyWatched |= field.watched;
+        this.keepsWatchers = anyWatched;
         this.linger = b.linger;
         this.predictionTimeout = b.predictionTimeout;
         this.keepRefused = b.keepRefused;
@@ -191,6 +199,7 @@ public final class CgNetType {
         boolean local = fields.length > 0;
         for (CgNetField<?> field : fields) local &= field.local;
         this.localOnly = local;
+        if (local && keepsWatchers) throw new IllegalStateException(name + " is never sent: it cannot be watched");
         this.changeListeners = new List[fields.length];
         for (int i = 0; i < fields.length; i++) changeListeners[i] = new CopyOnWriteArrayList<>();
         this.eventListeners = new List[events.length];
@@ -229,7 +238,7 @@ public final class CgNetType {
         private BiPredicate<CgNetObject, CgPeer> visibleTo;
         private boolean perHolder;
         private boolean copyOnDeath;
-        private boolean visibleToTrackers;
+        private boolean visibleToTrackers, watched;
         private int linger = 200;
         private int predictionTimeout = 40;
         private boolean keepRefused;
@@ -381,6 +390,28 @@ public final class CgNetType {
         /** A player-anchored object is seen by the players tracking its player too, not only by them. */
         public Builder visibleToTrackers() {
             visibleToTrackers = true;
+            return this;
+        }
+
+        /**
+         * Seen only by the players watching each object ({@link CgNetObject#watch}): a machine's screen, a container,
+         * sent to who has it open and to nobody else in range. Its commands and predicted fields are its watchers' too,
+         * unless a command says {@code fromOwner()} or {@code fromAnyViewer()}.
+         *
+         * <pre>{@code
+         * CgNetType GRINDER = CgNetType.define("mymod:grinder").fields(PROGRESS, FUEL).range(8).watched().build();
+         * grinder.watch(player);      // opened: sent the whole object at the end of the tick
+         * grinder.unwatch(player);    // closed: despawned on their client
+         * }</pre>
+         *
+         * <ul>
+         *   <li>A watcher who leaves, changes dimension or goes out of its range is unwatched, and the server behaviour
+         *       hears why ({@link CgNetBehaviour#unwatched}).</li>
+         *   <li>A watched object is first in a watcher's send budget: an open screen never waits behind the world.</li>
+         * </ul>
+         */
+        public Builder watched() {
+            watched = true;
             return this;
         }
 
@@ -792,7 +823,7 @@ public final class CgNetType {
         for (int i = 0; i < fields.length; i++) {
             CgNetField<?> f = fields[i], g = b.fields.get(i);
             if (!f.name.equals(g.name) || f.kind != g.kind || f.initialOnly != g.initialOnly || f.ownerOnly != g.ownerOnly
-                    || f.skipOwner != g.skipOwner || f.serverOnly != g.serverOnly || f.local != g.local
+                    || f.skipOwner != g.skipOwner || f.serverOnly != g.serverOnly || f.local != g.local || f.watched != g.watched
                     || (f.command == null) != (g.command == null) || f.fallbackBits != g.fallbackBits
                     || !Objects.equals(f.fallback, g.fallback) || saves[i] != (!g.local && (b.persisted || g.persisted))) {
                 return false;
@@ -806,7 +837,7 @@ public final class CgNetType {
         for (int i = 0; i < commands.length; i++) if (!commands[i].name.equals(commandNames.get(i))) return false;
         // whether a field saves is compared above: the type's persisted() and each field's both decide it
         return range == b.range && saveForm == b.saveForm && perHolder == b.perHolder && copyOnDeath == b.copyOnDeath
-                && visibleToTrackers == b.visibleToTrackers && linger == b.linger && predictionTimeout == b.predictionTimeout
+                && visibleToTrackers == b.visibleToTrackers && watched == b.watched && linger == b.linger && predictionTimeout == b.predictionTimeout
                 && keepRefused == b.keepRefused && (entityTypes == null) == (b.entityTypes == null)
                 && (visibleTo == null) == (b.visibleTo == null);
     }

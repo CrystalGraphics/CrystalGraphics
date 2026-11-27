@@ -63,7 +63,7 @@ public final class CgNetField<V> {
     final Kind kind;
     final CgCodec<V> codec;
 
-    boolean initialOnly, ownerOnly, skipOwner, serverOnly, local, persisted;
+    boolean initialOnly, ownerOnly, skipOwner, serverOnly, local, persisted, watched;
     /** A predicted field's way to the server: a command its type lists after its own. */
     @Nullable
     CgNetCommand<V> command;
@@ -128,8 +128,29 @@ public final class CgNetField<V> {
         return this;
     }
 
+    /**
+     * Sent only to the players watching its object ({@link CgNetObject#watch}): on a type seen by everyone in range,
+     * the part that only an open screen needs. The rest of the object still reaches every viewer.
+     *
+     * <pre>{@code
+     * public static final CgNetField<Float> GLOW = CgNetField.ofFloat("glow");              // everyone in range
+     * public static final CgNetField<Integer> FUEL = CgNetField.ofInt("fuel").watched();    // who has it open
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A player who starts watching is sent its current value; one who stops has it cleared on their client:
+     *       {@code has(FUEL)} answers false there, never a stale value.</li>
+     * </ul>
+     */
+    public CgNetField<V> watched() {
+        if (serverOnly || local) throw new IllegalStateException(name + " is never sent: it cannot be watched");
+        mutable().watched = true;
+        return this;
+    }
+
     /** Never sent; kept and persisted on the server. */
     public CgNetField<V> serverOnly() {
+        if (watched) throw new IllegalStateException(name + " is watched");
         if (command != null) throw new IllegalStateException(name + " is predicted");
         if (local) throw new IllegalStateException(name + " is local");
         mutable().serverOnly = true;
@@ -261,6 +282,11 @@ public final class CgNetField<V> {
     boolean sentTo(boolean owner) {
         if (serverOnly || local) return false;
         return owner ? !skipOwner : !ownerOnly;
+    }
+
+    /** Sent to a viewer who is, or is not, the owner, and who does, or does not, watch its object. */
+    boolean sentTo(boolean owner, boolean watcher) {
+        return sentTo(owner) && (watcher || !watched);
     }
 
     // ── Values ──────────────────────────────────────────────────────────────────────────────────
