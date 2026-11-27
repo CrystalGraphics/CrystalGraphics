@@ -49,8 +49,8 @@ import com.crystalgraphics.serialization.CgPlainOps;
  *   <li>Saved like any field, as the list of its entries.</li>
  * </ul>
  *
- * <p>Ported from Unity Netcode for GameObjects' {@code NetworkList} (MIT): an event per operation, applied in order,
- * a full copy for a new client. Unreal's {@code FFastArraySerializer} was read for shape only.</p>
+ * <p>Follows Unity Netcode for GameObjects' {@code NetworkList}: an event per operation, applied in order, a full copy
+ * for a new client. Written here to that shape, not copied from it.</p>
  */
 public final class CgNetList<E> extends CgNetField<CgNetList.Entries<E>> {
 
