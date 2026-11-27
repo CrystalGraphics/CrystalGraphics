@@ -189,6 +189,13 @@ public final class CgNetObjects {
         return obj != null && obj.isLive() ? obj : null;
     }
 
+    /** Client: the object {@code connection}'s client knows by {@code id}, or null: where one process holds several clients. */
+    @Nullable
+    public static CgNetObject find(CgProtocolConnection<Object> connection, int id) {
+        if (!connection.hasAttachment(ClientObjects.class)) return null;
+        return connection.attachment(ClientObjects.class, ClientObjects::new).find(id);
+    }
+
     /** Client: the objects of {@code type} this client sees now, or none outside a world. */
     public static List<CgNetObject> visible(CgNetType<?> type) {
         CgProtocolConnection<Object> connection = CgNetwork.client();

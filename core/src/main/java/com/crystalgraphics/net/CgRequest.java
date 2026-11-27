@@ -327,7 +327,6 @@ public final class CgRequest<A, R> {
         }
     }
 
-    /** Forgets every declaration. Tests only. */
     /** Forgets what tests declared; the engine's own {@code crystalgraphics:} requests, declared once, stay. */
     static void resetForTesting() {
         DECLARED.removeIf(r -> !r.name.startsWith("crystalgraphics:"));

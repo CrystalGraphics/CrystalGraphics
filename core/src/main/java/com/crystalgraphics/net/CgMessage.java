@@ -90,6 +90,8 @@ public final class CgMessage<T> {
     @Nullable
     private volatile Consumer<T> fromServer;
     @Nullable
+    private volatile BiConsumer<CgProtocolConnection<Object>, T> fromServerOn;
+    @Nullable
     private volatile BiConsumer<CgPeer, T> fromClient;
 
     private CgMessage(String name, Direction direction, CgCodec<T> codec) {
@@ -143,6 +145,22 @@ public final class CgMessage<T> {
     public CgMessage<T> onReceive(Consumer<T> handler) {
         if (!direction.toClients()) throw new IllegalStateException(name + " is never sent to clients");
         fromServer = handler;
+        fromServerOn = null;
+        return this;
+    }
+
+    /**
+     * On a client: what to do with one from the server, told the connection it came on: where one process holds
+     * several clients (a test rig), or state is kept per connection. Replaces any earlier handler.
+     *
+     * <pre>{@code
+     * OPEN.onReceiveOn((connection, open) -> sessionsOf(connection).opened(open));
+     * }</pre>
+     */
+    public CgMessage<T> onReceiveOn(BiConsumer<CgProtocolConnection<Object>, T> handler) {
+        if (!direction.toClients()) throw new IllegalStateException(name + " is never sent to clients");
+        fromServerOn = handler;
+        fromServer = null;
         return this;
     }
 
@@ -154,6 +172,18 @@ public final class CgMessage<T> {
     }
 
     // ── Sending ─────────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * On one connection: a client's to its server, a server's to that one player. What a sender holding its connection
+     * uses, where {@link #sendToServer} means the process's own client.
+     */
+    public void send(CgProtocolConnection<Object> connection, T value) {
+        boolean toServer = connection.peer() == null;
+        if (toServer ? !direction.toServer() : !direction.toClients()) {
+            throw new IllegalStateException(name + " is never sent that way");
+        }
+        sendTo(connection, new Encoded(value).on(connection));
+    }
 
     /** On the server: to each player in {@code audience} that has a connection. */
     public void send(CgAudience audience, T value) {
@@ -236,6 +266,8 @@ public final class CgMessage<T> {
             return;
         }
         if (fromTheServer) {
+            BiConsumer<CgProtocolConnection<Object>, T> on = fromServerOn;
+            if (on != null) on.accept(connection, value);
             Consumer<T> handler = fromServer;
             if (handler != null) handler.accept(value);
         } else {
@@ -275,7 +307,6 @@ public final class CgMessage<T> {
         connection.onTick(catchUp);
     }
 
-    /** Forgets every declaration. Tests only. */
     /** Forgets what tests declared; the engine's own {@code crystalgraphics:} messages, declared once, stay. */
     static void resetForTesting() {
         DECLARED.removeIf(m -> !m.name.startsWith("crystalgraphics:"));
