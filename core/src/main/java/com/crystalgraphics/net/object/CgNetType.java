@@ -13,6 +13,7 @@ import java.util.Collection;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
@@ -104,6 +105,8 @@ public final class CgNetType<T> {
             "Logs a comparesOnTouch type's value that changed without touch(model), when its last watcher leaves.").get();
 
     static final List<CgNetType<?>> REGISTERED = new CopyOnWriteArrayList<>();
+    /** Every type's index, declared or a connection's: a connection's take theirs past those declared before them. */
+    private static final AtomicInteger NEXT_INDEX = new AtomicInteger();
     private static final Map<String, CgNetType<?>> BY_NAME = new ConcurrentHashMap<>();
     /** The types {@link Builder#onEntities} put on entities: what an entity's arrival asks. */
     static final List<CgNetType<?>> ON_ENTITIES = new CopyOnWriteArrayList<>();
@@ -579,6 +582,16 @@ public final class CgNetType<T> {
             }
         }
 
+        /**
+         * This type for one client connection alone, never in the process's registry: what a server's {@code net_type}
+         * file compiles to on a client that lacks the mod. It goes with the connection.
+         */
+        CgNetType<T> buildForConnection() {
+            if (codec != null) throw new IllegalStateException(name + ": a codec type is declared in Java, not for a connection");
+            for (CgNetField<?> field : fields) field.freeze();
+            return new CgNetType<>(this, NEXT_INDEX.getAndIncrement());
+        }
+
         private CgNetType<T> register() {
             {
                 for (CgNetField<?> field : fields) {
@@ -593,7 +606,7 @@ public final class CgNetType<T> {
                 for (CgNetField<?> field : fields) local &= field.local;
                 if (local && persisted) throw new IllegalStateException(name + ": its fields are all local, and a local field is never saved");
                 if (local && !commands.isEmpty()) throw new IllegalStateException(name + ": its fields are all local, and nothing reaches the server");
-                CgNetType<T> type = new CgNetType<>(this, REGISTERED.size());
+                CgNetType<T> type = new CgNetType<>(this, NEXT_INDEX.getAndIncrement());
                 if (saveForm != null && !type.persisted) {
                     throw new IllegalStateException(name + " has a saved form and saves no field: mark the fields it saves persisted()");
                 }

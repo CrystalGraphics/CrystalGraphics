@@ -10687,6 +10687,27 @@ com/crystalgraphics/net/CgRequest$ServerHandler
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract handle (Lcom/crystalgraphics/net/CgPeer;Ljava/lang/Object;Lcom/crystalgraphics/net/CgRequest$Reply;)V
+com/crystalgraphics/net/CgServerMounts
+  access public,final
+  extends java/lang/Object
+  field public,static,final REFUSED_FLOOR Ljava/lang/String;
+  method public,static allowKind (Ljava/lang/String;Ljava/util/function/Predicate;)V
+  method public,static cacheCap (J)V
+  method public,static cacheIn (Ljava/nio/file/Path;)V
+  method public,static fetched ()J
+  method public,static mismatched ()J
+  method public,static mounted ()Ljava/util/List;
+  method public,static offer (Ljava/lang/String;)Lcom/crystalgraphics/net/CgServerMounts$Offer;
+  method public,static offer (Ljava/lang/String;Ljava/nio/file/Path;)Lcom/crystalgraphics/net/CgServerMounts$Offer;
+  method public,static onMounted (Ljava/util/function/BiConsumer;)V
+  method public,static onUnmounted (Ljava/util/function/Consumer;)V
+  method public,static refusedKinds ()J
+  method public,static supports (Ljava/lang/String;I)V
+  method public,static withdraw (Ljava/lang/String;)V
+com/crystalgraphics/net/CgServerMounts$Offer
+  access public,final
+  extends java/lang/Object
+  method public floor (Ljava/lang/String;I)Lcom/crystalgraphics/net/CgServerMounts$Offer;
 com/crystalgraphics/net/CgTransport
   access public,abstract,interface
   extends java/lang/Object
@@ -11007,6 +11028,7 @@ com/crystalgraphics/net/object/CgNetTestRig$Client
   extends java/lang/Object
   method public bytesReceived ()J
   method public connect ()Lcom/crystalgraphics/net/object/CgNetTestRig$Client;
+  method public connection ()Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
   method public die ()Lcom/crystalgraphics/net/object/CgNetTestRig$Client;
   method public dimension (Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetTestRig$Client;
   method public disconnect ()Lcom/crystalgraphics/net/object/CgNetTestRig$Client;
@@ -11025,6 +11047,7 @@ com/crystalgraphics/net/object/CgNetTestRig$Client
   method public respawn ()Lcom/crystalgraphics/net/object/CgNetTestRig$Client;
   method public toString ()Ljava/lang/String;
   method public visible (Lcom/crystalgraphics/net/object/CgNetType;)Ljava/util/List;
+  method public visible (Ljava/lang/String;)Ljava/util/List;
 com/crystalgraphics/net/object/CgNetTestRig$Entity
   access public,final
   extends java/lang/Object
@@ -11115,6 +11138,7 @@ com/crystalgraphics/net/object/CgNetType$Handler
 com/crystalgraphics/net/object/CgNetTypeCompiler
   access public,final
   extends java/lang/Object
+  method public,static declareFor (Lcom/crystalgraphics/net/protocol/CgProtocolConnection;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetType;
   method public,static register ()V
 com/crystalgraphics/net/object/CgNetUnwatched
   access public,final,enum
@@ -20598,6 +20622,7 @@ com/crystalgraphics/util/io/CgIO
   method public,static openStream (Ljava/lang/String;)Ljava/io/InputStream;
   method public,static overrideRoots ()Ljava/util/List;
   method public,static recordReads ()Lcom/crystalgraphics/util/io/CgIO$Reads;
+  method public,static unmount (Ljava/lang/String;)V
 com/crystalgraphics/util/io/CgIO$Reads
   access public,final
   extends java/lang/Object

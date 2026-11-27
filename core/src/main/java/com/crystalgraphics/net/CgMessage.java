@@ -276,9 +276,10 @@ public final class CgMessage<T> {
     }
 
     /** Forgets every declaration. Tests only. */
+    /** Forgets what tests declared; the engine's own {@code crystalgraphics:} messages, declared once, stay. */
     static void resetForTesting() {
-        DECLARED.clear();
-        VERSIONS.clear();
+        DECLARED.removeIf(m -> !m.name.startsWith("crystalgraphics:"));
+        VERSIONS.keySet().removeIf(ns -> !ns.equals("crystalgraphics"));
     }
 
     @Override

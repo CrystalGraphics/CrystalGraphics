@@ -31,8 +31,8 @@ public class CgPermissionTest {
     static final CgNetType<Sign> SIGN = CgNetType.define("test:permission/sign", CgCodecs.fieldsOf(Sign.class).build())
             .commands(WRITE).build();
 
-    /** A check runs once a second per peer, and the answer takes a tick or two to arrive. */
-    private static final int SECOND = 25;
+    /** A check runs once a second per peer, after a hello that may take a second itself to be answered. */
+    private static final int SECOND = 45;
 
     private CgNetTestRig rig;
 

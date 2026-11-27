@@ -294,6 +294,15 @@ public final class CgNetTestRig implements AutoCloseable {
             return objects == null ? Collections.emptyList() : objects.visible(type);
         }
 
+        /** What it sees of a type by name: one declared for its connection alone has no constant to name it by. */
+        public List<CgNetObject> visible(String typeName) {
+            ClientObjects objects = objects();
+            if (objects == null) return Collections.emptyList();
+            List<CgNetObject> out = new ArrayList<>();
+            for (CgNetObject obj : objects.all()) if (obj.type.name.equals(typeName)) out.add(obj);
+            return out;
+        }
+
         /** The object this client knows by {@code id}, or null. */
         @Nullable
         public CgNetObject find(int id) {
@@ -384,6 +393,12 @@ public final class CgNetTestRig implements AutoCloseable {
             CgNetwork.playerJoined(id, name, () -> connected ? this : null);
             clientConnections.open(id, null, frame -> toServer.addLast(new Packet(this, frame, now + latency)));
             return this;
+        }
+
+        /** Its connection to the server now: what a type is declared for, or a request asked on. Null while disconnected. */
+        @Nullable
+        public CgProtocolConnection<Object> connection() {
+            return connected ? clientConnections.get(id) : null;
         }
 
         @Nullable

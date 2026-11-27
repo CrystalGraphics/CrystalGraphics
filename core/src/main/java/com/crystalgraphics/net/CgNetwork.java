@@ -356,6 +356,7 @@ public final class CgNetwork {
         long allocated = measureAllocation ? CgThreadAllocation.current() : 0;
         CgNetObjects.serverTick();
         CgPermission.serverTick();
+        CgServerMounts.serverTick(CgEngineLifecycle.serverTicks());
         long objectsDone = System.nanoTime();
         long objectsAllocated = measureAllocation ? CgThreadAllocation.current() : 0;
         table.tick();

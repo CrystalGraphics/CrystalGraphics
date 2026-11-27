@@ -83,6 +83,17 @@ final class ClientObjects {
     }
 
     /** What this client shows of {@code type}: the server's objects, and its predictions still waiting on it. */
+    /** Types declared for this connection alone (a server's {@code net_type} files), found before the process's. */
+    private final Map<String, CgNetType<?>> declared = new HashMap<>();
+
+    /** Declares {@code type} for this connection; one of a name the process declares, or declared here, is refused. */
+    void declare(CgNetType<?> type) {
+        if (CgNetType.named(type.name) != null) {
+            throw new IllegalArgumentException(type.name + " is declared by this process: a server cannot replace it");
+        }
+        if (declared.putIfAbsent(type.name, type) != null) throw new IllegalArgumentException(type.name + " is declared for this connection already");
+    }
+
     /** A test rig's: a server type read as another type of this process, as another version of a mod would. */
     final Map<String, String> readsAs = new HashMap<>();
 
@@ -93,6 +104,17 @@ final class ClientObjects {
     @Nullable
     CgNetObject object(int id) {
         return objects.get(id);
+    }
+
+    /** Every live object it holds, and those it predicts. */
+    List<CgNetObject> all() {
+        List<CgNetObject> out = new ArrayList<>();
+        for (int s = 0; s < objects.capacity(); s++) {
+            CgNetObject obj = objects.at(s);
+            if (obj != null) out.add(obj);
+        }
+        out.addAll(pending.values());
+        return out;
     }
 
     List<CgNetObject> visible(CgNetType<?> type) {
@@ -193,7 +215,9 @@ final class ClientObjects {
     private void define(NetBuffer in) {
         int index = in.readVarInt();
         String name = in.readString();
-        CgNetType<?> type = CgNetType.named(readsAs.getOrDefault(name, name));
+        String local = readsAs.getOrDefault(name, name);
+        CgNetType<?> declaredHere = declared.get(local);
+        CgNetType<?> type = declaredHere != null ? declaredHere : CgNetType.named(local);
         int[] fields = new int[in.readVarInt()];
         for (int i = 0; i < fields.length; i++) {
             String field = in.readString();

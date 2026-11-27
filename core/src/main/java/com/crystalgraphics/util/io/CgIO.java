@@ -162,6 +162,14 @@ public class CgIO {
         MOUNTS = Collections.unmodifiableMap(next);
     }
 
+    /** Takes back what {@link #mount} gave {@code namespace}: its files fall through to the other roots again. */
+    public static synchronized void unmount(String namespace) {
+        if (!MOUNTS.containsKey(namespace)) return;
+        Map<String, Path> next = new HashMap<>(MOUNTS);
+        next.remove(namespace);
+        MOUNTS = Collections.unmodifiableMap(next);
+    }
+
     /** For instant hotswap from filesystem in harness*/
     private static final String ASSETS_HARNESS = "assets/harness/";
     

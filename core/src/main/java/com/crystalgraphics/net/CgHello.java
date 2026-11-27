@@ -43,6 +43,7 @@ final class CgHello {
 
     private static final String KEY_PROTOCOL = "p";
     private static final String KEY_NAMESPACES = "n";
+    private static final String KEY_OFFERS = "o";
 
     /** One connection's view of its peer. Touched only on the connection's own thread. */
     static final class State {
@@ -119,8 +120,10 @@ final class CgHello {
         State state = state(connection);
         boolean client = connection.peer() == null;
         connection.onNotify(METHOD, hello -> {
+            boolean first = !state.known;
             state.learned(read(hello));
             if (!client) connection.notify(METHOD, describe(connection, local.get()));
+            else if (first) CgServerMounts.offered(connection, readOffers(hello));
         });
         if (client) connection.notify(METHOD, describe(connection, local.get()));
         connection.onTick(() -> {
@@ -135,10 +138,25 @@ final class CgHello {
     }
 
     private static CgStateMap<Object> describe(CgProtocolConnection<Object> connection, Map<String, Integer> local) {
-        return new CgStateMap<>(connection.ops())
+        CgStateMap<Object> out = new CgStateMap<>(connection.ops())
                 .putInt(KEY_PROTOCOL, PROTOCOL)
                 .putList(KEY_NAMESPACES, new ArrayList<>(local.entrySet()),
-                        (out, entry) -> out.putString("n", entry.getKey()).putInt("v", entry.getValue()));
+                        (o, entry) -> o.putString("n", entry.getKey()).putInt("v", entry.getValue()));
+        // a server's answer names what it offers to mount
+        if (connection.peer() != null) {
+            out.putList(KEY_OFFERS, new ArrayList<>(CgServerMounts.offered().entrySet()),
+                    (o, entry) -> o.putString("n", entry.getKey()).putString("h", entry.getValue()));
+        }
+        return out;
+    }
+
+    private static Map<String, String> readOffers(CgStateMap<Object> in) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (CgStateMap<Object> entry : in.getList(KEY_OFFERS, entry -> entry)) {
+            String name = entry.getString("n", null);
+            if (name != null) out.put(name, entry.getString("h", ""));
+        }
+        return out;
     }
 
     private static Map<String, Integer> read(CgStateMap<Object> in) {

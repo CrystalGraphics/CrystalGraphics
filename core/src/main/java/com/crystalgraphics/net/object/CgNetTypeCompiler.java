@@ -9,10 +9,12 @@ import java.util.function.Predicate;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgGameplayKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.net.protocol.CgProtocolConnection;
 import com.crystalgraphics.object.validate.CgIssue;
 import com.crystalgraphics.object.validate.CgValidation;
 import com.crystalgraphics.serialization.CgCodec;
@@ -69,6 +71,49 @@ public final class CgNetTypeCompiler {
         }
         Map<Object, Object> tree = asset.resolved();
         String id = asset.id();
+        try {
+            return builder(id, tree, true).buildOnce();
+        } catch (IllegalArgumentException | IllegalStateException bad) {
+            throw new CgAssetException(id + ": " + bad.getMessage());
+        }
+    }
+
+    /**
+     * Declares the {@code net_type} file {@code yaml} as {@code id} for one client {@code connection} alone: a server's
+     * type on a client without its mod, found by that connection before the process's types and gone with it. Two
+     * servers' types of one name never meet.
+     *
+     * <pre>{@code
+     * CgNetTypeCompiler.declareFor(connection, "shop:stall", Files.readString(mounted.resolve("net_types/stall.yaml")));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A name this process declares is refused: an installed mod's types are never replaced by a server's.</li>
+     *   <li>Its {@code entities} rule is ignored: a connection's type is never put on entities.</li>
+     * </ul>
+     *
+     * @throws CgAssetException naming the file and what is wrong
+     */
+    public static CgNetType<?> declareFor(CgProtocolConnection<Object> connection, String id, String yaml) {
+        Object tree;
+        try {
+            tree = CgAssetYaml.read(yaml);
+        } catch (RuntimeException bad) {
+            throw new CgAssetException(id + ": " + bad.getMessage());
+        }
+        if (!(tree instanceof Map<?, ?> map)) throw new CgAssetException(id + ": not a net_type");
+        @SuppressWarnings("unchecked") Map<Object, Object> declared = (Map<Object, Object>) map;
+        try {
+            CgNetType<?> type = builder(id, declared, false).buildForConnection();
+            connection.attachment(ClientObjects.class, ClientObjects::new).declare(type);
+            return type;
+        } catch (IllegalArgumentException | IllegalStateException bad) {
+            throw new CgAssetException(id + ": " + bad.getMessage());
+        }
+    }
+
+    /** The type a file's resolved tree declares, not yet built; a connection's has no entities to name. */
+    private static CgNetType.Builder<CgNetObject> builder(String id, Map<Object, Object> tree, boolean onEntities) {
         boolean persisted = Boolean.TRUE.equals(tree.get("persisted"));
         List<CgNetField<?>> fields = new ArrayList<>();
         if (tree.get("fields") instanceof Map<?, ?> declared) {
@@ -90,14 +135,11 @@ public final class CgNetTypeCompiler {
                 events.add(payload == null ? CgNetEvent.of(name) : CgNetEvent.of(name, codec(String.valueOf(payload))));
             }
         }
-        CgNetType.Builder type = CgNetType.define(id).fields(fields.toArray(new CgNetField<?>[0]))
-                .events(events.toArray(new CgNetEvent<?>[0])).onEntities(entities(id, tree.get("entities")));
+        CgNetType.Builder<CgNetObject> type = CgNetType.define(id).fields(fields.toArray(new CgNetField<?>[0]))
+                .events(events.toArray(new CgNetEvent<?>[0]));
+        if (onEntities) type.onEntities(entities(id, tree.get("entities")));
         if (persisted) type.persisted();
-        try {
-            return type.buildOnce();
-        } catch (IllegalArgumentException | IllegalStateException bad) {
-            throw new CgAssetException(id + ": " + bad.getMessage());
-        }
+        return type;
     }
 
     private static CgNetField<?> field(String id, String name, Map<?, ?> f, String sync) {
