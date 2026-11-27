@@ -118,6 +118,13 @@ public final class MenusModern implements CgMenus.Host {
         return half.open((ServerPlayer) player, provider, spec);
     }
 
+    @Override
+    public boolean close(Object player, int menuId) {
+        if (!(player instanceof ServerPlayer) || ((ServerPlayer) player).containerMenu.containerId != menuId) return false;
+        ((ServerPlayer) player).closeContainer();
+        return true;
+    }
+
     private static Component text(String title) {
         //? if >=1.19 {
         return Component.literal(title);

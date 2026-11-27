@@ -135,6 +135,11 @@ public final class CgMenus {
         /** Opens {@code logic} as a menu of {@code type} for {@code player}; false when it cannot. Server thread. */
         boolean open(Object player, String type, String title, Logic logic, byte[] spec);
 
+        /** Closes {@code player}'s menu {@code menuId} if it is the one open, telling the client; false otherwise. */
+        default boolean close(Object player, int menuId) {
+            return false;
+        }
+
         Host NONE = new Host() {
             @Override public CgItemStorage create(int size) { return null; }
             @Override public CgItemStorage wrap(Object hostContainer) { return null; }
@@ -180,5 +185,18 @@ public final class CgMenus {
     public static boolean open(Object player, String type, String title, Logic logic, byte[] spec) {
         if (!TYPES.containsKey(type)) throw new IllegalArgumentException("menu type never declared: " + type);
         return host().open(player, type, title, logic, spec);
+    }
+
+    /**
+     * Closes {@code player}'s menu {@code menuId}, as its screen closing would, and tells its client: what ends a menu
+     * the server opened with something else (an application's session). Nothing when another menu is open. Server
+     * thread.
+     *
+     * <pre>{@code
+     * CgMenus.close(player, menuId);    // the session ended
+     * }</pre>
+     */
+    public static boolean close(Object player, int menuId) {
+        return host().close(player, menuId);
     }
 }
