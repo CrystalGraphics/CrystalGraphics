@@ -10839,6 +10839,7 @@ com/crystalgraphics/net/object/CgNetEvent
 com/crystalgraphics/net/object/CgNetField
   access public
   extends java/lang/Object
+  method public codec ()Lcom/crystalgraphics/serialization/CgCodec;
   method public fallback ()Ljava/lang/Object;
   method public fallback (Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetField;
   method public fallbackNumber ()F
@@ -11069,6 +11070,8 @@ com/crystalgraphics/net/object/CgNetType
   method public allowEdits (Lcom/crystalgraphics/serialization/CgObjectCodec;Lcom/crystalgraphics/net/CgPermission;)Lcom/crystalgraphics/net/object/CgNetType;
   method public allowEdits (Lcom/crystalgraphics/serialization/CgObjectCodec;Ljava/util/function/BiPredicate;)Lcom/crystalgraphics/net/object/CgNetType;
   method public allowEdits (Ljava/util/function/BiPredicate;)Lcom/crystalgraphics/net/object/CgNetType;
+  method public codec ()Lcom/crystalgraphics/serialization/CgObjectCodec;
+  method public edit (Lcom/crystalgraphics/net/object/CgNetObject;Ljava/lang/Object;Ljava/util/Collection;)Lcom/crystalgraphics/job/reply/CgReply;
   method public entry (Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetObject;
   method public event (Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetEvent;
   method public field (Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetField;
@@ -11090,10 +11093,12 @@ com/crystalgraphics/net/object/CgNetType
   method public onClient (Ljava/util/function/Function;)Lcom/crystalgraphics/net/object/CgNetType;
   method public onCommand (Lcom/crystalgraphics/net/object/CgNetCommand;Lcom/crystalgraphics/net/object/CgNetType$Handler;)Lcom/crystalgraphics/net/object/CgNetType;
   method public onEvent (Lcom/crystalgraphics/net/object/CgNetEvent;Ljava/util/function/BiConsumer;)Lcom/crystalgraphics/net/object/CgNetType;
+  method public onReceived (Lcom/crystalgraphics/net/object/CgNetType$Received;)Ljava/lang/Runnable;
   method public onServer (Ljava/util/function/Function;)Lcom/crystalgraphics/net/object/CgNetType;
   method public open (Lcom/crystalgraphics/net/object/CgNetObject;Ljava/lang/String;Ljava/lang/Object;)Lcom/crystalgraphics/job/reply/CgReply;
   method public over (Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetObject;
   method public part (Ljava/lang/Object;Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetObject;
+  method public partOf (Lcom/crystalgraphics/net/object/CgNetObject;Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetObject;
   method public predict (Lcom/crystalgraphics/net/object/CgAnchor;)Lcom/crystalgraphics/net/object/CgNetObject;
   method public put (Lcom/crystalgraphics/net/object/CgNetObject;Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)Lcom/crystalgraphics/job/reply/CgReply;
   method public refusedPredictions ()J
@@ -11135,6 +11140,10 @@ com/crystalgraphics/net/object/CgNetType$Handler
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract handle (Ljava/lang/Object;Lcom/crystalgraphics/net/CgPeer;Ljava/lang/Object;)V
+com/crystalgraphics/net/object/CgNetType$Received
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract received (Lcom/crystalgraphics/net/object/CgNetObject;[II)V
 com/crystalgraphics/net/object/CgNetTypeCompiler
   access public,final
   extends java/lang/Object

@@ -163,6 +163,8 @@ final class CgNetModel<T> {
     @Nullable
     volatile BiPredicate<Object, CgPeer> mayEdit;
     final List<BiConsumer<Object, CgPeer>> afterEdit = new CopyOnWriteArrayList<>();
+    /** Several keys edited in one request, all or none: a partial encoding of the instance, by key. */
+    final CgNetCall<Object, Boolean> edit;
     /** A map key's entry type's: its instances are {@link Entry} wrappers over the parent's map. */
     boolean entry;
 
@@ -170,6 +172,7 @@ final class CgNetModel<T> {
         this.codec = codec;
         this.keys = keys;
         this.comparesOnTouch = comparesOnTouch;
+        this.edit = CgNetCall.of("cg/edit", CgCodecs.PLAIN, CgCodecs.BOOL);
     }
 
     /** Each key of {@code codec} as a field, then each computed one; the parts' types declared as {@code name/key}. */
@@ -253,6 +256,7 @@ final class CgNetModel<T> {
     /** The calls the compiled keys bring, for the type to list. */
     List<CgNetCall<?, ?>> calls() {
         List<CgNetCall<?, ?>> out = new ArrayList<>();
+        out.add(edit);
         for (Key k : keys) {
             if (k.kind != Kind.MAP) continue;
             out.add(k.open);
@@ -283,6 +287,7 @@ final class CgNetModel<T> {
     @SuppressWarnings("unchecked")
     void bind(CgNetType<T> type) {
         this.type = type;
+        type.onCall(edit, (subject, peer, partial, reply) -> editAll(subject, peer, partial, reply));
         for (Key k : keys) {
             k.index = type.require(k.field);
             if (k.kind != Kind.MAP) continue;
@@ -302,6 +307,60 @@ final class CgNetModel<T> {
                 mapEdit(subject, peer, k, removal, reply);
             });
         }
+    }
+
+    /** Several keys at once: each checked first, then all stored, and {@code afterEdit} once. */
+    private void editAll(Object subject, CgPeer peer, Object partial, CgNetCall.Reply<Boolean> reply) {
+        CgNetObject obj = live.get(subject);
+        if (obj == null || !(partial instanceof Map<?, ?> values)) {
+            reply.fail(obj == null ? CgNetCommand.REFUSED_GONE : CgNetCommand.REFUSED_MALFORMED);
+            return;
+        }
+        List<Key> taken = new ArrayList<>(values.size());
+        List<Object> decoded = new ArrayList<>(values.size());
+        for (Map.Entry<?, ?> e : values.entrySet()) {
+            Key key = null;
+            for (Key k : keys) if (k.name.equals(String.valueOf(e.getKey()))) key = k;
+            if (key == null || key.codec == null || key.kind == Kind.PART || key.kind == Kind.MAP || key.kind == Kind.LIST
+                    || key.kind == Kind.COMPUTED) {
+                reply.fail(key == null ? CgNetCommand.REFUSED_UNKNOWN : CgNetCommand.REFUSED_READ_ONLY);
+                return;
+            }
+            Object value;
+            try {
+                value = key.codec.decode(CgPlainOps.INSTANCE, e.getValue());
+            } catch (RuntimeException bad) {
+                reply.fail(CgNetCommand.REFUSED_MALFORMED);
+                return;
+            }
+            String refusal = refusal(obj, key, value, peer);
+            if (refusal != null) {
+                reply.fail(refusal);
+                return;
+            }
+            taken.add(key);
+            decoded.add(value);
+        }
+        Bound bound = obj.bound;
+        for (int i = 0; i < taken.size(); i++) {
+            Key key = taken.get(i);
+            Object value = decoded.get(i);
+            store(bound.model, key, value);
+            if (key.field.kind == CgNetField.Kind.CODEC) {
+                bound.sent[key.slot] = encode(key.field, value);
+                obj.pulled(key.index, value);
+            } else {
+                obj.setUnchecked(key.index, value);
+            }
+        }
+        for (BiConsumer<Object, CgPeer> after : afterEdit) {
+            try {
+                after.accept(bound.root, peer);
+            } catch (RuntimeException failed) {
+                LOGGER.error("[cg-net] an afterEdit of {} failed", type.name, failed);
+            }
+        }
+        reply.ok(true);
     }
 
     /** An entry's object, made now if it has none: one per map, key and entry, by identity. */

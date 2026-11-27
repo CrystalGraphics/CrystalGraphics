@@ -247,6 +247,12 @@ public class CgNetField<V> {
         frozen = true;
     }
 
+    /** The codec of a value field; null for a primitive one, which is its {@link #kind()}. */
+    @Nullable
+    public CgCodec<V> codec() {
+        return codec;
+    }
+
     public String name() {
         return name;
     }

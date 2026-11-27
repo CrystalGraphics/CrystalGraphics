@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -35,6 +36,7 @@ import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.platform.service.CgStorageLayout;
 import com.crystalgraphics.serialization.CgObjectCodec;
+import com.crystalgraphics.serialization.CgPlainOps;
 import com.crystalgraphics.variable.CgVar;
 
 /**
@@ -893,6 +895,21 @@ public final class CgNetType<T> {
         throw new IllegalArgumentException(name + " has no map key '" + key + "'");
     }
 
+    /**
+     * Client: the object of {@code obj}'s part under {@code key}, once both have arrived; null before, and while the
+     * server has not opened that part for this client.
+     */
+    @Nullable
+    public CgNetObject partOf(CgNetObject obj, String key) {
+        CgNetModel<T> m = requireModel();
+        for (CgNetModel.Key k : m.keys) {
+            if (k.kind != CgNetModel.Kind.PART || !k.name.equals(key)) continue;
+            Object id = obj.valueAt(k.index);
+            return obj.client == null || !(id instanceof Integer i) || i == 0 ? null : obj.client.object(i);
+        }
+        throw new IllegalArgumentException(name + " has no part '" + key + "'");
+    }
+
     /** {@code instance}'s values are compared at the next tick: a {@link Builder#comparesOnTouch()} type's. */
     public void touch(T instance) {
         requireModel().touch(instance);
@@ -962,6 +979,12 @@ public final class CgNetType<T> {
         return (T) (obj.server ? (obj.bound == null ? null : obj.bound.model) : m.instance(obj));
     }
 
+    /** The codec a type was defined from, or null for one declared field by field. */
+    @Nullable
+    public CgObjectCodec<T> codec() {
+        return model == null ? null : model.codec;
+    }
+
     private CgNetModel<T> requireModel() {
         if (model == null) throw new IllegalStateException(name + " is declared field by field: over, part and touch are a codec type's");
         return model;
@@ -1023,6 +1046,53 @@ public final class CgNetType<T> {
     public <P> CgNetType<T> onEvent(CgNetEvent<P> event, BiConsumer<CgNetObject, P> listener) {
         eventListeners[requireEvent(event)].add((BiConsumer<CgNetObject, Object>) (BiConsumer<CgNetObject, ?>) listener);
         return this;
+    }
+
+    /** A client's frame of changes to one object, as {@link #onReceived} hears it. */
+    @FunctionalInterface
+    public interface Received {
+        /**
+         * {@code count} fields of {@code obj} changed, their indices the first {@code count} of {@code fields}, every
+         * one already in. {@code fields} is reused: copy what is kept.
+         */
+        void received(CgNetObject obj, int[] fields, int count);
+    }
+
+    /** Client: listeners to each object's frames of changes, in addition to any behaviour. */
+    final List<Received> received = new CopyOnWriteArrayList<>();
+
+    /**
+     * On a client: {@code listener} once after each frame's changes to an object of this type, its arrival included,
+     * with the fields that changed. What a copy kept on another thread follows, one hop a frame.
+     *
+     * <pre>{@code
+     * PET.onReceived((obj, fields, count) -> post(copyOf(obj, fields, count)));
+     * }</pre>
+     *
+     * @return how to stop listening
+     */
+    public Runnable onReceived(Received listener) {
+        received.add(Objects.requireNonNull(listener, "listener"));
+        return () -> received.remove(listener);
+    }
+
+    /**
+     * Client, a watcher: asks the server to take {@code keys} of {@code changed}, a codec type's instance, as one edit:
+     * all of them or, refused with the reason of the first refused, none. What a form's commit sends.
+     *
+     * <pre>{@code
+     * PET.edit(obj, draftCopy, List.of("name", "maxHealth")).onError(error -> form.invalid(error.code()));
+     * }</pre>
+     */
+    public CgReply<Boolean> edit(CgNetObject obj, T changed, Collection<String> keys) {
+        CgNetModel<T> m = requireModel();
+        Map<String, Object> partial = new LinkedHashMap<>();
+        for (CgNetModel.Key k : m.keys) {
+            if (!keys.contains(k.name) || k.get == null || k.codec == null) continue;
+            Object value = k.get.apply(changed);
+            if (value != null) partial.put(k.name, k.codec.encode(CgPlainOps.INSTANCE, value));
+        }
+        return obj.call(m.edit, partial);
     }
 
     /** A command's server handler: the subject (the object, or a codec type's instance), who sent it, its value. */

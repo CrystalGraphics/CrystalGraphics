@@ -522,6 +522,15 @@ final class ClientObjects {
 
     private void notifyListeners(CgNetObject obj, int changed) {
         if (obj.type.model != null && changed > 0) obj.type.model.applied(obj, changedFields, changed);
+        if (changed > 0 && !obj.type.received.isEmpty()) {
+            for (CgNetType.Received listener : obj.type.received) {
+                try {
+                    listener.received(obj, changedFields, changed);
+                } catch (RuntimeException failed) {
+                    LOGGER.error("[cg-net] a received listener of {} failed", obj.type.name, failed);
+                }
+            }
+        }
         for (int c = 0; c < changed; c++) {
             int i = changedFields[c];
             List<BiConsumer<CgNetObject, Object>> listeners = obj.type.changeListeners[i];
