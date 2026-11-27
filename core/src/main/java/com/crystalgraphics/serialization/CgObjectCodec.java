@@ -13,6 +13,9 @@ import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.function.ToDoubleFunction;
+import java.util.function.ToIntFunction;
+import java.util.function.ToLongFunction;
 
 /**
  * A codec for a mutable object, each field declared once: encoding, decoding and decoding into a live object all read
@@ -129,6 +132,84 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
         public boolean inPlace() {
             return setter == null;
         }
+    }
+
+    /**
+     * A getter that also reads its primitive unboxed, beside its {@link Function}: what {@code CgCodecs.fieldsOf} makes
+     * for a primitive field, and what {@link #readsFloat} and its siblings make for a key declared by hand. A compiler
+     * reading a key every tick (a networked type's) checks for it, so a quiet tick boxes nothing.
+     *
+     * <pre>{@code
+     * if (key.getter() instanceof CgObjectCodec.PrimitiveGetter<?> raw) {
+     *     float heat = ((CgObjectCodec.PrimitiveGetter<Machine>) raw).readFloat(machine);   // no Float made
+     * }
+     * }</pre>
+     *
+     * Each read throws for a key of another primitive: call the one its codec names.
+     */
+    public interface PrimitiveGetter<A> {
+        int readInt(A owner);
+
+        long readLong(A owner);
+
+        float readFloat(A owner);
+
+        double readDouble(A owner);
+
+        boolean readBool(A owner);
+    }
+
+    /** A {@code float} read with no box, for {@link #readsFloat}. */
+    @FunctionalInterface
+    public interface FloatRead<A> {
+        float read(A owner);
+    }
+
+    /**
+     * A getter for a {@code float} key declared by hand that a networked type reads unboxed each tick.
+     *
+     * <pre>{@code
+     * .field("load", CgCodecs.FLOAT, CgObjectCodec.readsFloat(m -> m.engine.load), (m, v) -> m.engine.load = v)
+     * }</pre>
+     */
+    public static <A> Function<A, Float> readsFloat(FloatRead<? super A> read) {
+        return new Reads<A, Float>() {
+            @Override public Float apply(A owner) { return read.read(owner); }
+            @Override public float readFloat(A owner) { return read.read(owner); }
+        };
+    }
+
+    /** {@link #readsFloat} for an {@code int} key. */
+    public static <A> Function<A, Integer> readsInt(ToIntFunction<? super A> read) {
+        return new Reads<A, Integer>() {
+            @Override public Integer apply(A owner) { return read.applyAsInt(owner); }
+            @Override public int readInt(A owner) { return read.applyAsInt(owner); }
+        };
+    }
+
+    /** {@link #readsFloat} for a {@code long} key. */
+    public static <A> Function<A, Long> readsLong(ToLongFunction<? super A> read) {
+        return new Reads<A, Long>() {
+            @Override public Long apply(A owner) { return read.applyAsLong(owner); }
+            @Override public long readLong(A owner) { return read.applyAsLong(owner); }
+        };
+    }
+
+    /** {@link #readsFloat} for a {@code double} key. */
+    public static <A> Function<A, Double> readsDouble(ToDoubleFunction<? super A> read) {
+        return new Reads<A, Double>() {
+            @Override public Double apply(A owner) { return read.applyAsDouble(owner); }
+            @Override public double readDouble(A owner) { return read.applyAsDouble(owner); }
+        };
+    }
+
+    // one primitive read; the others refuse
+    private abstract static class Reads<A, V> implements Function<A, V>, PrimitiveGetter<A> {
+        @Override public int readInt(A owner) { throw new IllegalStateException("not an int key"); }
+        @Override public long readLong(A owner) { throw new IllegalStateException("not a long key"); }
+        @Override public float readFloat(A owner) { throw new IllegalStateException("not a float key"); }
+        @Override public double readDouble(A owner) { throw new IllegalStateException("not a double key"); }
+        @Override public boolean readBool(A owner) { throw new IllegalStateException("not a boolean key"); }
     }
 
     /** Its keys as declared, in the order written. */

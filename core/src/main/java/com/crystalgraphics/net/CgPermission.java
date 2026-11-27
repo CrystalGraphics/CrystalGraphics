@@ -201,9 +201,14 @@ public final class CgPermission {
 
     /** Server, per peer: the answers last sent, and when they are next checked. */
     static final class Sent {
+        final UUID id;
         @Nullable
         Answers last;
         int checkIn;
+
+        Sent(UUID id) {
+            this.id = id;
+        }
     }
 
     private static final Map<UUID, Sent> SENT = new ConcurrentHashMap<>();
@@ -211,7 +216,7 @@ public final class CgPermission {
     static final int CHECK_EVERY = 20;
 
     static void joined(CgPeer peer) {
-        Sent sent = new Sent();
+        Sent sent = new Sent(peer.id());
         sent.checkIn = 1;
         SENT.put(peer.id(), sent);
     }
@@ -223,17 +228,31 @@ public final class CgPermission {
     /** Server thread, each tick: each peer's answers checked once a second, sent when they changed. */
     static void serverTick() {
         if (SENT.isEmpty()) return;
-        for (Map.Entry<UUID, Sent> e : SENT.entrySet()) {
-            Sent sent = e.getValue();
+        // VALUES, NOT ENTRIES: a concurrent map's entry set makes an entry per mapping, every tick
+        for (Sent sent : SENT.values()) {
             if (--sent.checkIn > 0) continue;
             sent.checkIn = CHECK_EVERY;
-            CgPeer peer = CgNetwork.peer(e.getKey());
+            CgPeer peer = CgNetwork.peer(sent.id);
             if (peer == null) continue;
+            if (unchanged(sent.last, peer)) continue;
             Answers now = answersOf(peer);
-            if (now.equals(sent.last)) continue;
             sent.last = now;
             ANSWERS.send(CgAudience.player(peer.id()), now);
         }
+    }
+
+    // compared in place, so an unchanged peer's check builds nothing
+    private static boolean unchanged(@Nullable Answers last, CgPeer peer) {
+        if (last == null || last.operator() != peer.isOperator() || last.owner() != peer.isOwner()) return false;
+        List<String> granted = last.granted();
+        int at = 0;
+        for (int i = 0; i < DECLARED.size(); i++) {
+            CgPermission p = DECLARED.get(i);
+            if (!p.has(peer)) continue;
+            if (at >= granted.size() || !granted.get(at).equals(p.id)) return false;
+            at++;
+        }
+        return at == granted.size();
     }
 
     private static Answers answersOf(CgPeer peer) {

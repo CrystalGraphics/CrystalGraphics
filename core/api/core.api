@@ -17843,6 +17843,10 @@ com/crystalgraphics/serialization/CgObjectCodec
   method public factory ()Ljava/util/function/Supplier;
   method public keys ()Ljava/util/List;
   method public policy (Ljava/lang/String;)Lcom/crystalgraphics/serialization/CgObjectCodec$Policy;
+  method public,static readsDouble (Ljava/util/function/ToDoubleFunction;)Ljava/util/function/Function;
+  method public,static readsFloat (Lcom/crystalgraphics/serialization/CgObjectCodec$FloatRead;)Ljava/util/function/Function;
+  method public,static readsInt (Ljava/util/function/ToIntFunction;)Ljava/util/function/Function;
+  method public,static readsLong (Ljava/util/function/ToLongFunction;)Ljava/util/function/Function;
 com/crystalgraphics/serialization/CgObjectCodec$Builder
   access public,final
   extends java/lang/Object
@@ -17858,6 +17862,10 @@ com/crystalgraphics/serialization/CgObjectCodec$Builder
   method public serverOnly (Ljava/lang/String;)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
   method public skip ([Ljava/lang/String;)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
   method public with (Ljava/lang/Class;Lcom/crystalgraphics/serialization/CgCodec;)Lcom/crystalgraphics/serialization/CgObjectCodec$Builder;
+com/crystalgraphics/serialization/CgObjectCodec$FloatRead
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract read (Ljava/lang/Object;)F
 com/crystalgraphics/serialization/CgObjectCodec$Key
   access public,final,record
   extends java/lang/Record
@@ -17882,6 +17890,14 @@ com/crystalgraphics/serialization/CgObjectCodec$Policy
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/serialization/CgObjectCodec$PrimitiveGetter
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract readBool (Ljava/lang/Object;)Z
+  method public,abstract readDouble (Ljava/lang/Object;)D
+  method public,abstract readFloat (Ljava/lang/Object;)F
+  method public,abstract readInt (Ljava/lang/Object;)I
+  method public,abstract readLong (Ljava/lang/Object;)J
 com/crystalgraphics/serialization/CgPlainOps
   access public,final
   extends java/lang/Object

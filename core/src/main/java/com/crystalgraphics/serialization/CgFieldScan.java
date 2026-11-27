@@ -112,7 +112,7 @@ final class CgFieldScan<A> {
         Type declared = resolve(field.getGenericType(), field.getDeclaringClass());
         CgCodec codec = codecFor(declared, field);
         MethodHandle getter = handle(field, true);
-        Function<A, Object> get = owner -> {
+        Function<A, Object> get = field.getType().isPrimitive() ? new Primitive<>(field, getter, raw(field)) : owner -> {
             try {
                 return getter.invoke(owner);
             } catch (Throwable failed) {
@@ -137,6 +137,86 @@ final class CgFieldScan<A> {
             }
         };
         builder.field(key, codec, get, set);
+    }
+
+    // the getter at its own primitive return: read with invokeExact, nothing boxed
+    private MethodHandle raw(Field field) {
+        try {
+            MethodHandle handle = lookup.unreflectGetter(field);
+            return handle.asType(handle.type().changeParameterType(0, Object.class));
+        } catch (IllegalAccessException denied) {
+            throw new IllegalArgumentException(type.getSimpleName() + "." + field.getName() + " is not accessible here");
+        }
+    }
+
+    /** A primitive field's getter: boxed for the codec, unboxed for a networked type's tick. */
+    private static final class Primitive<A> implements Function<A, Object>, CgObjectCodec.PrimitiveGetter<A> {
+        private final Field field;
+        private final MethodHandle boxed, raw;
+
+        Primitive(Field field, MethodHandle boxed, MethodHandle raw) {
+            this.field = field;
+            this.boxed = boxed;
+            this.raw = raw;
+        }
+
+        @Override
+        public Object apply(A owner) {
+            try {
+                return boxed.invoke(owner);
+            } catch (Throwable failed) {
+                throw failed(failed);
+            }
+        }
+
+        @Override
+        public int readInt(A owner) {
+            try {
+                return (int) raw.invokeExact((Object) owner);
+            } catch (Throwable failed) {
+                throw failed(failed);
+            }
+        }
+
+        @Override
+        public long readLong(A owner) {
+            try {
+                return (long) raw.invokeExact((Object) owner);
+            } catch (Throwable failed) {
+                throw failed(failed);
+            }
+        }
+
+        @Override
+        public float readFloat(A owner) {
+            try {
+                return (float) raw.invokeExact((Object) owner);
+            } catch (Throwable failed) {
+                throw failed(failed);
+            }
+        }
+
+        @Override
+        public double readDouble(A owner) {
+            try {
+                return (double) raw.invokeExact((Object) owner);
+            } catch (Throwable failed) {
+                throw failed(failed);
+            }
+        }
+
+        @Override
+        public boolean readBool(A owner) {
+            try {
+                return (boolean) raw.invokeExact((Object) owner);
+            } catch (Throwable failed) {
+                throw failed(failed);
+            }
+        }
+
+        private CgCodecException failed(Throwable failed) {
+            return new CgCodecException(field.getName() + " could not be read: " + failed);
+        }
     }
 
     private MethodHandle handle(Field field, boolean read) {

@@ -91,6 +91,9 @@ final class CgNetModel<T> {
         /** A map key's calls: an entry opened for its caller, put, removed. */
         @Nullable
         CgNetCall<Object, Boolean> open, put, remove;
+        /** A primitive key's unboxed reader, when its getter has one ({@code fieldsOf}'s do). */
+        @Nullable
+        CgObjectCodec.PrimitiveGetter<Object> raw;
         /** Its field's index in the type; its own position is {@link #slot}. */
         int index;
         int slot;
@@ -106,6 +109,9 @@ final class CgNetModel<T> {
             this.codec = (CgCodec<Object>) codec;
             this.policy = policy;
             this.part = (CgNetType<Object>) part;
+            if (kind == Kind.PRIMITIVE && get instanceof CgObjectCodec.PrimitiveGetter<?> primitive) {
+                this.raw = (CgObjectCodec.PrimitiveGetter<Object>) primitive;
+            }
         }
 
         boolean inRange(Object value) {
@@ -441,12 +447,33 @@ final class CgNetModel<T> {
         read(obj, bound);
     }
 
+    // a primitive key read unboxed: a quiet tick makes no Float
+    @SuppressWarnings("unchecked")
+    private static void readPrimitive(CgNetObject obj, Key key, Object model) {
+        CgObjectCodec.PrimitiveGetter<Object> raw = key.raw;
+        switch (key.field.kind) {
+            case INT -> obj.setInt((CgNetField<Integer>) key.field, raw.readInt(model));
+            case LONG -> obj.setLong((CgNetField<Long>) key.field, raw.readLong(model));
+            case FLOAT -> obj.setFloat((CgNetField<Float>) key.field, raw.readFloat(model));
+            case DOUBLE -> obj.setDouble((CgNetField<Double>) key.field, raw.readDouble(model));
+            case BOOL -> obj.setBool((CgNetField<Boolean>) key.field, raw.readBool(model));
+            default -> obj.setUnchecked(key.index, key.get.apply(model));
+        }
+    }
+
     private void read(CgNetObject obj, Bound bound) {
-        boolean values = !comparesOnTouch || bound.touched;
+        // A TOUCH DURING THE READ (a getter that finds its value moved) covers the keys after it now, and every key
+        // at the next tick: it stays set
+        boolean touchedBefore = bound.touched;
+        bound.touched = false;
         for (int k = 0; k < keys.length; k++) {
             Key key = keys[k];
+            boolean values = !comparesOnTouch || touchedBefore || bound.touched;
             switch (key.kind) {
-                case PRIMITIVE -> obj.setUnchecked(key.index, key.get.apply(bound.model));
+                case PRIMITIVE -> {
+                    if (key.raw != null) readPrimitive(obj, key, bound.model);
+                    else obj.setUnchecked(key.index, key.get.apply(bound.model));
+                }
                 case PART -> {
                     CgNetObject child = key.part.model.live.get(key.get.apply(bound.model));
                     obj.setUnchecked(key.index, child != null && child.isLive() ? child.id() : 0);
@@ -475,7 +502,6 @@ final class CgNetModel<T> {
                 }
             }
         }
-        bound.touched = false;
     }
 
     /**
