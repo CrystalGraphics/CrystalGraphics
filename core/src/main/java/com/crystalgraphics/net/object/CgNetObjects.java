@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.BiPredicate;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -23,6 +24,8 @@ import org.apache.logging.log4j.Logger;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
+import com.crystalgraphics.serialization.CgPlainOps;
+import com.crystalgraphics.serialization.CgBinaryFormat;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
 import com.crystalgraphics.platform.service.CgStorageLayout;
 import com.crystalgraphics.serialization.CgCodec;
@@ -58,7 +61,9 @@ public final class CgNetObjects {
     static final String COMMANDS = "cg/commands";
     static final String PREDICT = "cg/predict";
     static final int DEFINE = 1, SPAWN = 2, CHANGE = 3, MOVE = 4, DESPAWN = 5, EVENT = 6, REFUSED = 7, STOPPING = 8,
-            WATCH = 9, UNWATCH = 10;
+            WATCH = 9, UNWATCH = 10, OUTCOME = 11, EDITABLE = 12;
+    /** An {@link #OUTCOME}'s status: done, refused with a reason, or a call's answer. */
+    static final int DONE = 0, REFUSED_WITH = 1, ANSWERED = 2;
     static final int FLAG_TRANSIENT = 1, FLAG_MINE = 2, FLAG_PREDICTED = 4, FLAG_WATCHING = 8;
     /** Predictions one player may ask of one type: a second's worth at once, then this many a second. */
     static final float PREDICTIONS_PER_SECOND = 20;
@@ -610,6 +615,7 @@ public final class CgNetObjects {
                 }
                 viewer.spawn(obj, segment);
                 obj.seenBy(viewer.slot);
+                if (watcher && obj.type.model != null) viewer.editable(obj);
             } else if (!sees && saw) {
                 viewer.despawn(obj.id, true);
                 CgNetObject.unmark(obj.seenBy, viewer.slot);
@@ -622,6 +628,7 @@ public final class CgNetObjects {
                 }
                 if (baseline) {
                     viewer.watching(obj.id, true);
+                    if (obj.type.model != null) viewer.editable(obj);
                     int segment = baselineSegment(obj, owner);
                     if (SEGMENT_END[segment] > SEGMENT_START[segment]) viewer.append(segment);
                 } else if (left && !obj.type.watched) {
@@ -942,7 +949,10 @@ public final class CgNetObjects {
         out.append(VALUE, 0, VALUE.size);
     }
 
-    /** Commands from one player, each (object id, command index, length, value). Server thread, at its connection's tick. */
+    /**
+     * Commands from one player, each (object id, command index, request id, length, value); a request id of 0 asks no
+     * answer. Server thread, at its connection's tick.
+     */
     private static void receiveCommands(Viewer viewer, byte[] payload) {
         NetBuffer in = new NetBuffer(payload);
         try {
@@ -951,12 +961,14 @@ public final class CgNetObjects {
                 CgNetObject obj = BY_ID.get(in.readVarInt());
                 if (obj != null && !obj.isLive() && !obj.isStopping()) obj = null;
                 int index = in.readVarInt();
+                int request = in.readVarInt();
                 int length = in.readVarInt();
                 if (obj == null || index >= obj.type.commands.length) {
                     in.skip(length);
+                    viewer.refused(request, obj == null ? CgNetCommand.REFUSED_GONE : CgNetCommand.REFUSED_UNKNOWN);
                     continue;
                 }
-                command(viewer, obj, obj.type.commands[index], index, in, length);
+                command(viewer, obj, obj.type.commands[index], index, request, in, length);
             }
         } catch (CgCodecException malformed) {
             LOGGER.debug("[cg-net] a malformed command frame from {}: {}", viewer.peer, malformed.getMessage());
@@ -964,17 +976,21 @@ public final class CgNetObjects {
     }
 
     @SuppressWarnings("unchecked")
-    private static <P> void command(Viewer viewer, CgNetObject obj, CgNetCommand<P> command, int index, NetBuffer in, int length) {
+    private static <P> void command(Viewer viewer, CgNetObject obj, CgNetCommand<P> command, int index, int request,
+                                    NetBuffer in, int length) {
         int end = in.pos + length;
         // A watched type's commands and predicted fields are its watchers', unless the command names its owner.
         boolean sender = command.fromAnyViewer || (obj.type.watched && !command.fromOwner
                 ? CgNetObject.has(obj.watchedBy, viewer.slot) : isOwner(obj, viewer));
-        boolean allowed = CgNetObject.has(obj.seenBy, viewer.slot) && sender && viewer.take(command);
-        if (!allowed) {
-            command.refused++;
-            obj.type.refusedCommands++;
-            obj.type.markUsed();
-            in.skip(length);
+        if (!CgNetObject.has(obj.seenBy, viewer.slot) || !sender) {
+            refuse(viewer, obj, command, request, CgNetCommand.REFUSED_NOT_SENDER, in, length);
+            return;
+        }
+        // over the rate or the size: dropped unread
+        if (!viewer.take(command) || length > command.maxBytes) {
+            command.dropped++;
+            refuse(viewer, obj, command, request, length > command.maxBytes ? CgNetCommand.REFUSED_TOO_LARGE
+                    : CgNetCommand.REFUSED_RATE, in, length);
             return;
         }
         P value;
@@ -983,32 +999,96 @@ public final class CgNetObjects {
         } catch (CgCodecException | ClassCastException malformed) {
             command.malformed++;
             in.pos = end;
+            viewer.refused(request, CgNetCommand.REFUSED_MALFORMED);
             return;
         }
         P sent = value;
         if (command.sanitize != null && value != null) value = command.sanitize.apply(obj, value);
-        if (value == null && command.codec != null) return;
+        if (value == null && command.codec != null) {
+            viewer.refused(request, CgNetCommand.REFUSED_SANITIZED);
+            return;
+        }
+        Object subject = obj.type.subject(obj);
+        BiPredicate<Object, CgPeer> guard = obj.type.guards[index];
+        if (guard != null && !allows(guard, subject, viewer.peer, obj)) {
+            refuse(viewer, obj, command, request, CgNetCommand.REFUSED_NOT_ALLOWED, in, 0);
+            return;
+        }
         if (command.field != null) {
             int i = obj.type.require(command.field);
             CgNetModel.Key key = obj.type.model == null ? null : obj.type.model.keyAt(i);
-            if (key != null && !obj.type.model.mayEdit(obj, key, value, viewer.peer)) {
-                // refused: the sender is put back to the server's value
-                command.refused++;
-                obj.type.refusedCommands++;
-                obj.type.markUsed();
+            String refusal = key == null ? null : obj.type.model.refusal(obj, key, value, viewer.peer);
+            if (refusal != null) {
+                // the sender is put back to the server's value
+                refuse(viewer, obj, command, request, refusal, in, 0);
                 obj.resend(command.field);
                 return;
             }
             obj.predictedSet(i, value, value.equals(sent));
             if (key != null) obj.type.model.edited(obj, key, value, viewer.peer);
+            viewer.answer(request, DONE, null, 0);
             return;
         }
-        CgNetCommand.Handler<P> handler = (CgNetCommand.Handler<P>) obj.type.commandHandlers[index];
-        if (handler == null) return;
+        Object handler = obj.type.commandHandlers[index];
         try {
-            handler.handle(obj, viewer.peer, value);
+            if (command.call != null) {
+                if (handler == null) viewer.refused(request, CgNetCommand.REFUSED_UNHANDLED);
+                else ((CgNetCall.Handler<Object, P, Object>) handler).handle(subject, viewer.peer, value,
+                        new CallReply<>((CgNetCall<P, Object>) command.call, viewer, request));
+                return;
+            }
+            if (handler != null) ((CgNetType.Handler<Object, P>) handler).handle(subject, viewer.peer, value);
+            viewer.answer(request, DONE, null, 0);
         } catch (RuntimeException failed) {
             LOGGER.error("[cg-net] the {} handler of {} failed", command.name, obj.type.name, failed);
+            viewer.refused(request, "net/handler_failed");
+        }
+    }
+
+    private static boolean allows(BiPredicate<Object, CgPeer> guard, Object subject, CgPeer peer, CgNetObject obj) {
+        try {
+            return guard.test(subject, peer);
+        } catch (RuntimeException failed) {
+            LOGGER.error("[cg-net] a guard of {} failed", obj.type.name, failed);
+            return false;
+        }
+    }
+
+    private static void refuse(Viewer viewer, CgNetObject obj, CgNetCommand<?> command, int request, String reason,
+                               NetBuffer in, int skip) {
+        command.refused++;
+        obj.type.refusedCommands++;
+        obj.type.markUsed();
+        in.skip(skip);
+        viewer.refused(request, reason);
+    }
+
+    /** A call's answer, sent to its caller once, whenever the handler gives it. */
+    private static final class CallReply<R> implements CgNetCall.Reply<R> {
+        private final CgNetCall<?, R> call;
+        private final Viewer viewer;
+        private final int request;
+        private boolean answered;
+
+        CallReply(CgNetCall<?, R> call, Viewer viewer, int request) {
+            this.call = call;
+            this.viewer = viewer;
+            this.request = request;
+        }
+
+        @Override
+        public void ok(R value) {
+            if (answered) return;
+            answered = true;
+            byte[] encoded = CgBinaryFormat.encode(call.result.encode(CgPlainOps.INSTANCE, value));
+            viewer.answer(request, ANSWERED, encoded, encoded.length);
+        }
+
+        @Override
+        public void fail(String reason) {
+            if (answered) return;
+            answered = true;
+            viewer.refused(request, Objects.requireNonNull(reason, "reason"));
         }
     }
 
@@ -1114,6 +1194,8 @@ public final class CgNetObjects {
         double x, y, z;
         /** The {@link #generation} at which an object's audience last included it. */
         long mark = -1;
+        /** Requests answered since the last frame, as {@link #OUTCOME} records. */
+        final NetBuffer outcomes = new NetBuffer(16);
         /** Prediction keys refused since the last frame. */
         int[] refused = new int[4];
         int refusedCount;
@@ -1139,6 +1221,11 @@ public final class CgNetObjects {
                 frame.writeVarInt(refused[r]);
             }
             refusedCount = 0;
+            if (outcomes.size > 0) {
+                begin();
+                frame.append(outcomes, 0, outcomes.size);
+                outcomes.clear();
+            }
             // The nearest buckets of last tick's held-back spawns, up to and including the one the budget runs out in:
             // short of it, a bucket bigger than the budget would never be let in. This tick's new spawns arrive in
             // creation order, so priority takes one tick to apply.
@@ -1222,6 +1309,33 @@ public final class CgNetObjects {
                 begin();
                 frame.append(obj.events, spans[e * 3], spans[e * 3 + 1]);
             }
+        }
+
+        /** A request's outcome, into the next frame; nothing for a request that asked none. */
+        void answer(int request, int status, @Nullable byte[] bytes, int length) {
+            if (request == 0) return;
+            outcomes.writeByte(OUTCOME);
+            outcomes.writeVarInt(request);
+            outcomes.writeByte(status);
+            if (status == ANSWERED) {
+                outcomes.writeVarInt(length);
+                outcomes.writeBytes(bytes, 0, length);
+            }
+            refusals = true;
+        }
+
+        void refused(int request, String reason) {
+            if (request == 0) return;
+            answer(request, REFUSED_WITH, null, 0);
+            outcomes.writeString(reason);
+        }
+
+        /** Whether this watcher may edit a codec type's object, told as it starts watching. */
+        void editable(CgNetObject obj) {
+            begin();
+            frame.writeByte(EDITABLE);
+            frame.writeVarInt(obj.id);
+            frame.writeByte(obj.type.model.editableBy(obj, peer) ? 1 : 0);
         }
 
         /** Tells this client it watches an object now, or no longer: unwatched, it clears the watched fields. */

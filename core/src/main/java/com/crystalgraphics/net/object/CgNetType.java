@@ -25,6 +25,7 @@ import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.job.reply.CgReply;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.trace.CgTraceNames;
@@ -174,7 +175,10 @@ public final class CgNetType<T> {
     /** By event index: what {@link #onEvent} installed. */
     final List<BiConsumer<CgNetObject, Object>>[] eventListeners;
     /** By command index: what {@link #onCommand} installed. */
-    final CgNetCommand.Handler<?>[] commandHandlers;
+    /** By command index: a {@link Handler} or a call's {@link CgNetCall.Handler}. */
+    final Object[] commandHandlers;
+    /** By command index: who may send it, asked with its subject; null for anyone its rules let through. */
+    final BiPredicate<Object, CgPeer>[] guards;
 
     @SuppressWarnings("unchecked")
     private CgNetType(Builder<T> b, int index) {
@@ -219,7 +223,8 @@ public final class CgNetType<T> {
         for (int i = 0; i < fields.length; i++) changeListeners[i] = new CopyOnWriteArrayList<>();
         this.eventListeners = new List[events.length];
         for (int i = 0; i < events.length; i++) eventListeners[i] = new CopyOnWriteArrayList<>();
-        this.commandHandlers = new CgNetCommand.Handler<?>[this.commands.length];
+        this.commandHandlers = new Object[this.commands.length];
+        this.guards = new BiPredicate[this.commands.length];
         this.traceLive = CgTraceNames.intern("net.objects/" + name);
         this.traceViewers = CgTraceNames.intern("net.viewers/" + name);
         this.traceBytes = CgTraceNames.intern("net.bytes/" + name);
@@ -338,6 +343,12 @@ public final class CgNetType<T> {
                 }
                 this.commands.add(Objects.requireNonNull(command, "command"));
             }
+            return this;
+        }
+
+        /** Its calls: commands that answer, {@link CgNetCall}. */
+        public Builder<T> calls(CgNetCall<?, ?>... calls) {
+            for (CgNetCall<?, ?> call : calls) commands(Objects.requireNonNull(call, "call").command);
             return this;
         }
 
@@ -534,6 +545,7 @@ public final class CgNetType<T> {
                     fields.clear();
                     fields(model.fields().toArray(new CgNetField<?>[0]));
                     for (CgNetField<?> field : listed) if (!fields.contains(field)) fields(field);
+                    for (CgNetCall<?, ?> call : model.calls()) calls(call);
                 }
                 CgNetType<T> type = register();
                 if (model != null) model.bind(type);
@@ -827,6 +839,46 @@ public final class CgNetType<T> {
         throw new IllegalArgumentException(name + " has no part '" + key + "'");
     }
 
+    /**
+     * The object of one entry of {@code root}'s map under {@code key}, made now if it has none: watch it for a watcher
+     * to be sent that entry. A watcher is sent the map's keys alone; a client opens an entry itself with
+     * {@link #open}. Server thread.
+     */
+    public CgNetObject entry(T root, String key, Object mapKey) {
+        CgNetModel<T> m = requireModel();
+        CgNetObject obj = over(root);
+        return m.entryObject(obj, mapKey(m, key), mapKey);
+    }
+
+    /**
+     * Client, a watcher: asks the server for one entry of a map key, which then arrives into this client's instance.
+     *
+     * <pre>{@code
+     * BANK.open(bank, "accounts", "Vegeta").then(ok -> show(BANK.instance(bank).accounts.get("Vegeta")));
+     * }</pre>
+     */
+    public CgReply<Boolean> open(CgNetObject obj, String key, Object mapKey) {
+        return obj.call(mapKey(requireModel(), key).open, mapKey);
+    }
+
+    /** Client, a watcher: adds or replaces one entry of a map key, under {@link #allowEdits}. */
+    public CgReply<Boolean> put(CgNetObject obj, String key, Object mapKey, Object value) {
+        CgNetModel.Put put = new CgNetModel.Put();
+        put.key = mapKey;
+        put.value = value;
+        return obj.call(mapKey(requireModel(), key).put, put);
+    }
+
+    /** Client, a watcher: removes one entry of a map key, under {@link #allowEdits}. */
+    public CgReply<Boolean> remove(CgNetObject obj, String key, Object mapKey) {
+        return obj.call(mapKey(requireModel(), key).remove, mapKey);
+    }
+
+    private CgNetModel.Key mapKey(CgNetModel<T> m, String key) {
+        for (CgNetModel.Key k : m.keys) if (k.kind == CgNetModel.Kind.MAP && k.name.equals(key)) return k;
+        throw new IllegalArgumentException(name + " has no map key '" + key + "'");
+    }
+
     /** {@code instance}'s values are compared at the next tick: a {@link Builder#comparesOnTouch()} type's. */
     public void touch(T instance) {
         requireModel().touch(instance);
@@ -959,10 +1011,64 @@ public final class CgNetType<T> {
         return this;
     }
 
-    /** On the server: what {@code command} does. Replaces any earlier handler. At init. */
-    public <P> CgNetType<T> onCommand(CgNetCommand<P> command, CgNetCommand.Handler<P> handler) {
+    /** A command's server handler: the subject (the object, or a codec type's instance), who sent it, its value. */
+    @FunctionalInterface
+    public interface Handler<T, P> {
+        void handle(T subject, CgPeer sender, @Nullable P value);
+    }
+
+    /**
+     * On the server: what {@code command} does. Replaces any earlier handler. At init.
+     *
+     * <pre>{@code
+     * TURRET.onCommand(AIM, (turret, player, aim) -> turret.set(TARGET, aim.target()));   // a type field by field
+     * PET.onCommand(RENAME, (pet, player, name) -> pet.name = name);                      // a codec type: its instance
+     * }</pre>
+     */
+    public <P> CgNetType<T> onCommand(CgNetCommand<P> command, Handler<? super T, P> handler) {
+        if (command.call != null) throw new IllegalArgumentException(command.name + " is a call: handle it with onCall");
         commandHandlers[requireCommand(command)] = Objects.requireNonNull(handler, "handler");
         return this;
+    }
+
+    /**
+     * On the server: how {@code call} is answered. Replaces any earlier handler. At init.
+     *
+     * <pre>{@code
+     * SHOP.onCall(SEARCH, (shop, player, text, reply) -> reply.ok(shop.find(text)));
+     * SHOP.onCall(BUY, (shop, player, item, reply) -> {
+     *     if (!shop.has(item)) reply.fail("mymod/out_of_stock");
+     *     else reply.ok(shop.sell(item, player.id()));
+     * });
+     * }</pre>
+     */
+    public <A, R> CgNetType<T> onCall(CgNetCall<A, R> call, CgNetCall.Handler<? super T, A, R> handler) {
+        commandHandlers[requireCommand(call.command)] = Objects.requireNonNull(handler, "handler");
+        return this;
+    }
+
+    /**
+     * Who may send {@code command}, beyond its own rules (the owner, or a watcher of a watched type): refused with
+     * {@link CgNetCommand#REFUSED_NOT_ALLOWED} otherwise.
+     *
+     * <pre>{@code
+     * PET.allow(RENAME, (pet, player) -> pet.owner.equals(player.id()));
+     * }</pre>
+     */
+    @SuppressWarnings("unchecked")
+    public CgNetType<T> allow(CgNetCommand<?> command, BiPredicate<? super T, CgPeer> guard) {
+        guards[requireCommand(command)] = (BiPredicate<Object, CgPeer>) guard;
+        return this;
+    }
+
+    /** {@link #allow(CgNetCommand, BiPredicate)} for a call. */
+    public CgNetType<T> allow(CgNetCall<?, ?> call, BiPredicate<? super T, CgPeer> guard) {
+        return allow(call.command, guard);
+    }
+
+    /** What a handler of {@code obj} is handed: a codec type's instance, or the object itself. */
+    Object subject(CgNetObject obj) {
+        return model != null && obj.bound != null ? obj.bound.model : obj;
     }
 
     // ── Shape ───────────────────────────────────────────────────────────────────────────────────

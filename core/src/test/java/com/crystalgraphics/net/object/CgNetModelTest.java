@@ -11,6 +11,8 @@ import org.junit.Test;
 
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgObjectCodec;
+import com.crystalgraphics.serialization.nbt.CgNbt;
+import com.crystalgraphics.serialization.nbt.CgNbtCompound;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -69,6 +71,48 @@ public class CgNetModelTest {
 
     static final CgNetType<Log> LOG = CgNetType.define("test:model/log", CgCodecs.fieldsOf(Log.class).build())
             .comparesOnTouch().build();
+
+    public static class Offer {
+        public String id = "";
+        public int price;
+        public static final CgObjectCodec<Offer> CODEC = CgCodecs.fieldsOf(Offer.class).build();
+
+        static Offer of(String id, int price) {
+            Offer o = new Offer();
+            o.id = id;
+            o.price = price;
+            return o;
+        }
+    }
+
+    public static class Board {
+        final List<Offer> offers = new ArrayList<>();
+        static final CgObjectCodec<Board> CODEC = CgCodecs.object(Board::new)
+                .into("offers", CgCodecs.keyedListOf(Offer.CODEC, o -> o.id), b -> b.offers).build();
+    }
+
+    /** A class that already saves itself to NBT. */
+    public static class Bag {
+        int coins;
+
+        CgNbtCompound save() {
+            return CgNbt.compound().put("coins", coins);
+        }
+
+        void load(CgNbtCompound tag) {
+            coins = tag.getInt("coins");
+        }
+    }
+
+    public static class Merchant {
+        final Bag bag = new Bag();
+        static final CgObjectCodec<Merchant> CODEC = CgCodecs.object(Merchant::new)
+                .into("bag", CgNbt.methods(Bag::save, Bag::load), m -> m.bag).build();
+    }
+
+    static final CgNetType<Merchant> MERCHANT = CgNetType.define("test:model/merchant", Merchant.CODEC).build();
+
+    static final CgNetType<Board> BOARD = CgNetType.define("test:model/board", Board.CODEC).build();
 
     private CgNetTestRig rig;
     private final List<String> edits = new ArrayList<>();
@@ -212,6 +256,50 @@ public class CgNetModelTest {
         rig.tick(2);
         assertEquals(List.of("one"), mine.lines);
         assertNotNull(mine);
+    }
+
+    @Test
+    public void aClassThatSavesItselfToNbtTravelsAsItsTag() {
+        Merchant merchant = new Merchant();
+        merchant.bag.coins = 12;
+        MERCHANT.over(merchant).watch(rig.client(0).id());
+        rig.tick(2);
+        Merchant mine = MERCHANT.instance(seen(0, MERCHANT));
+        Bag held = mine.bag;
+        assertEquals(12, held.coins);
+        merchant.bag.coins = 30;
+        rig.tick(2);
+        assertEquals("loaded into the held bag", 30, held.coins);
+        assertSame(held, mine.bag);
+    }
+
+    @Test
+    public void aKeyedListSendsItsChangesByKey() {
+        Board board = new Board();
+        for (int i = 0; i < 500; i++) board.offers.add(Offer.of("o" + i, i));
+        BOARD.over(board).watch(rig.client(0).id());
+        long start = rig.client(0).bytesReceived();
+        rig.tick(2);
+        long whole = rig.client(0).bytesReceived() - start;
+        Board mine = BOARD.instance(seen(0, BOARD));
+        assertEquals(500, mine.offers.size());
+
+        long before = rig.client(0).bytesReceived();
+        board.offers.get(250).price = 9999;
+        rig.tick(2);
+        long one = rig.client(0).bytesReceived() - before;
+        assertEquals(9999, mine.offers.get(250).price);
+        assertTrue("one element, not the list: " + one + " of " + whole + " B", one * 20 < whole);
+
+        board.offers.remove(0);
+        board.offers.add(0, board.offers.remove(10));
+        board.offers.add(Offer.of("new", 1));
+        rig.tick(2);
+        List<String> want = new ArrayList<>(), got = new ArrayList<>();
+        for (Offer o : board.offers) want.add(o.id);
+        for (Offer o : mine.offers) got.add(o.id);
+        assertEquals(want, got);
+        System.out.println("[model] keyed list of 500: whole " + whole + " B, one element " + one + " B");
     }
 
     @SuppressWarnings("unchecked")

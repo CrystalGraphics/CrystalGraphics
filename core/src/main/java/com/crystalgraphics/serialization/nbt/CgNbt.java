@@ -20,6 +20,8 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.function.BiConsumer;
 
 /**
  * Minecraft's NBT, the same on every version: build tags, read them, run codecs over them, print and parse them as
@@ -127,6 +129,18 @@ public final class CgNbt {
 
     /** The slot a host fills, once, on both sides: {@code CgPlatform.provide(CgNbt.HOST, new NbtModern())}. */
     public static final CgService<Host> HOST = CgService.of("crystalgraphics:nbt", Host.NONE);
+
+    /**
+     * A codec over a class's own NBT methods: what a class that already saves itself is declared with, inside a codec of
+     * yours or as a networked type's key. Decodes into a held object only.
+     *
+     * <pre>{@code
+     * .into("inventory", CgNbt.methods(Inventory::save, Inventory::load), npc -> npc.inventory)
+     * }</pre>
+     */
+    public static <A> CgNbtMethods<A> methods(Function<? super A, CgNbtCompound> save, BiConsumer<? super A, CgNbtCompound> load) {
+        return new CgNbtMethods<>(save, load);
+    }
 
     private CgNbt() {
     }

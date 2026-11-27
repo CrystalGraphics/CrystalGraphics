@@ -18,6 +18,13 @@ import org.apache.logging.log4j.Logger;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
 import com.crystalgraphics.net.rate.CgRateGate;
 import com.crystalgraphics.serialization.CgCodecException;
+import com.crystalgraphics.job.reply.CgPendingReply;
+import com.crystalgraphics.job.reply.CgReply;
+import com.crystalgraphics.job.reply.CgReplyError;
+import com.crystalgraphics.net.CgRequest;
+import com.crystalgraphics.serialization.CgBinaryFormat;
+import com.crystalgraphics.serialization.CgCodec;
+import com.crystalgraphics.serialization.CgPlainOps;
 
 /** What one client connection sees: the server's objects as its frames describe them. Client thread. */
 final class ClientObjects {
@@ -76,6 +83,9 @@ final class ClientObjects {
     }
 
     /** What this client shows of {@code type}: the server's objects, and its predictions still waiting on it. */
+    /** A test rig's: a server type read as another type of this process, as another version of a mod would. */
+    final Map<String, String> readsAs = new HashMap<>();
+
     /** A codec type's part links waiting for their part to arrive, by its id. */
     final Map<Integer, Runnable> partLinks = new HashMap<>();
 
@@ -161,6 +171,13 @@ final class ClientObjects {
                     case CgNetObjects.REFUSED: refused(in.readVarInt()); break;
                     case CgNetObjects.STOPPING: stopping(in.readVarInt()); break;
                     case CgNetObjects.WATCH: watching(in.readVarInt(), true); break;
+                    case CgNetObjects.OUTCOME: outcome(in); break;
+                    case CgNetObjects.EDITABLE: {
+                        CgNetObject obj = objects.get(in.readVarInt());
+                        boolean editable = in.readByte() != 0;
+                        if (obj != null) obj.editable = editable;
+                        break;
+                    }
                     case CgNetObjects.UNWATCH: watching(in.readVarInt(), false); break;
                     default: throw new CgCodecException("unknown object record " + record);
                 }
@@ -176,7 +193,7 @@ final class ClientObjects {
     private void define(NetBuffer in) {
         int index = in.readVarInt();
         String name = in.readString();
-        CgNetType<?> type = CgNetType.named(name);
+        CgNetType<?> type = CgNetType.named(readsAs.getOrDefault(name, name));
         int[] fields = new int[in.readVarInt()];
         for (int i = 0; i < fields.length; i++) {
             String field = in.readString();
@@ -605,6 +622,11 @@ final class ClientObjects {
 
     /** Its owner set a predicted field here: shown at once, and sent unless the object is still a prediction. */
     void predicted(CgNetObject obj, int i, Object payload) {
+        predicted(obj, i, payload, true);
+    }
+
+    /** A field its owner or watcher set here: heard here now, and sent through its gate when {@code send}. */
+    void predicted(CgNetObject obj, int i, Object payload, boolean send) {
         CgNetField<?> field = obj.type.fields[i];
         if (obj.behaviour != null) {
             try {
@@ -615,7 +637,7 @@ final class ClientObjects {
         }
         changedFields[0] = i;
         notifyListeners(obj, 1);
-        if (!obj.predicting) send(obj, field.command, payload);
+        if (!obj.predicting && send) send(obj, field.command, payload);
     }
 
     // ── Commands ────────────────────────────────────────────────────────────────────────────────
@@ -625,27 +647,93 @@ final class ClientObjects {
         gate.offer(obj, command.name, command.rate, payload);
     }
 
-    /** What the gate lets go: (object id, the server's command index, length, value), into this tick's frame. */
+    /** What the gate lets go: (object id, the server's command index, no request, length, value), into this tick's frame. */
     private void write(CgNetObject obj, String name, @Nullable Object payload) {
-        if (obj.isRemoved()) return;
+        write(obj, name, payload, 0);
+    }
+
+    /** Writes a command; false when the server's type has none of that name. */
+    private boolean write(CgNetObject obj, String name, @Nullable Object payload, int request) {
+        if (obj.isRemoved()) return false;
         TypeView view = viewOf(obj.type);
-        if (view == null) return;
+        if (view == null) return false;
         for (int i = 0; i < obj.type.commands.length; i++) {
             CgNetCommand<?> command = obj.type.commands[i];
             if (!command.name.equals(name)) continue;
-            if (view.commands[i] < 0) return;
+            if (view.commands[i] < 0) return false;
             value.clear();
             command.write(value, payload);
             outgoing.writeVarInt(obj.id);
             outgoing.writeVarInt(view.commands[i]);
+            outgoing.writeVarInt(request);
             outgoing.writeVarInt(value.size);
             outgoing.append(value, 0, value.size);
-            return;
+            return true;
+        }
+        return false;
+    }
+
+    // ── Requests that answer ────────────────────────────────────────────────────────────────────
+
+    /** A request waiting for the server's outcome, by its id. */
+    private record Asked(CgPendingReply<Object> reply, @Nullable CgCodec<?> result, long sentTick) {
+    }
+
+    /** Client ticks a request waits before it times out, {@link CgRequest#DEFAULT_TIMEOUT_MILLIS} of them. */
+    static final long REQUEST_TIMEOUT_TICKS = CgRequest.DEFAULT_TIMEOUT_MILLIS / 50;
+    private final Map<Integer, Asked> asked = new HashMap<>();
+    private int nextRequest = 1;
+
+    /**
+     * Sends {@code command} now, past its rate gate, asking the server's outcome: done, refused with its reason, or a
+     * call's answer. A command the server's type does not have is refused here, {@link CgNetCommand#REFUSED_UNKNOWN}.
+     */
+    @SuppressWarnings("unchecked")
+    <R> CgReply<R> ask(CgNetObject obj, CgNetCommand<?> command, @Nullable Object payload) {
+        int request = nextRequest++;
+        if (nextRequest == Integer.MAX_VALUE) nextRequest = 1;
+        CgPendingReply<Object> reply = new CgPendingReply<>(() -> asked.remove(request));
+        if (!write(obj, command.name, payload, request)) {
+            reply.fail(new CgReplyError(CgNetCommand.REFUSED_UNKNOWN, obj.type.name + " on the server has no " + command.name));
+            return (CgReply<R>) (CgReply<?>) reply;
+        }
+        asked.put(request, new Asked(reply, command.call == null ? null : command.call.result, ticks));
+        return (CgReply<R>) (CgReply<?>) reply;
+    }
+
+    private void outcome(NetBuffer in) {
+        Asked waiting = asked.remove(in.readVarInt());
+        int status = in.readByte();
+        if (status == CgNetObjects.ANSWERED) {
+            int length = in.readVarInt();
+            if (waiting == null || waiting.result == null) {
+                in.skip(length);
+                return;
+            }
+            byte[] encoded = new byte[length];
+            System.arraycopy(in.bytes, in.pos, encoded, 0, length);
+            in.skip(length);
+            waiting.reply.resolve(waiting.result.decode(CgPlainOps.INSTANCE, CgBinaryFormat.decode(encoded)));
+        } else if (status == CgNetObjects.REFUSED_WITH) {
+            String reason = in.readString();
+            if (waiting != null) waiting.reply.fail(new CgReplyError(reason, "refused by the server"));
+        } else if (waiting != null) {
+            waiting.reply.resolve(null);
+        }
+    }
+
+    private void timeOutRequests() {
+        for (Iterator<Map.Entry<Integer, Asked>> it = asked.entrySet().iterator(); it.hasNext(); ) {
+            Asked waiting = it.next().getValue();
+            if (ticks - waiting.sentTick < REQUEST_TIMEOUT_TICKS) continue;
+            it.remove();
+            waiting.reply.fail(new CgReplyError(CgReplyError.TIMEOUT, "no answer from the server"));
         }
     }
 
     void tick() {
         ticks++;
+        if (!asked.isEmpty()) timeOutRequests();
         if (!framed) serverTick++;
         framed = false;
         for (int s = 0; s < objects.capacity(); s++) {

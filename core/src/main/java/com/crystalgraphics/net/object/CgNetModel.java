@@ -1,6 +1,8 @@
 package com.crystalgraphics.net.object;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -20,8 +22,12 @@ import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.serialization.CgBinaryFormat;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecs;
+import com.crystalgraphics.serialization.CgKeyedListCodec;
+import com.crystalgraphics.serialization.CgMapCodec;
 import com.crystalgraphics.serialization.CgObjectCodec;
 import com.crystalgraphics.serialization.CgPlainOps;
+import com.crystalgraphics.serialization.nbt.CgNbtCompound;
+import com.crystalgraphics.serialization.nbt.CgNbtMethods;
 
 /**
  * What {@link CgNetType#define(String, CgObjectCodec)} compiles a codec into: each key a field of the type, read from
@@ -36,7 +42,37 @@ final class CgNetModel<T> {
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
     /** How a key is carried. */
-    enum Kind { PRIMITIVE, VALUE, PART, COMPUTED }
+    enum Kind { PRIMITIVE, VALUE, PART, COMPUTED, MAP, LIST }
+
+    /** One entry of a map key, the instance an entry's object stands for. */
+    static final class Entry {
+        @Nullable
+        Map<Object, Object> map;
+        @Nullable
+        Object key;
+        @Nullable
+        Object value;
+        int parent;
+
+        @Nullable
+        Object value() {
+            return map == null ? value : map.get(key);
+        }
+
+        void value(@Nullable Object v) {
+            value = v;
+            if (map != null) {
+                if (v == null) map.remove(key);
+                else map.put(key, v);
+            }
+        }
+    }
+
+    /** A put's argument: an entry's key and value. */
+    static final class Put {
+        Object key;
+        Object value;
+    }
 
     static final class Key {
         final String name;
@@ -49,9 +85,12 @@ final class CgNetModel<T> {
         @Nullable
         final CgCodec<Object> codec;
         final CgObjectCodec.Policy policy;
-        /** A part's type, whose objects are this key's values. */
+        /** A part's type, whose objects are this key's values; a map key's entry type. */
         @Nullable
         final CgNetType<Object> part;
+        /** A map key's calls: an entry opened for its caller, put, removed. */
+        @Nullable
+        CgNetCall<Object, Boolean> open, put, remove;
         /** Its field's index in the type; its own position is {@link #slot}. */
         int index;
         int slot;
@@ -86,6 +125,27 @@ final class CgNetModel<T> {
         /** Server: {@code touch} was called since the last read. */
         boolean touched = true;
         boolean everWatched;
+        /** Server: each map key's entry wrappers, by key slot, then by map key; made at the first open. */
+        @Nullable
+        Map<Object, Entry>[] entries;
+
+        /** Server: each keyed list's elements' encodings as last sent, by key slot, then by element key. */
+        @Nullable
+        Map<Object, byte[]>[] elements;
+
+        @SuppressWarnings("unchecked")
+        Map<Object, byte[]> elements(int slot) {
+            if (elements == null) elements = new Map[sent.length];
+            if (elements[slot] == null) elements[slot] = new HashMap<>();
+            return elements[slot];
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<Object, Entry> entries(int slot) {
+            if (entries == null) entries = new Map[sent.length];
+            if (entries[slot] == null) entries[slot] = new HashMap<>();
+            return entries[slot];
+        }
 
         Bound(Object model, Object root, int keys) {
             this.model = model;
@@ -103,6 +163,8 @@ final class CgNetModel<T> {
     @Nullable
     volatile BiPredicate<Object, CgPeer> mayEdit;
     final List<BiConsumer<Object, CgPeer>> afterEdit = new CopyOnWriteArrayList<>();
+    /** A map key's entry type's: its instances are {@link Entry} wrappers over the parent's map. */
+    boolean entry;
 
     private CgNetModel(CgObjectCodec<T> codec, Key[] keys, boolean comparesOnTouch) {
         this.codec = codec;
@@ -121,7 +183,25 @@ final class CgNetModel<T> {
             Kind kind;
             CgNetField<?> field;
             CgNetType<?> part = null;
-            if (c instanceof CgObjectCodec<?> nested) {
+            if (c instanceof CgNbtMethods<?> nbt) {
+                // its own save and load: carried as the tag, loaded into the held object on each side
+                CgNbtMethods<Object> methods = (CgNbtMethods<Object>) nbt;
+                Function<Object, Object> held = (Function<Object, Object>) k.getter();
+                field = CgNetField.of(k.key(), CgNbtCompound.CODEC);
+                keys.add(new Key(k.key(), Kind.VALUE, field, m -> methods.save(held.apply(m)),
+                        (Object m, Object tag) -> methods.load(held.apply(m), (CgNbtCompound) tag), CgNbtCompound.CODEC, policy, null));
+                if (policy.serverOnly()) field.serverOnly();
+                else if (!policy.readOnly()) field.predicted();
+                continue;
+            } else if (c instanceof CgKeyedListCodec<?> list) {
+                kind = Kind.LIST;
+                field = CgNetList.of(k.key(), (CgCodec) list.elements(), (Function) list.key());
+            } else if (c instanceof CgMapCodec<?, ?> map) {
+                kind = Kind.MAP;
+                part = entryType(name + "/" + k.key().toLowerCase(Locale.ROOT), (CgMapCodec<Object, Object>) map,
+                        comparesOnTouch);
+                field = CgNetField.of(k.key(), (CgCodec) CgCodecs.listOf(map.keys()));
+            } else if (c instanceof CgObjectCodec<?> nested) {
                 kind = Kind.PART;
                 CgNetType.Builder<?> partType = CgNetType.define(name + "/" + k.key().toLowerCase(Locale.ROOT), (CgObjectCodec) nested);
                 if (comparesOnTouch) partType.comparesOnTouch();
@@ -134,8 +214,18 @@ final class CgNetModel<T> {
                 field = CgNetField.of(k.key(), (CgCodec) c);
             }
             if (policy.serverOnly()) field.serverOnly();
-            else if (kind != Kind.PART && !policy.readOnly()) field.predicted();
-            keys.add(new Key(k.key(), kind, field, k.getter(), k.setter(), c, policy, part));
+            else if (kind != Kind.PART && kind != Kind.MAP && kind != Kind.LIST && !policy.readOnly()) field.predicted();
+            Key key = new Key(k.key(), kind, field, k.getter(), k.setter(), c, policy, part);
+            if (kind == Kind.MAP) {
+                CgMapCodec<Object, Object> map = (CgMapCodec<Object, Object>) c;
+                CgObjectCodec<Put> put = CgCodecs.object(Put::new)
+                        .field("k", map.keys(), p -> p.key, (p, v) -> p.key = v)
+                        .field("v", map.values(), p -> p.value, (p, v) -> p.value = v).build();
+                key.open = CgNetCall.of("open/" + k.key(), map.keys(), CgCodecs.BOOL);
+                key.put = (CgNetCall) CgNetCall.of("put/" + k.key(), put, CgCodecs.BOOL);
+                key.remove = CgNetCall.of("remove/" + k.key(), map.keys(), CgCodecs.BOOL);
+            }
+            keys.add(key);
         }
         for (CgNetType.Computed<T, ?> made : computed) {
             keys.add(new Key(made.field().name, Kind.COMPUTED, made.field(), made.value(), null, null,
@@ -143,6 +233,33 @@ final class CgNetModel<T> {
         }
         for (int k = 0; k < keys.size(); k++) keys.get(k).slot = k;
         return new CgNetModel<>(codec, keys.toArray(new Key[0]), comparesOnTouch);
+    }
+
+    /** A map key's entry type: each entry an object of its key, its parent's id and its value, made when opened. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static CgNetType<Object> entryType(String name, CgMapCodec<Object, Object> map, boolean comparesOnTouch) {
+        CgObjectCodec<Entry> entry = CgCodecs.object(Entry::new)
+                .field("key", map.keys(), e -> e.key, (e, v) -> e.key = v)
+                .field("parent", CgCodecs.INT, e -> e.parent, (e, v) -> e.parent = v)
+                .field("value", map.values(), Entry::value, Entry::value)
+                .readOnly("key").readOnly("parent").build();
+        CgNetType.Builder<Entry> b = CgNetType.define(name, entry);
+        if (comparesOnTouch) b.comparesOnTouch();
+        CgNetType<Entry> type = b.build();
+        type.model.entry = true;
+        return (CgNetType) type;
+    }
+
+    /** The calls the compiled keys bring, for the type to list. */
+    List<CgNetCall<?, ?>> calls() {
+        List<CgNetCall<?, ?>> out = new ArrayList<>();
+        for (Key k : keys) {
+            if (k.kind != Kind.MAP) continue;
+            out.add(k.open);
+            out.add(k.put);
+            out.add(k.remove);
+        }
+        return out;
     }
 
     @Nullable
@@ -163,9 +280,70 @@ final class CgNetModel<T> {
     }
 
     /** Called once the type exists: each key's field index. */
+    @SuppressWarnings("unchecked")
     void bind(CgNetType<T> type) {
         this.type = type;
-        for (Key k : keys) k.index = type.require(k.field);
+        for (Key k : keys) {
+            k.index = type.require(k.field);
+            if (k.kind != Kind.MAP) continue;
+            type.onCall(k.open, (subject, peer, mapKey, reply) -> {
+                CgNetObject obj = live.get(subject);
+                if (obj == null) {
+                    reply.fail(CgNetCommand.REFUSED_GONE);
+                    return;
+                }
+                entryObject(obj, k, mapKey).watch(peer.id());
+                reply.ok(true);
+            });
+            type.onCall(k.put, (subject, peer, put, reply) -> mapEdit(subject, peer, k, put, reply));
+            type.onCall(k.remove, (subject, peer, mapKey, reply) -> {
+                Put removal = new Put();
+                removal.key = mapKey;
+                mapEdit(subject, peer, k, removal, reply);
+            });
+        }
+    }
+
+    /** An entry's object, made now if it has none: one per map, key and entry, by identity. */
+    CgNetObject entryObject(CgNetObject parent, Key key, Object mapKey) {
+        Bound bound = parent.bound;
+        Map<Object, Entry> entries = bound.entries(key.slot);
+        Entry entry = entries.computeIfAbsent(mapKey, k -> new Entry());
+        entry.map = (Map<Object, Object>) key.get.apply(bound.model);
+        entry.key = mapKey;
+        entry.parent = parent.id();
+        return key.part.model.over(entry, bound.root);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void mapEdit(Object subject, CgPeer peer, Key key, Object put, CgNetCall.Reply<Boolean> reply) {
+        CgNetObject obj = live.get(subject);
+        if (obj == null) {
+            reply.fail(CgNetCommand.REFUSED_GONE);
+            return;
+        }
+        if (key.policy.readOnly() || key.policy.serverOnly()) {
+            reply.fail(CgNetCommand.REFUSED_READ_ONLY);
+            return;
+        }
+        if (!editableBy(obj, peer)) {
+            reply.fail(CgNetCommand.REFUSED_NOT_ALLOWED);
+            return;
+        }
+        Put edit = (Put) put;
+        Map<Object, Object> map = (Map<Object, Object>) key.get.apply(obj.bound.model);
+        if (edit.value == null) map.remove(edit.key);
+        else map.put(edit.key, edit.value);
+        // comparesOnTouch reads the keys again only when touched: an edit is one
+        obj.bound.touched = true;
+        for (BiConsumer<Object, CgPeer> after : afterEdit) {
+            try {
+                after.accept(obj.bound.root, peer);
+            } catch (RuntimeException failed) {
+                LOGGER.error("[cg-net] an afterEdit of {} failed", type.name, failed);
+            }
+        }
+        reply.ok(true);
     }
 
     @Nullable
@@ -214,9 +392,18 @@ final class CgNetModel<T> {
                     CgNetObject child = key.part.model.live.get(key.get.apply(bound.model));
                     obj.setUnchecked(key.index, child != null && child.isLive() ? child.id() : 0);
                 }
-                case VALUE, COMPUTED -> {
+                case LIST -> {
                     if (!values) continue;
-                    Object value = key.get.apply(bound.model);
+                    List<Object> want = (List<Object>) key.get.apply(bound.model);
+                    byte[] now = encode(key.codec, want);
+                    if (Arrays.equals(now, bound.sent[k])) continue;
+                    bound.sent[k] = now;
+                    diff((CgNetList<Object>) key.field, obj.list((CgNetList<Object>) key.field), want, bound.elements(k));
+                }
+                case VALUE, COMPUTED, MAP -> {
+                    if (!values) continue;
+                    Object value = key.kind == Kind.MAP ? new ArrayList<>(((Map<?, ?>) key.get.apply(bound.model)).keySet())
+                            : key.get.apply(bound.model);
                     if (key.field.kind != CgNetField.Kind.CODEC) {
                         obj.setUnchecked(key.index, value);
                         continue;
@@ -230,6 +417,36 @@ final class CgNetModel<T> {
             }
         }
         bound.touched = false;
+    }
+
+    /**
+     * Brings {@code have} to {@code want} by key: what is gone removed, what is new added at its place, what moved
+     * moved, and an element whose encoding changed set.
+     */
+    private static void diff(CgNetList<Object> field, CgNetList.Entries<Object> have, List<Object> want, Map<Object, byte[]> sent) {
+        Function<Object, ?> keyOf = field.key;
+        Map<Object, Object> wanted = new HashMap<>(want.size() * 2);
+        for (Object e : want) wanted.put(keyOf.apply(e), e);
+        for (int i = have.size() - 1; i >= 0; i--) {
+            Object k = keyOf.apply(have.get(i));
+            if (!wanted.containsKey(k)) {
+                have.remove(k);
+                sent.remove(k);
+            }
+        }
+        for (int i = 0; i < want.size(); i++) {
+            Object e = want.get(i);
+            Object k = keyOf.apply(e);
+            byte[] bytes = CgBinaryFormat.encode(field.elements.encode(CgPlainOps.INSTANCE, e));
+            int at = have.indexOf(k);
+            if (at < 0) {
+                have.add(i, e);
+            } else {
+                if (at != i) have.move(k, i);
+                if (!Arrays.equals(bytes, sent.get(k))) have.set(k, e);
+            }
+            sent.put(k, bytes);
+        }
     }
 
     /** Marks {@code model}'s values to be compared at the next tick: a type that {@code comparesOnTouch}. */
@@ -256,9 +473,16 @@ final class CgNetModel<T> {
         }
     }
 
-    /** Whether {@code peer} may change {@code key} of {@code obj} to {@code value}: its guard, its range. */
-    boolean mayEdit(CgNetObject obj, Key key, @Nullable Object value, CgPeer peer) {
-        if (key.policy.readOnly() || key.policy.serverOnly() || value == null || !key.inRange(value)) return false;
+    /** Why {@code peer} may not change {@code key} of {@code obj} to {@code value}, or null when it may. */
+    @Nullable
+    String refusal(CgNetObject obj, Key key, @Nullable Object value, CgPeer peer) {
+        if (key.policy.readOnly() || key.policy.serverOnly()) return CgNetCommand.REFUSED_READ_ONLY;
+        if (value == null || !key.inRange(value)) return CgNetCommand.REFUSED_OUT_OF_RANGE;
+        return editableBy(obj, peer) ? null : CgNetCommand.REFUSED_NOT_ALLOWED;
+    }
+
+    /** Whether {@code peer} passes this type's edit guard for {@code obj}: what a watcher is told as it arrives. */
+    boolean editableBy(CgNetObject obj, CgPeer peer) {
         BiPredicate<Object, CgPeer> guard = mayEdit;
         Bound bound = obj.bound;
         try {
@@ -296,8 +520,12 @@ final class CgNetModel<T> {
 
     @SuppressWarnings("unchecked")
     private static byte[] encode(CgNetField<?> field, @Nullable Object value) {
+        return encode((CgCodec<Object>) field.codec, value);
+    }
+
+    private static byte[] encode(CgCodec<Object> codec, @Nullable Object value) {
         if (value == null) return new byte[0];
-        return CgBinaryFormat.encode(((CgCodec<Object>) field.codec).encode(CgPlainOps.INSTANCE, value));
+        return CgBinaryFormat.encode(codec.encode(CgPlainOps.INSTANCE, value));
     }
 
     // ── Client ──────────────────────────────────────────────────────────────────────────────────
@@ -332,11 +560,45 @@ final class CgNetModel<T> {
             }
             Object value = obj.valueAt(key.index);
             if (value == null) continue;
+            if (key.kind == Kind.LIST) {
+                List<Object> entries = ((CgNetList.Entries<Object>) value).snapshot();
+                List<Object> held = (List<Object>) key.get.apply(model);
+                if (key.set == null && held != null) {
+                    held.clear();
+                    held.addAll(entries);
+                } else if (key.set != null) {
+                    key.set.accept(model, entries);
+                }
+                continue;
+            }
+            if (key.kind == Kind.MAP) {
+                // the keys arrive alone: a key gone takes its entry with it, and an entry arrives when opened
+                Map<?, ?> held = (Map<?, ?>) key.get.apply(model);
+                if (held != null) held.keySet().retainAll(new HashSet<>((List<?>) value));
+                continue;
+            }
             try {
                 store(model, key, value);
             } catch (RuntimeException failed) {
                 LOGGER.error("[cg-net] {}'s '{}' could not be written into its instance", type.name, key.name, failed);
             }
+        }
+        if (entry) linkEntry(obj);
+    }
+
+    /** An entry's fields arrived: its value goes into the map its parent's instance holds. */
+    @SuppressWarnings("unchecked")
+    void linkEntry(CgNetObject obj) {
+        Entry entry = (Entry) instance(obj);
+        if (entry == null || entry.map != null || obj.client == null) return;
+        CgNetObject parent = obj.client.object(entry.parent);
+        if (parent == null || parent.type.model == null) return;
+        Object parentModel = parent.type.model.instance(parent);
+        for (Key k : parent.type.model.keys) {
+            if (k.kind != Kind.MAP || k.part.model != this) continue;
+            entry.map = (Map<Object, Object>) k.get.apply(parentModel);
+            entry.value(entry.value);
+            return;
         }
     }
 

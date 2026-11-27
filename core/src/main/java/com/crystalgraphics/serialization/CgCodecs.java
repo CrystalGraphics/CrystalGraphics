@@ -125,9 +125,17 @@ public final class CgCodecs {
      *       new one is added, and one the input lacks is removed.</li>
      * </ul>
      */
-    public static <K, V> CgCodec<Map<K, V>> mapOf(CgCodec<K> keys, CgCodec<V> valueCodec) {
+    /**
+     * A list whose elements each carry a unique key: written as {@link #listOf}, and sent by a networked type as changes
+     * by key rather than whole. See {@link CgKeyedListCodec}.
+     */
+    public static <A> CgKeyedListCodec<A> keyedListOf(CgCodec<A> elements, Function<? super A, ?> key) {
+        return new CgKeyedListCodec<>(elements, key);
+    }
+
+    public static <K, V> CgMapCodec<K, V> mapOf(CgCodec<K> keys, CgCodec<V> valueCodec) {
         CgCodec<K> keyCodec = asKey(keys);
-        return new CgCodec<Map<K, V>>() {
+        return new CgMapCodec<>(keys, valueCodec, new CgCodec<Map<K, V>>() {
             @Override
             public <T> T encode(CgDynamicOps<T> ops, Map<K, V> input) {
                 Map<T, T> encoded = new LinkedHashMap<>(input.size() * 2);
@@ -163,7 +171,7 @@ public final class CgCodecs {
                 target.keySet().retainAll(seen);
                 return target;
             }
-        };
+        });
     }
 
     /**

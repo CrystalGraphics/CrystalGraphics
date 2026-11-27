@@ -6,7 +6,6 @@ import java.util.regex.Pattern;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.net.rate.CgRatePolicy;
 import com.crystalgraphics.serialization.CgBinaryFormat;
 import com.crystalgraphics.serialization.CgCodec;
@@ -39,11 +38,20 @@ public final class CgNetCommand<P> {
 
     private static final Pattern NAME = Pattern.compile("[a-zA-Z0-9_./-]+");
 
-    /** What the server does with one. */
-    @FunctionalInterface
-    public interface Handler<P> {
-        void handle(CgNetObject obj, CgPeer sender, @Nullable P value);
-    }
+    /** Refused: a sender who is not its owner, nor a watcher of a watched type. */
+    public static final String REFUSED_NOT_SENDER = "net/not_sender";
+    /** Refused: over its {@link #perSecond} for this sender, or past {@link #maxBytes}. Dropped and counted. */
+    public static final String REFUSED_RATE = "net/rate", REFUSED_TOO_LARGE = "net/too_large";
+    /** Refused: its type's {@code allow} guard, or {@code allowEdits} for an edit, said no. */
+    public static final String REFUSED_NOT_ALLOWED = "net/not_allowed";
+    /** Refused edits: a read-only key, or a value outside its key's range. */
+    public static final String REFUSED_READ_ONLY = "net/read_only", REFUSED_OUT_OF_RANGE = "net/out_of_range";
+    /** Refused: the server does not have it (another version of the mod), or its object is gone. */
+    public static final String REFUSED_UNKNOWN = "net/unknown", REFUSED_GONE = "net/gone";
+    /** Refused: it did not decode, or its sanitizer turned it to nothing. */
+    public static final String REFUSED_MALFORMED = "net/malformed", REFUSED_SANITIZED = "net/sanitized";
+    /** Refused: a call nobody handles on the server. */
+    public static final String REFUSED_UNHANDLED = "net/unhandled";
 
     final String name;
     @Nullable
@@ -56,8 +64,14 @@ public final class CgNetCommand<P> {
     boolean fromAnyViewer, fromOwner;
     @Nullable
     BiFunction<CgNetObject, P, P> sanitize;
+    int maxBytes = 32 * 1024;
     long refused;
     long malformed;
+    /** Of {@link #refused}: over the rate or the size, dropped without being read. */
+    long dropped;
+    /** The call this command carries, whose handler answers; null for a command. */
+    @Nullable
+    CgNetCall<P, ?> call;
     /** The predicted field this command carries, whose value it sets; null for a declared command. */
     @Nullable
     CgNetField<P> field;
@@ -130,8 +144,23 @@ public final class CgNetCommand<P> {
         return this;
     }
 
+    /**
+     * The largest value the server reads, in bytes; a larger one is dropped and refused, {@link #REFUSED_TOO_LARGE}.
+     * 32 KB unless said.
+     */
+    public CgNetCommand<P> maxBytes(int bytes) {
+        if (bytes <= 0) throw new IllegalArgumentException("maxBytes must be positive: " + bytes);
+        maxBytes = bytes;
+        return this;
+    }
+
     public String name() {
         return name;
+    }
+
+    /** Of {@link #refused}: over its rate or its size, dropped unread. */
+    public long dropped() {
+        return dropped;
     }
 
     /** Refused on the server: not the owner, not seen, over the rate, or for no live object. */

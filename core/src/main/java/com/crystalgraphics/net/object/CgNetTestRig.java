@@ -337,6 +337,21 @@ public final class CgNetTestRig implements AutoCloseable {
             return this;
         }
 
+        /**
+         * Reads the server's type {@code serverType} as this process's {@code localType}: a client on another version of
+         * the mod, a field behind or ahead. Call before the type's first object reaches it.
+         *
+         * <pre>{@code
+         * rig.client(1).readsAs("mymod:pet", "mymod:pet_v1");      // last week's declaration, one field fewer
+         * }</pre>
+         */
+        public Client readsAs(String serverType, String localType) {
+            ClientObjects objects = objects();
+            if (objects == null) throw new IllegalStateException(this + " is not connected");
+            objects.readsAs.put(serverType, localType);
+            return this;
+        }
+
         /** What it received since {@link #record()}, frames end to end; empty without it. */
         public byte[] recorded() {
             return recorded == null ? new byte[0] : recorded.toByteArray();

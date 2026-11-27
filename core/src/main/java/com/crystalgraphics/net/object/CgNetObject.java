@@ -10,6 +10,8 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.world.CgWorldQueries;
+import com.crystalgraphics.job.reply.CgReply;
+import com.crystalgraphics.job.reply.CgReplyError;
 
 /**
  * One networked object, on the server or as a client sees it: its type, where it is, its owner and its fields.
@@ -138,6 +140,8 @@ public final class CgNetObject {
     private Object local;
     @Nullable
     ClientObjects client;
+    /** Client: whether this watcher may edit it, as the server told it; a codec type's, true until told. */
+    boolean editable = true;
     /** A codec type's: the instance this object stands for, on its side. */
     @Nullable
     CgNetModel.Bound bound;
@@ -815,13 +819,83 @@ public final class CgNetObject {
      * command's rate decides when it leaves; the server decides whether it runs.
      */
     public <P> CgNetObject send(CgNetCommand<P> command, @Nullable P value) {
+        requireSender(command);
+        if (client != null && (state == LIVE || state == STOPPING)) client.send(this, command, value);
+        return this;
+    }
+
+    /**
+     * {@link #send}, asking the server's outcome: done, or refused with a reason key. Sent at once, past the command's
+     * rate gate. Client thread.
+     *
+     * <pre>{@code
+     * pet.ask(RENAME, name).onError(error -> status.setText(I18n.t(error.code())));   // "net/not_allowed", ...
+     * }</pre>
+     *
+     * {@code send} stays the way for a command sent often: it allocates nothing and asks nothing.
+     */
+    public <P> CgReply<Void> ask(CgNetCommand<P> command, @Nullable P value) {
+        requireSender(command);
+        if (client == null || !(state == LIVE || state == STOPPING)) return gone();
+        return client.ask(this, command, value);
+    }
+
+    /**
+     * Asks {@code call} of the server, answered with its value or refused with a reason. Client thread.
+     *
+     * <pre>{@code
+     * shop.call(SEARCH, "sword").then(list::setItems).onError(error -> status.setText(error.code()));
+     * }</pre>
+     */
+    public <A, R> CgReply<R> call(CgNetCall<A, R> call, @Nullable A value) {
+        requireSender(call.command);
+        if (client == null || !(state == LIVE || state == STOPPING)) return gone();
+        return client.ask(this, call.command, value);
+    }
+
+    /**
+     * Sets an editable field here at once and asks the server to take it: done, or refused with its reason
+     * ({@link CgNetCommand#REFUSED_READ_ONLY}, {@link CgNetCommand#REFUSED_OUT_OF_RANGE},
+     * {@link CgNetCommand#REFUSED_NOT_ALLOWED}), when the server's value comes back. Client thread.
+     *
+     * <pre>{@code
+     * npc.edit(NPC.field("name"), "Bulma").onError(error -> nameBox.invalid(error.code()));
+     * }</pre>
+     *
+     * A field no one may edit (not predicted, or a read-only key) is refused here, and nothing is sent.
+     */
+    public <V> CgReply<Void> edit(CgNetField<V> field, V value) {
+        if (server) throw new IllegalStateException("edit is a client's: the server sets its fields");
+        int i = type.require(field);
+        if (field.command == null || field.local) {
+            return CgReply.failed(new CgReplyError(CgNetCommand.REFUSED_READ_ONLY, field.name + " of " + type.name + " is not editable"));
+        }
+        if (client == null || state != LIVE) return gone();
+        predictLocally(i);
+        if (field.kind == CgNetField.Kind.CODEC) refs[i] = value;
+        else bits[i] = field.bitsOf(Objects.requireNonNull(value, "a primitive field's value"));
+        client.predicted(this, i, value, false);
+        return client.ask(this, field.command, value);
+    }
+
+    /**
+     * Client: whether this client may edit it, as the server told it when it started watching (a codec type's
+     * {@code allowEdits}); true for every other object.
+     */
+    public boolean isEditable() {
+        return editable;
+    }
+
+    private void requireSender(CgNetCommand<?> command) {
         if (server) throw new IllegalStateException("a command is a client's to send; the server handles it");
         type.requireCommand(command);
         if (!mine && !command.fromAnyViewer && !(type.watched && watching && !command.fromOwner)) {
             throw new IllegalStateException(command + " is its owner's to send, and this client does not own " + this);
         }
-        if (client != null && (state == LIVE || state == STOPPING)) client.send(this, command, value);
-        return this;
+    }
+
+    private static <R> CgReply<R> gone() {
+        return CgReply.failed(new CgReplyError(CgNetCommand.REFUSED_GONE, "the object is not live on this client"));
     }
 
     /**
