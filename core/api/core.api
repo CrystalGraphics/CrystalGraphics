@@ -10642,6 +10642,7 @@ com/crystalgraphics/net/CgPermission
   method public id ()Ljava/lang/String;
   method public toString ()Ljava/lang/String;
   method public,static define (Ljava/lang/String;)Lcom/crystalgraphics/net/CgPermission$Builder;
+  method public,static granted (Ljava/lang/String;)Z
   method public,static localOperator ()Z
   method public,static localOwner ()Z
   method public,static named (Ljava/lang/String;)Lcom/crystalgraphics/net/CgPermission;
@@ -10658,6 +10659,7 @@ com/crystalgraphics/net/CgRequest
   extends java/lang/Object
   field public,static,final DEFAULT_TIMEOUT_MILLIS J
   field public,static,final UNSUPPORTED Ljava/lang/String;
+  method public ask (Lcom/crystalgraphics/net/protocol/CgProtocolConnection;Ljava/lang/Object;)Lcom/crystalgraphics/job/reply/CgReply;
   method public ask (Ljava/lang/Object;)Lcom/crystalgraphics/job/reply/CgReply;
   method public ask (Ljava/util/UUID;Ljava/lang/Object;)Lcom/crystalgraphics/job/reply/CgReply;
   method public direction ()Lcom/crystalgraphics/net/CgRequest$Direction;

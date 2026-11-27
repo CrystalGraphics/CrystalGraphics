@@ -222,7 +222,15 @@ public final class CgRequest<A, R> {
         }
     }
 
-    CgReply<R> ask(@Nullable CgProtocolConnection<Object> connection, A value) {
+    /**
+     * Asks through {@code connection}: a client's to its server, for a client that names its own (a test rig's).
+     * Fails with {@link #UNSUPPORTED} when it is null or closed.
+     *
+     * <pre>{@code
+     * STATS.ask(rig.client(1).connection(), pos.asLong()).then(stats -> show(stats));
+     * }</pre>
+     */
+    public CgReply<R> ask(@Nullable CgProtocolConnection<Object> connection, A value) {
         Asked asked = new Asked();
         if (connection == null || connection.isClosed()) {
             asked.fail(UNSUPPORTED);

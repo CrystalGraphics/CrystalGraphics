@@ -104,6 +104,17 @@ public final class CgPermission {
         return LOCAL.granted.contains(id);
     }
 
+    /**
+     * Client: {@link #granted()} by id, for a permission this client never declared: one a server's files name.
+     *
+     * <pre>{@code
+     * command.enabledWhen(ctx -> CgPermission.granted("cguibank:refuel"));
+     * }</pre>
+     */
+    public static boolean granted(String id) {
+        return LOCAL.granted.contains(id);
+    }
+
     /** Client: whether the server last said this client's player is an operator. */
     public static boolean localOperator() {
         return LOCAL.operator;
