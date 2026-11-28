@@ -221,6 +221,11 @@ public final class CgLookKinds {
             .property("texture", CgValueType.binaryRef("textures"))
             .property("svg", CgValueType.binaryRef("svg"))
             .property("material", hard("material"))
+            // [x, y, w, h] and [left, top, right, bottom], in the image's pixels
+            .property("region", VEC4).forms(CgValueForm.CONSTANT)
+            .property("layer", INT).forms(CgValueForm.CONSTANT).range(0, null)
+            .property("nine_slice", VEC4).forms(CgValueForm.CONSTANT)
+            .property("tiling", CgValueType.enumOf("stretch", "repeat", "repeat_x", "repeat_y", "round", "space"))
             .property("image_size", PAIR).forms(CgValueForm.CONSTANT)
             .property("tint", VEC4).forms(CgValueForm.CONSTANT)
             .property("draw_as", CgValueType.enumOf("image", "none"))

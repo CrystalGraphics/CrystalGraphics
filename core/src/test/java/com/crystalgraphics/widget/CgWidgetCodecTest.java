@@ -142,7 +142,7 @@ public class CgWidgetCodecTest {
                         .child(CgWidget.image("Icon").brush(CgBrush.svg("mymod:ui/icons/sword.svg").size(24f, 24f)))
                         .child(CgWidget.userWidget("Digit", digit))
                         .child(CgWidget.scaleBox("Small", 0.418f).child(CgWidget.text("Hits").style(GOLD).text("HITS")))
-                        .child(CgWidget.retainerBox("Soft").blur(2.5f).child(CgWidget.text("Ghost").style(GOLD).text("9"))))
+                        .child(CgWidget.retainerBox("Soft").blur(2.5f).blurAxis(CgWidget.BlurAxis.VERTICAL).child(CgWidget.text("Ghost").style(GOLD).text("9"))))
                 .build());
         String yaml = CgAssetYaml.write(CgWidgetCodec.toTree(built), CgLookKinds.WIDGET);
         CgAssetCompiler.Dependencies deps = (kind, id) -> kind == CgLookKinds.TEXT_STYLE ? GOLD
@@ -228,6 +228,9 @@ public class CgWidgetCodecTest {
         String yaml = CgAssetYaml.write(CgWidgetCodec.toTree(built), CgLookKinds.WIDGET);
         assertTrue(yaml, yaml.contains("region: [8, 0, 24, 24]") && yaml.contains("nine_slice: [4, 4, 4, 4]")
                 && yaml.contains("tiling: repeat"));
+        CgValidation v = CgAssetData.validate("panel.yaml", CgLookKinds.WIDGET, (Map<?, ?>) CgAssetYaml.read(yaml),
+                CgValidation.Usecase.LOAD);
+        assertTrue(v.issues() + "\n" + yaml, v.valid());
         assertEquals(yaml, built, CgWidgetCodec.compile(asset("mymod:widgets/panel", yaml, null), (kind, id) -> null));
     }
 }
