@@ -7,6 +7,7 @@ import com.crystalgraphics.platform.CgService;
 import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -173,7 +174,7 @@ public final class CgMenus {
     /** Every declared type's id, in declaration order. Hosts, at registration. */
     public static Set<String> declared() {
         synchronized (TYPES) {
-            return Collections.unmodifiableSet(new java.util.LinkedHashSet<>(TYPES.keySet()));
+            return Collections.unmodifiableSet(new LinkedHashSet<>(TYPES.keySet()));
         }
     }
 
